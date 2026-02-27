@@ -4,113 +4,139 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Even OpenClaw</title>
+  <link rel="stylesheet" href="../even-g2-apps/src/style.css" />
   <style>
-    :root { --bg:#f6f6f6; --card:#fff; --text:#111; --muted:#777; --line:#e7e7e7; }
-    * { box-sizing: border-box; }
-    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif; background:var(--bg); color:var(--text); }
-    .app { max-width:430px; margin:0 auto; min-height:100vh; padding-bottom:84px; }
-    .top { height:56px; display:flex; align-items:center; justify-content:space-between; padding:0 14px; font-size:17px; }
-    .top .title { font-weight:500; }
-    .tabs { display:flex; gap:18px; padding:0 14px; border-bottom:1px solid var(--line); font-size:15px; }
-    .tab { padding:12px 0; color:var(--muted); border-bottom:2px solid transparent; cursor:pointer; }
-    .tab.active { color:#111; border-color:#111; }
-
-    .page { display:none; padding:14px; }
+    body { background: var(--bc-3rd); }
+    #app { max-width: 600px; margin: 0 auto; padding-bottom: 96px; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; padding: 6px 0 10px; }
+    .topbar__title { font-size: 36px; line-height: 1; font-weight: var(--weight-light); }
+    .tabline { display:flex; gap: 18px; border-bottom: 1px solid var(--line-color, #e8e8e8); margin-bottom: 14px; }
+    .tabline button { border:0; background:transparent; padding: 10px 0; color: var(--tc-2nd); font-size: var(--font-size-body); }
+    .tabline button.active { color: var(--tc-1st); border-bottom: 2px solid var(--tc-1st); }
+    .page { display:none; }
     .page.active { display:block; }
-
-    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
-    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-    .h1 { font-size:32px; line-height:1.1; margin:8px 0 2px; }
-    .muted { color:var(--muted); }
-    .btn { border:1px solid #111; background:#111; color:#fff; padding:10px 12px; border-radius:10px; font-weight:500; width:100%; }
-    .btn.secondary { background:#fff; color:#111; border-color:#ddd; }
-    .list .item { display:flex; justify-content:space-between; align-items:center; padding:13px 0; border-bottom:1px solid var(--line); }
-    .list .item:last-child { border-bottom:none; }
-
-    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; min-height:110px; display:flex; flex-direction:column; justify-content:space-between; }
-    .ico { font-size:20px; opacity:.9; }
-
-    .bottom { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:linear-gradient(180deg,rgba(246,246,246,0),#f6f6f6 30%); }
-    .nav { width:min(430px,100%); background:#fff; border:1px solid var(--line); border-radius:16px; display:grid; grid-template-columns:repeat(4,1fr); }
-    .nav button { border:0; background:transparent; padding:10px 0 9px; font-size:22px; cursor:pointer; }
-    .nav button.active { filter:contrast(1.4); }
-    .tiny { font-size:12px; color:var(--muted); }
-    a { color:inherit; }
+    .kv { display:flex; justify-content:space-between; align-items:center; }
+    .bottom-nav-wrap { position: fixed; left:0; right:0; bottom:0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, transparent, var(--bc-3rd) 40%); }
+    .bottom-nav { max-width: 600px; margin: 0 auto; background: var(--bc-2nd); border:1px solid #e7e7e7; border-radius: 16px; display:grid; grid-template-columns:repeat(4,1fr); }
+    .bottom-nav button { border:0; background:transparent; padding: 10px 0; font-size: 24px; color: var(--tc-2nd); }
+    .bottom-nav button.active { color: var(--tc-1st); }
+    .mono { font-family: var(--font-family-mono); }
   </style>
 </head>
 <body>
-  <div class="app">
-    <div class="top"><span>‹</span><span class="title">Even OpenClaw</span><span>◱</span></div>
+  <div id="app" class="home">
+    <header class="topbar">
+      <span class="u-type-title-md">‹</span>
+      <h1 class="topbar__title">Even OpenClaw</h1>
+      <span class="u-type-title-md">◱</span>
+    </header>
 
-    <div id="home" class="page active">
-      <div class="card">
-        <div class="row"><strong>Glasses</strong><span class="tiny" id="gState">Disconnected</span></div>
-        <div class="h1" id="battery">G: --</div>
-        <p class="muted">Manage G2 connection and OpenClaw session routing.</p>
-        <div class="row" style="margin-top:10px; gap:8px;">
-          <button class="btn" onclick="connect()" id="connectBtn">Connect glasses</button>
-          <button class="btn secondary" onclick="disconnect()">Disconnect</button>
+    <nav class="tabline">
+      <button class="active" data-tab="home">Home</button>
+      <button data-tab="features">Glasses features</button>
+    </nav>
+
+    <section id="home" class="page active">
+      <section class="card">
+        <div class="kv">
+          <div>
+            <div class="u-text-title-sm">Glasses connection</div>
+            <div class="u-type-body-sm u-tc-2nd" id="gState">Disconnected</div>
+          </div>
+          <span class="tag tag--default" id="gBattery">G: --</span>
         </div>
-      </div>
+        <div style="margin-top:10px; display:grid; gap:8px;">
+          <button class="btn btn--primary btn--wide" onclick="connectGlasses()">Connect glasses</button>
+          <button class="btn btn--ghost btn--wide" onclick="disconnectGlasses()">Disconnect</button>
+        </div>
+      </section>
 
-      <div class="grid">
-        <div class="tile"><div class="ico">🗨️</div><div><strong>Session</strong><div class="tiny" id="sess">gideon (default)</div></div></div>
-        <div class="tile"><div class="ico">🎙️</div><div><strong>STT Provider</strong><div class="tiny" id="stt">WhisperX</div></div></div>
-        <div class="tile"><div class="ico">📄</div><div><strong>Logs</strong><div class="tiny">Recent voice turns</div></div></div>
-        <div class="tile"><div class="ico">🕶️</div><div><strong>Simulator</strong><div class="tiny"><a href="./preview-glasses.html">Open preview</a></div></div></div>
-      </div>
-    </div>
+      <section class="card" style="margin-top:12px;">
+        <div class="list">
+          <div class="list-item">
+            <div class="list-item__content"><div class="list-item__title">OpenClaw session</div><div class="list-item__subtitle">Switch live agent session</div></div>
+            <div class="list-item__meta mono">gideon</div>
+          </div>
+          <div class="list-item">
+            <div class="list-item__content"><div class="list-item__title">STT provider</div><div class="list-item__subtitle">WhisperX / OpenAI / Custom</div></div>
+            <div class="list-item__meta">WhisperX</div>
+          </div>
+          <div class="list-item">
+            <div class="list-item__content"><div class="list-item__title">Simulator preview</div><div class="list-item__subtitle">Check glasses rendering</div></div>
+            <div class="list-item__meta"><a href="./preview-glasses.html">Open ›</a></div>
+          </div>
+        </div>
+      </section>
+    </section>
 
-    <div id="health" class="page">
-      <div class="card list">
-        <div class="item"><span>Gateway</span><span class="tiny">online</span></div>
-        <div class="item"><span>WhisperX</span><span class="tiny">ready</span></div>
-        <div class="item"><span>Session route</span><span class="tiny">gideon</span></div>
-      </div>
-      <div class="card"><strong>Live logs</strong><p class="tiny">Bottom-nav access for diagnostics. Replace with real log stream in implementation phase.</p></div>
-    </div>
+    <section id="features" class="page">
+      <section class="home__section">
+        <div class="note">
+          <div class="u-text-title-sm">Glasses features</div>
+          <div class="u-type-body-base u-tc-2nd">Manage G2 ↔ OpenClaw voice bridge with minimal friction.</div>
+        </div>
+      </section>
 
-    <div id="apps" class="page">
-      <div class="tabs" style="padding:0; margin:-8px -14px 10px; padding-left:14px;">
-        <div class="tab active">Home</div><div class="tab">Glasses features</div>
-      </div>
-      <div class="card"><strong>EvenHub frontend shell</strong><p class="muted">Native-style management UI for G2 ↔ OpenClaw bridge. Includes sessions, settings, logs, and simulator entry.</p></div>
-      <div class="card"><strong>Quick actions</strong><div class="list"><div class="item"><span>Switch session</span><span>›</span></div><div class="item"><span>Open simulator</span><span>›</span></div><div class="item"><span>Test voice turn</span><span>›</span></div></div></div>
-    </div>
+      <section class="card" style="margin-top:12px;">
+        <div class="list-item list-item--outlined">
+          <span class="list-item__leading u-text-title-xs u-tc-2nd">01</span>
+          <div class="list-item__content"><div class="list-item__title">Session routing</div><div class="list-item__subtitle">Switch active OpenClaw session</div></div>
+        </div>
+        <div class="list-item" style="margin-top:8px;">
+          <span class="list-item__leading u-text-title-xs u-tc-2nd">02</span>
+          <div class="list-item__content"><div class="list-item__title">Live diagnostics</div><div class="list-item__subtitle">Logs + health from bottom nav</div></div>
+        </div>
+      </section>
 
-    <div id="settings" class="page">
-      <div class="card list">
-        <div class="item"><span>OpenClaw Gateway URL</span><span class="tiny">›</span></div>
-        <div class="item"><span>Session key</span><span class="tiny">›</span></div>
-        <div class="item"><span>STT provider</span><span class="tiny">›</span></div>
-        <div class="item"><span>Provider API keys</span><span class="tiny">›</span></div>
-        <div class="item"><span>Gesture mapping</span><span class="tiny">›</span></div>
-      </div>
-      <button class="btn">Save settings</button>
-    </div>
+      <button class="btn btn--primary btn--wide" style="margin-top:12px;">Glasses UI ready</button>
+    </section>
+
+    <section id="health" class="page">
+      <section class="card">
+        <div class="u-text-title-sm">Connection health</div>
+        <div class="indicator indicator--progress" style="margin-top:10px;"><div class="indicator__track"><div class="indicator__bar is-partial-75"></div></div></div>
+        <div class="u-type-body-sm u-tc-2nd" style="margin-top:8px;">Gateway online · STT ready · Session route active</div>
+      </section>
+      <section class="card" style="margin-top:12px;"><div class="u-text-title-sm">Logs</div><div class="u-type-body-sm u-tc-2nd">Voice turns, retries, and bridge events.</div></section>
+    </section>
+
+    <section id="settings" class="page">
+      <section class="card list">
+        <div class="item"><span>OpenClaw gateway URL</span><span>›</span></div>
+        <div class="item"><span>Session key</span><span>›</span></div>
+        <div class="item"><span>STT provider</span><span>›</span></div>
+        <div class="item"><span>Provider API keys</span><span>›</span></div>
+        <div class="item"><span>Gesture customization</span><span>›</span></div>
+      </section>
+    </section>
   </div>
 
-  <div class="bottom">
-    <div class="nav">
-      <button data-page="home" class="active">⌂</button>
+  <div class="bottom-nav-wrap">
+    <nav class="bottom-nav" id="bottomNav">
+      <button class="active" data-page="home">⌂</button>
       <button data-page="health">♡</button>
-      <button data-page="apps">◫</button>
+      <button data-page="features">◫</button>
       <button data-page="settings">⚙︎</button>
-    </div>
+    </nav>
   </div>
 
   <script>
-    const buttons=[...document.querySelectorAll('.nav button')];
-    const pages=['home','health','apps','settings'];
-    buttons.forEach(b=>b.onclick=()=>{
-      buttons.forEach(x=>x.classList.remove('active')); b.classList.add('active');
-      pages.forEach(p=>document.getElementById(p).classList.remove('active'));
-      document.getElementById(b.dataset.page).classList.add('active');
-    });
+    const tabs=[...document.querySelectorAll('.tabline button')];
+    const nav=[...document.querySelectorAll('#bottomNav button')];
+    const pages=['home','features','health','settings'];
 
-    function connect(){ document.getElementById('gState').textContent='Connected'; document.getElementById('battery').textContent='G: 100'; document.getElementById('connectBtn').textContent='Reconnect'; }
-    function disconnect(){ document.getElementById('gState').textContent='Disconnected'; document.getElementById('battery').textContent='G: --'; }
+    function show(page){
+      pages.forEach(p=>document.getElementById(p).classList.remove('active'));
+      document.getElementById(page).classList.add('active');
+      nav.forEach(n=>n.classList.toggle('active', n.dataset.page===page));
+      tabs.forEach(t=>t.classList.toggle('active', t.dataset.tab===page));
+    }
+    tabs.forEach(t=>t.onclick=()=>show(t.dataset.tab));
+    nav.forEach(n=>n.onclick=()=>show(n.dataset.page));
+
+    function connectGlasses(){ document.getElementById('gState').textContent='Connected'; document.getElementById('gBattery').textContent='G: 100'; }
+    function disconnectGlasses(){ document.getElementById('gState').textContent='Disconnected'; document.getElementById('gBattery').textContent='G: --'; }
+    window.connectGlasses=connectGlasses; window.disconnectGlasses=disconnectGlasses;
   </script>
 </body>
 </html>
