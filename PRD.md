@@ -32,6 +32,18 @@ Public Even Hub frontend app for Even G2 that provides voice/chat UX and connect
 - Scrollable virtualized history window
 - Hide/Wake UI modes + menu
 
+## UI constraints (explicit)
+- Target canvas: `576x288`
+- Avoid dense text HUD; prioritize state icons + compact bubble text
+- Use incremental updates (no full rebuild per token)
+- UI update cadence target: `150-300ms` for text/status; icon animations `3-6 fps`
+- Max text upgrade safety target per call: `<= 2000` chars
+- Virtualized viewport rendering:
+  - keep full chat in memory
+  - render only visible window on glasses
+  - stream new response at bottom, evict non-visible top render lines
+- Must operate fully with only 4 gestures: tap, double tap, scroll up/down
+
 ## Technical requirements
 - TypeScript strict mode
 - EvenRealities native UI approach (aligned with even-g2-apps patterns)
