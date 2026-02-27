@@ -1,97 +1,116 @@
 <!doctype html>
-<html lang="en" data-theme="auto">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>even-g2-openclaw-chat-app</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Even OpenClaw</title>
   <style>
-    :root{
-      --bg:#f3f6fb; --panel:#ffffff; --panel-2:#eef3ff; --text:#0f172a; --muted:#475569;
-      --accent:#2563eb; --accent-2:#1d4ed8; --border:#dbe5ff; --ok:#10b981;
-    }
-    [data-theme="dark"]{
-      --bg:#060b16; --panel:#0f172a; --panel-2:#111d37; --text:#e2e8f0; --muted:#94a3b8;
-      --accent:#3b82f6; --accent-2:#60a5fa; --border:#24324f; --ok:#34d399;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
-    .wrap{max-width:920px;margin:20px auto;padding:12px}
-    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-    .brand{font-weight:700;letter-spacing:.2px}
-    .toggle{border:1px solid var(--border);background:var(--panel);color:var(--text);padding:8px 10px;border-radius:10px;cursor:pointer}
+    :root { --bg:#f6f6f6; --card:#fff; --text:#111; --muted:#777; --line:#e7e7e7; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif; background:var(--bg); color:var(--text); }
+    .app { max-width:430px; margin:0 auto; min-height:100vh; padding-bottom:84px; }
+    .top { height:56px; display:flex; align-items:center; justify-content:space-between; padding:0 14px; font-size:17px; }
+    .top .title { font-weight:500; }
+    .tabs { display:flex; gap:18px; padding:0 14px; border-bottom:1px solid var(--line); font-size:15px; }
+    .tab { padding:12px 0; color:var(--muted); border-bottom:2px solid transparent; cursor:pointer; }
+    .tab.active { color:#111; border-color:#111; }
 
-    .screen{border:1px solid var(--border);background:var(--panel);border-radius:16px;overflow:hidden;box-shadow:0 10px 35px rgba(0,0,0,.08)}
-    .header{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
-    .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 6px color-mix(in srgb,var(--ok),transparent 85%)}
-    .title{font-size:14px;color:var(--muted)}
+    .page { display:none; padding:14px; }
+    .page.active { display:block; }
 
-    .chat{padding:12px;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,var(--panel),var(--panel-2))}
-    .row{display:flex}
-    .row.right{justify-content:flex-end}
-    .bubble{max-width:78%;padding:10px 12px;border-radius:14px;line-height:1.35;border:1px solid var(--border)}
-    .bubble.left{background:var(--panel);color:var(--text)}
-    .bubble.right{background:var(--accent);color:#fff;border-color:transparent}
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .h1 { font-size:32px; line-height:1.1; margin:8px 0 2px; }
+    .muted { color:var(--muted); }
+    .btn { border:1px solid #111; background:#111; color:#fff; padding:10px 12px; border-radius:10px; font-weight:500; width:100%; }
+    .btn.secondary { background:#fff; color:#111; border-color:#ddd; }
+    .list .item { display:flex; justify-content:space-between; align-items:center; padding:13px 0; border-bottom:1px solid var(--line); }
+    .list .item:last-child { border-bottom:none; }
 
-    .status{padding:8px 12px;border-top:1px solid var(--border);display:flex;gap:12px;align-items:center;color:var(--muted);font-size:13px}
-    .pill{padding:4px 8px;border-radius:999px;background:var(--panel-2);border:1px solid var(--border)}
-    .throb{display:inline-block;min-width:18px;text-align:left}
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; min-height:110px; display:flex; flex-direction:column; justify-content:space-between; }
+    .ico { font-size:20px; opacity:.9; }
 
-    @media (max-width: 768px){.wrap{margin:8px auto}.bubble{max-width:92%}}
+    .bottom { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:linear-gradient(180deg,rgba(246,246,246,0),#f6f6f6 30%); }
+    .nav { width:min(430px,100%); background:#fff; border:1px solid var(--line); border-radius:16px; display:grid; grid-template-columns:repeat(4,1fr); }
+    .nav button { border:0; background:transparent; padding:10px 0 9px; font-size:22px; cursor:pointer; }
+    .nav button.active { filter:contrast(1.4); }
+    .tiny { font-size:12px; color:var(--muted); }
+    a { color:inherit; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="top">
-      <div class="brand">even-g2-openclaw-chat-app · UI preview</div>
-      <button id="themeBtn" class="toggle">Theme: Auto</button>
+  <div class="app">
+    <div class="top"><span>‹</span><span class="title">Even OpenClaw</span><span>◱</span></div>
+
+    <div id="home" class="page active">
+      <div class="card">
+        <div class="row"><strong>Glasses</strong><span class="tiny" id="gState">Disconnected</span></div>
+        <div class="h1" id="battery">G: --</div>
+        <p class="muted">Manage G2 connection and OpenClaw session routing.</p>
+        <div class="row" style="margin-top:10px; gap:8px;">
+          <button class="btn" onclick="connect()" id="connectBtn">Connect glasses</button>
+          <button class="btn secondary" onclick="disconnect()">Disconnect</button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="tile"><div class="ico">🗨️</div><div><strong>Session</strong><div class="tiny" id="sess">gideon (default)</div></div></div>
+        <div class="tile"><div class="ico">🎙️</div><div><strong>STT Provider</strong><div class="tiny" id="stt">WhisperX</div></div></div>
+        <div class="tile"><div class="ico">📄</div><div><strong>Logs</strong><div class="tiny">Recent voice turns</div></div></div>
+        <div class="tile"><div class="ico">🕶️</div><div><strong>Simulator</strong><div class="tiny"><a href="./preview-glasses.html">Open preview</a></div></div></div>
+      </div>
     </div>
 
-    <section class="screen">
-      <div class="header">
-        <div class="dot"></div>
-        <div class="title">Even AI style preview (G2-first, minimal, bubble chat)</div>
+    <div id="health" class="page">
+      <div class="card list">
+        <div class="item"><span>Gateway</span><span class="tiny">online</span></div>
+        <div class="item"><span>WhisperX</span><span class="tiny">ready</span></div>
+        <div class="item"><span>Session route</span><span class="tiny">gideon</span></div>
       </div>
+      <div class="card"><strong>Live logs</strong><p class="tiny">Bottom-nav access for diagnostics. Replace with real log stream in implementation phase.</p></div>
+    </div>
 
-      <div class="chat">
-        <div class="row right"><div class="bubble right">Who am I talking to?</div></div>
-        <div class="row"><div class="bubble left">Rolands, this is Gideon. Voice bridge is online and ready.</div></div>
-        <div class="row right"><div class="bubble right">Start recording now.</div></div>
+    <div id="apps" class="page">
+      <div class="tabs" style="padding:0; margin:-8px -14px 10px; padding-left:14px;">
+        <div class="tab active">Home</div><div class="tab">Glasses features</div>
       </div>
+      <div class="card"><strong>EvenHub frontend shell</strong><p class="muted">Native-style management UI for G2 ↔ OpenClaw bridge. Includes sessions, settings, logs, and simulator entry.</p></div>
+      <div class="card"><strong>Quick actions</strong><div class="list"><div class="item"><span>Switch session</span><span>›</span></div><div class="item"><span>Open simulator</span><span>›</span></div><div class="item"><span>Test voice turn</span><span>›</span></div></div></div>
+    </div>
 
-      <div class="status">
-        <span class="pill">REC</span>
-        <span>Thinking <span class="throb" id="throb">·</span></span>
-        <span class="pill">Scroll = history</span>
+    <div id="settings" class="page">
+      <div class="card list">
+        <div class="item"><span>OpenClaw Gateway URL</span><span class="tiny">›</span></div>
+        <div class="item"><span>Session key</span><span class="tiny">›</span></div>
+        <div class="item"><span>STT provider</span><span class="tiny">›</span></div>
+        <div class="item"><span>Provider API keys</span><span class="tiny">›</span></div>
+        <div class="item"><span>Gesture mapping</span><span class="tiny">›</span></div>
       </div>
-    </section>
+      <button class="btn">Save settings</button>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="nav">
+      <button data-page="home" class="active">⌂</button>
+      <button data-page="health">♡</button>
+      <button data-page="apps">◫</button>
+      <button data-page="settings">⚙︎</button>
+    </div>
   </div>
 
   <script>
-    const root = document.documentElement;
-    const btn = document.getElementById('themeBtn');
-    const saved = localStorage.getItem('theme') || 'auto';
-
-    function resolvedTheme(mode){
-      if(mode !== 'auto') return mode;
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    function apply(mode){
-      root.setAttribute('data-theme', resolvedTheme(mode));
-      root.dataset.mode = mode;
-      btn.textContent = `Theme: ${mode[0].toUpperCase()+mode.slice(1)}`;
-      localStorage.setItem('theme', mode);
-    }
-    btn.onclick = () => {
-      const mode = root.dataset.mode || 'auto';
-      apply(mode === 'auto' ? 'dark' : mode === 'dark' ? 'light' : 'auto');
-    };
-    apply(saved);
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if((root.dataset.mode || 'auto') === 'auto') apply('auto');
+    const buttons=[...document.querySelectorAll('.nav button')];
+    const pages=['home','health','apps','settings'];
+    buttons.forEach(b=>b.onclick=()=>{
+      buttons.forEach(x=>x.classList.remove('active')); b.classList.add('active');
+      pages.forEach(p=>document.getElementById(p).classList.remove('active'));
+      document.getElementById(b.dataset.page).classList.add('active');
     });
 
-    const frames=['·','··','···','··'];
-    let i=0; setInterval(()=>{document.getElementById('throb').textContent=frames[(i++)%frames.length]},350);
+    function connect(){ document.getElementById('gState').textContent='Connected'; document.getElementById('battery').textContent='G: 100'; document.getElementById('connectBtn').textContent='Reconnect'; }
+    function disconnect(){ document.getElementById('gState').textContent='Disconnected'; document.getElementById('battery').textContent='G: --'; }
   </script>
 </body>
 </html>
