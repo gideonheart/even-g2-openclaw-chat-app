@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>even-g2-openclaw-chat-app — G2 Simulator UI</title>
+  <style>
+    :root{--bg:#070b12;--panel:#0b111d;--green:#84f7a6;--green2:#56d37e;--dim:#2d5a3e;--line:#1b2e23}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:#c9f7d7;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .wrap{max-width:980px;margin:18px auto;padding:12px}
+    .title{font:600 14px/1.3 system-ui;color:#9fb2c7;margin-bottom:10px}
+
+    .g2-shell{background:#111827;border:1px solid #1f2937;border-radius:14px;padding:12px}
+    .g2-canvas{width:100%;max-width:576px;aspect-ratio:2/1;background:var(--panel);border:1px solid var(--line);margin:auto;position:relative;overflow:hidden}
+
+    .status{height:32px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 10px;color:var(--green2);font-size:12px}
+    .content{position:absolute;left:0;right:0;top:32px;bottom:32px;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
+    .hint{position:absolute;left:0;right:0;bottom:0;height:32px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:#5ca67a;font-size:11px}
+
+    .bubble{max-width:82%;padding:6px 8px;border:1px solid var(--dim);line-height:1.25;word-wrap:break-word}
+    .me{align-self:flex-end;color:#baf7cc;border-color:#376e4a}
+    .ai{align-self:flex-start;color:var(--green)}
+
+    .icon{display:inline-block;width:10px;height:10px;border:1px solid var(--green2);margin-right:6px;vertical-align:-1px}
+    .rec .icon{background:var(--green2)}
+    .thinking .icon{background:transparent}
+
+    .controls{display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap}
+    button{background:#0f172a;color:#cfead9;border:1px solid #334155;border-radius:8px;padding:8px 10px;cursor:pointer}
+    button:hover{border-color:#4b5563}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">G2 Simulator-style preview (green monochrome, 576×288, icon-first)</div>
+
+    <div class="g2-shell">
+      <div class="g2-canvas" id="canvas">
+        <div class="status" id="statusLine"><span class="thinking"><span class="icon"></span>IDLE</span><span id="time">00:00</span></div>
+
+        <div class="content" id="chat">
+          <div class="bubble me">Who am I talking with?</div>
+          <div class="bubble ai">Rolands, this is Gideon. Voice bridge online.</div>
+        </div>
+
+        <div class="hint">Tap=Rec/Stop · Scroll=History · 2xTap=Menu</div>
+      </div>
+
+      <div class="controls">
+        <button onclick="setState('idle')">Idle</button>
+        <button onclick="setState('rec')">Recording</button>
+        <button onclick="setState('sent')">Sent</button>
+        <button onclick="setState('thinking')">Thinking</button>
+        <button onclick="appendStream()">Stream token</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const statusLine=document.getElementById('statusLine');
+    const timeEl=document.getElementById('time');
+    const chat=document.getElementById('chat');
+    let t=0, timer=null, dot=0;
+
+    function setState(s){
+      if(timer){clearInterval(timer); timer=null}
+      if(s==='idle'){ statusLine.innerHTML='<span class="thinking"><span class="icon"></span>IDLE</span><span id="time">00:00</span>'; t=0;}
+      if(s==='rec'){
+        statusLine.innerHTML='<span class="rec"><span class="icon"></span>REC</span><span id="time">00:00</span>';
+        const te=()=>document.getElementById('time');
+        timer=setInterval(()=>{t++; const m=String(Math.floor(t/60)).padStart(2,'0'); const ss=String(t%60).padStart(2,'0'); te().textContent=`${m}:${ss}`;},1000);
+      }
+      if(s==='sent'){ statusLine.innerHTML='<span><span class="icon"></span>SENT</span><span>ok</span>'; }
+      if(s==='thinking'){
+        statusLine.innerHTML='<span class="thinking"><span class="icon"></span>THINKING <span id="dots">·</span></span><span>wait</span>';
+        timer=setInterval(()=>{dot=(dot+1)%4; const d='·'.repeat(Math.max(1,dot)); const el=document.getElementById('dots'); if(el) el.textContent=d;},350);
+      }
+    }
+
+    function appendStream(){
+      const last=chat.querySelector('.ai:last-child');
+      if(!last){
+        const n=document.createElement('div'); n.className='bubble ai'; n.textContent='Gideon:'; chat.appendChild(n);
+      }
+      const target=chat.querySelector('.ai:last-child');
+      target.textContent += ' token';
+      chat.scrollTop=chat.scrollHeight;
+    }
+  </script>
+</body>
+</html>
