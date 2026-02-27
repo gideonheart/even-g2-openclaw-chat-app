@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Even OpenClaw</title>
   <link rel="stylesheet" href="../even-g2-apps/src/style.css" />
   <style>
@@ -16,10 +16,11 @@
     .page { display:none; }
     .page.active { display:block; }
     .kv { display:flex; justify-content:space-between; align-items:center; }
-    .bottom-nav-wrap { position: fixed; left:0; right:0; bottom:0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, transparent, var(--bc-3rd) 40%); }
-    .bottom-nav { max-width: 600px; margin: 0 auto; background: var(--bc-2nd); border:1px solid #e7e7e7; border-radius: 16px; display:grid; grid-template-columns:repeat(4,1fr); }
-    .bottom-nav button { border:0; background:transparent; padding: 10px 0; font-size: 24px; color: var(--tc-2nd); }
+    .bottom-nav-wrap { position: fixed; left:0; right:0; bottom:0; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, transparent, var(--bc-3rd) 45%); }
+    .bottom-nav { max-width: 600px; margin: 0 auto; height: 62px; background: var(--bc-2nd); border:1px solid #e7e7e7; border-radius: 16px; display:grid; grid-template-columns:repeat(4,1fr); align-items:center; }
+    .bottom-nav button { border:0; background:transparent; height:100%; color: var(--tc-2nd); display:flex; align-items:center; justify-content:center; }
     .bottom-nav button.active { color: var(--tc-1st); }
+    .nav-ico { width:22px; height:22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .mono { font-family: var(--font-family-mono); }
   </style>
 </head>
@@ -113,10 +114,18 @@
 
   <div class="bottom-nav-wrap">
     <nav class="bottom-nav" id="bottomNav">
-      <button class="active" data-page="home">⌂</button>
-      <button data-page="health">♡</button>
-      <button data-page="features">◫</button>
-      <button data-page="settings">⚙︎</button>
+      <button class="active" data-page="home" aria-label="Home">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10.5V19h11v-8.5"/></svg>
+      </button>
+      <button data-page="health" aria-label="Health">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 20s-6.5-3.9-8.5-8A4.8 4.8 0 0 1 12 7a4.8 4.8 0 0 1 8.5 5c-2 4.1-8.5 8-8.5 8Z"/></svg>
+      </button>
+      <button data-page="features" aria-label="Apps">
+        <svg class="nav-ico" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg>
+      </button>
+      <button data-page="settings" aria-label="Settings">
+        <svg class="nav-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a1.4 1.4 0 0 1 0 2l-.1.1a1.4 1.4 0 0 1-2 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V19a1.5 1.5 0 0 1-1.5 1.5h-.6A1.5 1.5 0 0 1 12 19v-.1a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a1.4 1.4 0 0 1-2 0l-.1-.1a1.4 1.4 0 0 1 0-2l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H7.4A1.5 1.5 0 0 1 5.9 13v-.6A1.5 1.5 0 0 1 7.4 10.9h.1a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a1.4 1.4 0 0 1 0-2l.1-.1a1.4 1.4 0 0 1 2 0l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V5a1.5 1.5 0 0 1 1.5-1.5h.6A1.5 1.5 0 0 1 15.6 5v.1a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a1.4 1.4 0 0 1 2 0l.1.1a1.4 1.4 0 0 1 0 2l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6h.1a1.5 1.5 0 0 1 1.5 1.5v.6a1.5 1.5 0 0 1-1.5 1.5h-.1a1 1 0 0 0-.9.6Z"/></svg>
+      </button>
     </nav>
   </div>
 
