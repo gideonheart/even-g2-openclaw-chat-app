@@ -1,24 +1,97 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>even-g2-openclaw-chat-app</title>
   <style>
-    body{font-family:system-ui;margin:0;background:#0b1020;color:#e5e7eb}
-    .wrap{max-width:760px;margin:32px auto;padding:16px}
-    .card{background:#111831;border:1px solid #243055;border-radius:12px;padding:16px}
-    code{background:#0a0f1f;padding:2px 6px;border-radius:6px}
+    :root{
+      --bg:#f3f6fb; --panel:#ffffff; --panel-2:#eef3ff; --text:#0f172a; --muted:#475569;
+      --accent:#2563eb; --accent-2:#1d4ed8; --border:#dbe5ff; --ok:#10b981;
+    }
+    [data-theme="dark"]{
+      --bg:#060b16; --panel:#0f172a; --panel-2:#111d37; --text:#e2e8f0; --muted:#94a3b8;
+      --accent:#3b82f6; --accent-2:#60a5fa; --border:#24324f; --ok:#34d399;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:920px;margin:20px auto;padding:12px}
+    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    .brand{font-weight:700;letter-spacing:.2px}
+    .toggle{border:1px solid var(--border);background:var(--panel);color:var(--text);padding:8px 10px;border-radius:10px;cursor:pointer}
+
+    .screen{border:1px solid var(--border);background:var(--panel);border-radius:16px;overflow:hidden;box-shadow:0 10px 35px rgba(0,0,0,.08)}
+    .header{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 6px color-mix(in srgb,var(--ok),transparent 85%)}
+    .title{font-size:14px;color:var(--muted)}
+
+    .chat{padding:12px;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,var(--panel),var(--panel-2))}
+    .row{display:flex}
+    .row.right{justify-content:flex-end}
+    .bubble{max-width:78%;padding:10px 12px;border-radius:14px;line-height:1.35;border:1px solid var(--border)}
+    .bubble.left{background:var(--panel);color:var(--text)}
+    .bubble.right{background:var(--accent);color:#fff;border-color:transparent}
+
+    .status{padding:8px 12px;border-top:1px solid var(--border);display:flex;gap:12px;align-items:center;color:var(--muted);font-size:13px}
+    .pill{padding:4px 8px;border-radius:999px;background:var(--panel-2);border:1px solid var(--border)}
+    .throb{display:inline-block;min-width:18px;text-align:left}
+
+    @media (max-width: 768px){.wrap{margin:8px auto}.bubble{max-width:92%}}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
-      <h1>even-g2-openclaw-chat-app</h1>
-      <p>Frontend repo scaffold is live.</p>
-      <p>PRD: <code>/samples/even-g2-openclaw-chat-app/PRD.md</code></p>
-      <p>Next: scaffold app structure + EvenHub UI implementation.</p>
+    <div class="top">
+      <div class="brand">even-g2-openclaw-chat-app · UI preview</div>
+      <button id="themeBtn" class="toggle">Theme: Auto</button>
     </div>
+
+    <section class="screen">
+      <div class="header">
+        <div class="dot"></div>
+        <div class="title">Even AI style preview (G2-first, minimal, bubble chat)</div>
+      </div>
+
+      <div class="chat">
+        <div class="row right"><div class="bubble right">Who am I talking to?</div></div>
+        <div class="row"><div class="bubble left">Rolands, this is Gideon. Voice bridge is online and ready.</div></div>
+        <div class="row right"><div class="bubble right">Start recording now.</div></div>
+      </div>
+
+      <div class="status">
+        <span class="pill">REC</span>
+        <span>Thinking <span class="throb" id="throb">·</span></span>
+        <span class="pill">Scroll = history</span>
+      </div>
+    </section>
   </div>
+
+  <script>
+    const root = document.documentElement;
+    const btn = document.getElementById('themeBtn');
+    const saved = localStorage.getItem('theme') || 'auto';
+
+    function resolvedTheme(mode){
+      if(mode !== 'auto') return mode;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    function apply(mode){
+      root.setAttribute('data-theme', resolvedTheme(mode));
+      root.dataset.mode = mode;
+      btn.textContent = `Theme: ${mode[0].toUpperCase()+mode.slice(1)}`;
+      localStorage.setItem('theme', mode);
+    }
+    btn.onclick = () => {
+      const mode = root.dataset.mode || 'auto';
+      apply(mode === 'auto' ? 'dark' : mode === 'dark' ? 'light' : 'auto');
+    };
+    apply(saved);
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if((root.dataset.mode || 'auto') === 'auto') apply('auto');
+    });
+
+    const frames=['·','··','···','··'];
+    let i=0; setInterval(()=>{document.getElementById('throb').textContent=frames[(i++)%frames.length]},350);
+  </script>
 </body>
 </html>
