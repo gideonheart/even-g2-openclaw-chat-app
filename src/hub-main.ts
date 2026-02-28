@@ -942,6 +942,44 @@ async function initPersistence(): Promise<{
     const db = await openDB();
     const conversationStore = createConversationStore(db);
     const sessionStore = createSessionStore(db, conversationStore);
+
+    // Phase 14: Dynamic imports for integrity and storage health
+    const { createIntegrityChecker } = await import('./persistence/integrity-checker');
+    const { createStorageHealth } = await import('./persistence/storage-health');
+    const { setOnUnexpectedClose } = await import('./persistence/db');
+
+    // Phase 14: Integrity check
+    const integrityChecker = createIntegrityChecker(db);
+    const report = await integrityChecker.check();
+
+    // Sentinel check for eviction detection
+    if (!report.sentinelPresent) {
+      const hadPreviousData = localStorage.getItem('openclaw-conversation-count');
+      if (hadPreviousData && report.conversationCount === 0) {
+        console.warn('[hub] Storage eviction detected');
+      }
+      await integrityChecker.writeSentinel();
+    }
+    try {
+      localStorage.setItem('openclaw-conversation-count', String(report.conversationCount));
+    } catch { /* localStorage unavailable */ }
+
+    if (report.orphanedMessageIds.length > 0) {
+      console.warn(`[hub] Integrity: ${report.orphanedMessageIds.length} orphaned messages`);
+    }
+
+    // Storage health
+    const storageHealth = createStorageHealth();
+    const quota = await storageHealth.getQuota();
+    if (quota.isAvailable && !quota.isPersisted) {
+      await storageHealth.requestPersistence();
+    }
+
+    // Hook IDB onclose
+    setOnUnexpectedClose(() => {
+      console.error('[hub] Database connection unexpectedly closed');
+    });
+
     const syncBridge = createSyncBridge();
 
     const mgr = createSessionManager({

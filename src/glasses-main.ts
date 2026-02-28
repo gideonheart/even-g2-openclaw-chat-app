@@ -13,12 +13,14 @@ import { createGlassesRenderer } from './display/glasses-renderer';
 import { createDisplayController } from './display/display-controller';
 import { createGatewayClient } from './api/gateway-client';
 import { createVoiceLoopController } from './voice-loop-controller';
-import { openDB, isIndexedDBAvailable } from './persistence/db';
+import { openDB, isIndexedDBAvailable, setOnUnexpectedClose } from './persistence/db';
 import { createConversationStore } from './persistence/conversation-store';
 import { createAutoSave } from './persistence/auto-save';
 import { restoreOrCreateConversation, writeActiveConversationId } from './persistence/boot-restore';
 import type { ConversationStore, SessionStore } from './persistence/types';
 import { createSessionStore } from './persistence/session-store';
+import { createIntegrityChecker } from './persistence/integrity-checker';
+import { createStorageHealth } from './persistence/storage-health';
 import { createSyncBridge } from './sync/sync-bridge';
 import { createSessionManager } from './sessions';
 import { createMenuController } from './menu/menu-controller';
@@ -37,6 +39,58 @@ export async function boot(): Promise<void> {
       const db = await openDB();
       store = createConversationStore(db);
       sessionStore = createSessionStore(db, store);
+
+      // Phase 14: Integrity check (read-only, <10ms typical)
+      const integrityChecker = createIntegrityChecker(db);
+      const report = await integrityChecker.check();
+
+      // Sentinel check for eviction detection (RES-04)
+      if (!report.sentinelPresent) {
+        const hadPreviousData = localStorage.getItem('openclaw-conversation-count');
+        if (hadPreviousData && report.conversationCount === 0) {
+          bus.emit('storage:evicted', {});
+        }
+        await integrityChecker.writeSentinel();
+      }
+      // Track conversation count for eviction detection on future boots
+      try {
+        localStorage.setItem('openclaw-conversation-count', String(report.conversationCount));
+      } catch { /* localStorage unavailable */ }
+
+      // Log orphans for diagnostics (do NOT auto-delete on boot -- use grace period per RES-05)
+      if (report.orphanedMessageIds.length > 0) {
+        bus.emit('log', { level: 'warn', msg: `Integrity: ${report.orphanedMessageIds.length} orphaned messages detected` });
+      }
+      if (report.danglingPointer) {
+        bus.emit('log', { level: 'warn', msg: 'Integrity: dangling session pointer detected' });
+      }
+
+      // Storage health (RES-02, RES-03)
+      const storageHealth = createStorageHealth();
+      const quota = await storageHealth.getQuota();
+      if (quota.isAvailable) {
+        bus.emit('persistence:health', quota);
+        if (quota.usagePercent >= 95) {
+          bus.emit('log', { level: 'error', msg: `Storage critical: ${quota.usagePercent.toFixed(1)}% used` });
+        } else if (quota.usagePercent >= 80) {
+          bus.emit('log', { level: 'warn', msg: `Storage warning: ${quota.usagePercent.toFixed(1)}% used` });
+        }
+        // Request persistent storage on first boot (RES-03)
+        if (!quota.isPersisted) {
+          const granted = await storageHealth.requestPersistence();
+          bus.emit('log', { level: 'info', msg: `Persistent storage ${granted ? 'granted' : 'denied'}` });
+        }
+      }
+
+      // Hook IDB onclose for unexpected closure detection (RES-15)
+      setOnUnexpectedClose(() => {
+        bus.emit('persistence:error', {
+          type: 'database-closed',
+          recoverable: true,
+          message: 'Database connection unexpectedly closed',
+        });
+        bus.emit('log', { level: 'error', msg: 'Database connection unexpectedly closed' });
+      });
     } catch {
       // IndexedDB unavailable -- continue with in-memory
     }
@@ -260,6 +314,7 @@ export async function boot(): Promise<void> {
     // audioCapture has no destroy() -- stopRecording is best-effort cleanup
     audioCapture.stopRecording().catch(() => {});
     bridge.destroy();            // unsubscribes SDK, shuts down page container
+    setOnUnexpectedClose(() => {}); // Prevent post-cleanup onclose events
     bus.clear();                 // clear all remaining subscriptions
   }
 
