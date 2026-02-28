@@ -31,3 +31,29 @@
 
 ---
 
+
+## v1.1 Integration (Shipped: 2026-02-28)
+
+**Phases completed:** 3 phases (6-8), 5 plans, 10 tasks, 265 tests
+**Lines of code:** 6,336 TypeScript (43 files)
+**Timeline:** ~6 hours (2026-02-28)
+**Git range:** `add7773` → `a649124` (56 files changed, +8506/-1812)
+
+**Delivered:** End-to-end voice loop wiring, error recovery, graceful shutdown, and EvenHub submission package — all v1.0 library modules assembled into a working app with a 42KB .ehpk artifact.
+
+**Key accomplishments:**
+1. Wired all v1.0 modules into end-to-end voice loop: tap → record → gateway → stream → glasses display
+2. Split monolithic main.ts into environment router + glasses-main.ts with Layer 0-5 boot sequence
+3. Added error recovery: FSM reset on gateway failures, 30-second timeout with visible error bubbles
+4. Implemented graceful shutdown with reverse-order module teardown and double-call guard
+5. Packaged app for EvenHub: app.json metadata, conditional Vite build, 42KB .ehpk artifact
+
+**v1.0 tech debt resolved:**
+- ✅ bridge:audio-frame → audioCapture.onFrame() bus subscription (LOOP-05)
+- ✅ 4 orphaned event types removed from AppEventMap (ERR-04)
+- ✅ Runtime main.ts initialization wiring all modules (LOOP-01..03)
+
+**Archive:** `.planning/milestones/v1.1-ROADMAP.md`, `.planning/milestones/v1.1-REQUIREMENTS.md`, `.planning/milestones/v1.1-MILESTONE-AUDIT.md`
+
+---
+

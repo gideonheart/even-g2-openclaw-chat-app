@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Phase 8 - EvenHub Submission (v1.1 Integration) -- COMPLETE
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 8 of 8 (EvenHub Submission)
-Plan: 1 of 1 in current phase (complete)
-Status: Phase complete
-Last activity: 2026-02-28 -- Phase 8 (EvenHub Submission) complete. Pack produces .ehpk artifact (42KB).
+Phase: 8 of 8 (all milestones complete)
+Plan: N/A
+Status: v1.1 Integration shipped
+Last activity: 2026-02-28 -- v1.1 milestone archived. App ready for EvenHub portal submission.
 
-Progress: [##########] 100% (8/8 phases complete)
+Progress: [##########] 100% (v1.0 + v1.1 complete)
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 17 (Phases 1-8)
 - Total tests: 265 (all passing)
-- Total LOC: ~5,900 TypeScript
+- Total LOC: ~6,336 TypeScript (43 files)
 - Total execution time: ~4.5 hours
 
 **By Phase:**
@@ -41,10 +41,7 @@ Progress: [##########] 100% (8/8 phases complete)
 
 ### Decisions
 
-All decisions logged in PROJECT.md Key Decisions table (12 entries with outcomes).
-
-- Phase 8: Used package_id 'lv.kingdom.bibele.openclawchat' (no hyphen) -- CLI regex rejects hyphens
-- Phase 8: Used edition '202601' instead of '202602' -- CLI Zod enum only accepts '202601'
+All decisions logged in PROJECT.md Key Decisions table (20 entries with outcomes).
 
 ### Pending Todos
 
@@ -52,8 +49,7 @@ None.
 
 ### Blockers/Concerns
 
-- ~~[Research]: EvenHub submission acceptance criteria have limited public documentation -- validate during Phase 8~~ RESOLVED: Phase 8 complete, pack validation passes
-- ~~[Research]: vite-plugin-singlefile may not be necessary -- sibling repo ships standard Vite output successfully with evenhub pack~~ RESOLVED: Standard multi-file Vite output works perfectly with evenhub pack
+None — all resolved.
 
 ### Quick Tasks Completed
 
@@ -66,5 +62,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 08-01-PLAN.md. All 8 phases complete. Project ready for EvenHub portal submission.
+Stopped at: v1.1 milestone archived. All 8 phases complete. Ready for next milestone or EvenHub portal submission.
 Resume file: None
