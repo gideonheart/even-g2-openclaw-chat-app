@@ -143,4 +143,21 @@ describe('DriftReconciler', () => {
 
     reconciler.destroy();
   });
+
+  it('handleHeartbeat rejects when countMessages rejects (IDB error)', async () => {
+    store.countMessages.mockRejectedValue(new Error('IDB read failed'));
+    const onDriftDetected = vi.fn();
+    const onReconciled = vi.fn();
+
+    const reconciler = createDriftReconciler({ store, onDriftDetected, onReconciled });
+
+    // handleHeartbeat should propagate the rejection (callers add .catch())
+    await expect(reconciler.handleHeartbeat('conv-1', 5)).rejects.toThrow('IDB read failed');
+
+    // Callbacks should NOT have been called
+    expect(onDriftDetected).not.toHaveBeenCalled();
+    expect(onReconciled).not.toHaveBeenCalled();
+
+    reconciler.destroy();
+  });
 });

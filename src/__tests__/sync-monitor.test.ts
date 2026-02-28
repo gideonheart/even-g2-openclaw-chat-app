@@ -42,27 +42,6 @@ describe('SyncMonitor', () => {
     store = createMockStore(5);
   });
 
-  it('send() attaches monotonic seq numbers', () => {
-    const monitor = createSyncMonitor({
-      bridge,
-      store,
-      origin,
-      getActiveConversationId: () => 'conv-1',
-    });
-
-    const msg1: SyncMessage = { type: 'session:created', origin, session: { id: '1', name: 'A' } };
-    const msg2: SyncMessage = { type: 'session:deleted', origin, sessionId: '2' };
-
-    monitor.send(msg1);
-    monitor.send(msg2);
-
-    expect(bridge.postMessage).toHaveBeenCalledTimes(2);
-    expect(bridge.postMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ seq: 1 }));
-    expect(bridge.postMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ seq: 2 }));
-
-    monitor.destroy();
-  });
-
   it('incoming message updates lastRemoteSeq', () => {
     const monitor = createSyncMonitor({
       bridge,
@@ -104,7 +83,7 @@ describe('SyncMonitor', () => {
       session: { id: '2', name: 'B' },
     });
 
-    expect(monitor.getStats().sequenceGaps).toBe(2);
+    expect(monitor.getStats().heartbeatGaps).toBe(2);
     monitor.destroy();
   });
 
@@ -131,7 +110,7 @@ describe('SyncMonitor', () => {
       session: { id: '2', name: 'B' },
     });
 
-    expect(monitor.getStats().sequenceGaps).toBe(0);
+    expect(monitor.getStats().heartbeatGaps).toBe(0);
     expect(monitor.getStats().lastRemoteSeq).toBe(1);
     monitor.destroy();
   });
@@ -332,5 +311,74 @@ describe('SyncMonitor', () => {
 
     monitor.destroy();
     vi.useRealTimers();
+  });
+
+  it('heartbeat skips when countMessages rejects (IDB error)', async () => {
+    vi.useFakeTimers();
+    store.countMessages.mockRejectedValue(new Error('IDB read failed'));
+
+    const monitor = createSyncMonitor({
+      bridge,
+      store,
+      origin,
+      getActiveConversationId: () => 'conv-1',
+    });
+
+    monitor.startHeartbeat();
+
+    // Should not throw -- the rejection is caught internally
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // No heartbeat sent because countMessages failed
+    expect(bridge.postMessage).not.toHaveBeenCalled();
+
+    monitor.destroy();
+    vi.useRealTimers();
+  });
+
+  it('startHeartbeat called twice does not create duplicate interval', async () => {
+    vi.useFakeTimers();
+    store = createMockStore(5);
+
+    const monitor = createSyncMonitor({
+      bridge,
+      store,
+      origin,
+      getActiveConversationId: () => 'conv-1',
+    });
+
+    monitor.startHeartbeat();
+    monitor.startHeartbeat(); // second call should be no-op
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // Only one heartbeat, not two (no duplicate interval)
+    expect(bridge.postMessage).toHaveBeenCalledTimes(1);
+
+    monitor.destroy();
+    vi.useRealTimers();
+  });
+
+  it('incoming messages without seq field do not affect gap tracking', () => {
+    const monitor = createSyncMonitor({
+      bridge,
+      store,
+      origin,
+      getActiveConversationId: () => 'conv-1',
+    });
+
+    // Message without seq field
+    simulateIncoming(bridge, {
+      type: 'message:added',
+      origin: remoteOrigin,
+      conversationId: 'conv-1',
+      role: 'user',
+      text: 'hello',
+    });
+
+    expect(monitor.getStats().lastRemoteSeq).toBe(-1);
+    expect(monitor.getStats().heartbeatGaps).toBe(0);
+
+    monitor.destroy();
   });
 });
