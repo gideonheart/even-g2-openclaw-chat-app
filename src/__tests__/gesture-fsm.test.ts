@@ -3,7 +3,6 @@ import {
   gestureTransition,
   type GestureState,
   type GestureInput,
-  type GestureTransition,
 } from '../gestures/gesture-fsm';
 
 describe('gestureTransition', () => {

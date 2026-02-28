@@ -19,9 +19,44 @@ export interface GestureTransition {
   action: GestureAction;
 }
 
+/**
+ * Complete state transition table for all 5 states and 4 gesture inputs.
+ * Missing entries fall through to the default: { nextState: currentState, action: null }.
+ */
+const TRANSITIONS: Record<GestureState, Partial<Record<GestureInput, GestureTransition>>> = {
+  idle: {
+    'tap':         { nextState: 'recording', action: { type: 'START_RECORDING' } },
+    'double-tap':  { nextState: 'menu',      action: { type: 'TOGGLE_MENU' } },
+    'scroll-up':   { nextState: 'idle',      action: { type: 'SCROLL_UP' } },
+    'scroll-down': { nextState: 'idle',      action: { type: 'SCROLL_DOWN' } },
+  },
+  recording: {
+    'tap': { nextState: 'sent', action: { type: 'STOP_RECORDING' } },
+    // double-tap, scroll-up, scroll-down ignored during recording
+  },
+  sent: {
+    // All inputs ignored while audio is being processed
+    // (auto-transitions to 'thinking' externally via event bus)
+  },
+  thinking: {
+    'double-tap': { nextState: 'menu', action: { type: 'TOGGLE_MENU' } },
+    // tap, scroll-up, scroll-down ignored during thinking
+  },
+  menu: {
+    'double-tap':  { nextState: 'idle', action: { type: 'TOGGLE_MENU' } },
+    'tap':         { nextState: 'idle', action: null },  // dismiss menu
+    'scroll-up':   { nextState: 'menu', action: { type: 'SCROLL_UP' } },
+    'scroll-down': { nextState: 'menu', action: { type: 'SCROLL_DOWN' } },
+  },
+};
+
+/**
+ * Pure function: given a current state and gesture input, returns the next state and action.
+ * Returns { nextState: state, action: null } for any unrecognized state/input combination.
+ */
 export function gestureTransition(
-  _state: GestureState,
-  _input: GestureInput,
+  state: GestureState,
+  input: GestureInput,
 ): GestureTransition {
-  throw new Error('not implemented');
+  return TRANSITIONS[state]?.[input] ?? { nextState: state, action: null };
 }
