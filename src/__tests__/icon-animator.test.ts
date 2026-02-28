@@ -134,7 +134,8 @@ describe('IconAnimator', () => {
     // Advance through all 10 frames of thinking spinner
     for (let i = 1; i < 10; i++) {
       await vi.advanceTimersByTimeAsync(200);
-      calls.push(updateFn.mock.calls[updateFn.mock.calls.length - 1][0] as string);
+      const lastCall = updateFn.mock.calls[updateFn.mock.calls.length - 1] as unknown[];
+      calls.push(lastCall[0] as string);
     }
 
     // Should have cycled through all 10 frames
