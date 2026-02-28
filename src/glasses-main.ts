@@ -20,6 +20,8 @@ import { restoreOrCreateConversation, writeActiveConversationId } from './persis
 import type { ConversationStore, SessionStore } from './persistence/types';
 import { createSessionStore } from './persistence/session-store';
 import { createSyncBridge } from './sync/sync-bridge';
+import { createSessionManager } from './sessions';
+import { createMenuController } from './menu/menu-controller';
 
 export async function boot(): Promise<void> {
   // Layer 0: Foundation (no dependencies)
@@ -138,6 +140,22 @@ export async function boot(): Promise<void> {
     bus.emit('session:switched', { id: sessionId, previousId });
   }
 
+  // ── Menu controller (Layer 4b: depends on renderer, sessions) ──
+  const sessionManager = sessionStore ? createSessionManager({
+    sessionStore,
+    syncBridge,
+    origin: 'glasses',
+  }) : null;
+
+  const menuController = sessionManager ? createMenuController({
+    bus,
+    renderer,
+    sessionManager,
+    getActiveSessionId: () => activeConversationId,
+    onSessionSwitch: switchToSession,
+    store,
+  }) : null;
+
   // ── Handle sync messages from hub context ──────────────────
   syncBridge.onMessage((msg) => {
     if (msg.origin === 'glasses') return; // ignore own echoes
@@ -236,6 +254,7 @@ export async function boot(): Promise<void> {
     autoSave?.destroy();
     voiceLoopController.destroy();
     gateway.destroy();           // stops heartbeat, aborts in-flight fetch
+    menuController?.destroy();   // unsubscribes menu bus listeners, clears auto-close timer
     displayController.destroy(); // stops icon animator, clears flush timer
     gestureHandler.destroy();    // unsubscribes bus listeners
     // audioCapture has no destroy() -- stopRecording is best-effort cleanup
