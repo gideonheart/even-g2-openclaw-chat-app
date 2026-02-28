@@ -9,15 +9,15 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: v1.3 requirements defined, phases planned (14-19)
-Plan: --
-Status: Ready for /gsd:plan-phase on Phase 14
-Last activity: 2026-02-28 - Completed quick task 5: Synthesize research streams into hardening requirements and generate roadmap
+Phase: 14-data-integrity-foundation
+Current Plan: 2 of 3
+Status: Plan 01 complete, ready for Plan 02
+Last activity: 2026-02-28 - Completed 14-01 (persistence event types, onclose handler, sentinel filtering)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 28 (Phases 1-11 + Phase 13 gap closure + Phase 12 complete)
+- Total plans completed: 29 (Phases 1-11 + Phase 13 gap closure + Phase 12 complete + Phase 14 plan 01)
 - Total tests: 372 (all passing)
 - Total LOC: ~10,300 TypeScript (60 files)
 - Total execution time: ~4.8 hours
@@ -39,6 +39,7 @@ Last activity: 2026-02-28 - Completed quick task 5: Synthesize research streams 
 | 11 | 2/2 (command menu state + FSM extension, controller + boot wiring) | ~8m | 4m |
 | 12 | 3/3 (live conversation view + hub text input + history/search) | ~15m | 5m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
+| 14 | 1/3 (event types + onclose + sentinel filtering) | ~3m | 3m |
 
 ## Accumulated Context
 
@@ -78,6 +79,9 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - searchMessages uses single readonly IDB transaction over both stores for consistency (12-03)
 - Features/Apps page fully replaced by Chat page for conversation history access (12-03)
 - Search results rendered with escHtml + highlighted match span for XSS safety (12-03)
+- reopenDB uses Promise chain with setTimeout, not async/await, to stay safe outside IDB transactions (14-01)
+- SENTINEL_ID exported as named constant for reuse by integrity-checker in Plan 02 (14-01)
+- Sentinel filtered in 3 query methods but not getConversation to allow direct lookup (14-01)
 
 ### Pending Todos
 
@@ -103,5 +107,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: v1.3 requirements defined, 6 phases planned (14-19). Ready to plan Phase 14.
+Stopped at: Completed 14-01-PLAN.md (data integrity foundation types/hooks/sentinel). Ready for 14-02.
 Resume file: None
