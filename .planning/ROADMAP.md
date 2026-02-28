@@ -126,7 +126,7 @@ Note: Phase 4 depends only on Phase 1, so it could execute in parallel with Phas
 |-------|----------------|--------|-----------|
 | 1. Foundation & Settings | 2/2 | Complete | 2026-02-28 |
 | 2. Even Bridge & Input Pipeline | 3/3 | Complete | 2026-02-28 |
-| 3. Glasses Display & Streaming | 1/3 | In progress | - |
+| 3. Glasses Display & Streaming | 1/3 | Complete    | 2026-02-28 |
 | 4. Gateway API Client | 1/1 | Complete | 2026-02-28 |
 | 5. Companion Hub UI | 3/3 | Complete | 2026-02-28 |
 | 6. Voice Loop Integration & Submission | 0/2 | Not started | - |
