@@ -9,6 +9,8 @@ import type {
   SearchResult,
 } from './types';
 
+export const SENTINEL_ID = '__sentinel__';
+
 // ── Auto-naming ──────────────────────────────────────────
 
 /**
@@ -139,7 +141,10 @@ export function createConversationStore(
       cursorReq.onsuccess = () => {
         const cursor = cursorReq.result;
         if (cursor) {
-          results.push(cursor.value as ConversationRecord);
+          const record = cursor.value as ConversationRecord;
+          if (record.id !== SENTINEL_ID) {
+            results.push(record);
+          }
           cursor.continue();
         }
       };
@@ -157,7 +162,16 @@ export function createConversationStore(
       const cursorReq = index.openCursor(null, 'prev');
       cursorReq.onsuccess = () => {
         const cursor = cursorReq.result;
-        resolve(cursor ? (cursor.value as ConversationRecord) : undefined);
+        if (cursor) {
+          const record = cursor.value as ConversationRecord;
+          if (record.id === SENTINEL_ID) {
+            cursor.continue();
+            return;
+          }
+          resolve(record);
+        } else {
+          resolve(undefined);
+        }
       };
 
       tx.onerror = () => reject(tx.error);
@@ -236,7 +250,9 @@ export function createConversationStore(
 
       convReq.onsuccess = () => {
         for (const conv of convReq.result as ConversationRecord[]) {
-          nameMap.set(conv.id, conv.name);
+          if (conv.id !== SENTINEL_ID) {
+            nameMap.set(conv.id, conv.name);
+          }
         }
 
         // Then scan messages
