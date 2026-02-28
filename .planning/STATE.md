@@ -12,13 +12,13 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 Phase: 16-sync-hardening
 Current Plan: 2 of 2
 Status: Phase 16 complete
-Last activity: 2026-02-28 - Completed quick task 7: Review Phase 16 commits for strengths, weaknesses, edge cases, and required fixes before milestone audit
+Last activity: 2026-02-28 - Completed quick task 8: Implement 3 pre-audit fixes from quick task 7 (heartbeat try/catch, .catch() on handleHeartbeat, send() removal)
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 37 (Phases 1-16 + Phase 13 gap closure)
-- Total tests: 433 (all passing)
+- Total tests: 436 (all passing)
 - Total LOC: ~10,800 TypeScript (66 files)
 - Total execution time: ~5.1 hours
 
@@ -113,6 +113,10 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - Hub drift reconciliation calls loadLiveConversation() to re-read from IDB (16-02)
 - Hub SyncMonitor created after SessionManager so getActiveConversationId can reference mgr (16-02)
 - Existing syncBridge.onMessage handlers and auto-save callers left unchanged -- SyncMonitor is independent observer (16-02)
+- Heartbeat setInterval async body wrapped in try/catch for IDB resilience; catch is empty (silent skip matching codebase pattern) (quick-8)
+- DriftReconciler.handleHeartbeat() lets IDB errors propagate; callers in boot files add .catch(() => {}) (quick-8)
+- SyncMonitor.send() removed -- only heartbeats use seq tracking, now inlined in heartbeat callback (quick-8)
+- localSeq renamed to heartbeatSeq, sequenceGaps renamed to heartbeatGaps to clarify scope (quick-8)
 
 ### Pending Todos
 
@@ -135,9 +139,10 @@ None.
 | 4 | Apply 5 priority pre-close fixes: dedup key, hub cleanup, unused param, dead code, async guards | 2026-02-28 | 409eebb | [4-apply-4-priority-pre-close-fixes-dedupli](./quick/4-apply-4-priority-pre-close-fixes-dedupli/) |
 | 5 | Synthesize 3 v1.3 research streams into 22 requirements and 6 ROADMAP phases (14-19) | 2026-02-28 | 959b128 | [5-synthesize-research-streams-into-hardeni](./quick/5-synthesize-research-streams-into-hardeni/) |
 | 7 | Review Phase 16 commits for strengths, weaknesses, edge cases, required fixes | 2026-02-28 | 5d6a09b | [7-review-phase-16-commits-for-strengths-we](./quick/7-review-phase-16-commits-for-strengths-we/) |
+| 8 | Implement 3 pre-audit fixes: heartbeat try/catch, .catch() on handleHeartbeat, send() removal | 2026-02-28 | ec87d9a | [8-implement-3-pre-audit-fixes-from-quick-t](./quick/8-implement-3-pre-audit-fixes-from-quick-t/) |
 
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed quick-7 (Phase 16 code review with 3 required fixes, 8 weaknesses, 7 edge cases)
+Stopped at: Completed quick-8 (3 pre-audit fixes: heartbeat try/catch, .catch() on handleHeartbeat, send() removal + 4 new tests)
 Resume file: None
