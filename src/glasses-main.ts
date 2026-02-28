@@ -16,8 +16,10 @@ import { createVoiceLoopController } from './voice-loop-controller';
 import { openDB, isIndexedDBAvailable } from './persistence/db';
 import { createConversationStore } from './persistence/conversation-store';
 import { createAutoSave } from './persistence/auto-save';
-import { restoreOrCreateConversation } from './persistence/boot-restore';
-import type { ConversationStore } from './persistence/types';
+import { restoreOrCreateConversation, writeActiveConversationId } from './persistence/boot-restore';
+import type { ConversationStore, SessionStore } from './persistence/types';
+import { createSessionStore } from './persistence/session-store';
+import { createSyncBridge } from './sync/sync-bridge';
 
 export async function boot(): Promise<void> {
   // Layer 0: Foundation (no dependencies)
@@ -27,10 +29,12 @@ export async function boot(): Promise<void> {
 
   // ── Persistence: try to open IndexedDB, fall back to in-memory ──
   let store: ConversationStore | null = null;
+  let sessionStore: SessionStore | null = null;
   if (isIndexedDBAvailable()) {
     try {
       const db = await openDB();
       store = createConversationStore(db);
+      sessionStore = createSessionStore(db, store);
     } catch {
       // IndexedDB unavailable -- continue with in-memory
     }
@@ -39,6 +43,9 @@ export async function boot(): Promise<void> {
   // Restore or create conversation (runs early to minimize boot latency)
   const restoreResult = await restoreOrCreateConversation({ store });
   let activeConversationId = restoreResult.conversationId;
+
+  // ── Cross-context sync: initialize bridge for hub <-> glasses messaging ──
+  const syncBridge = createSyncBridge();
 
   // Layer 1: Hardware boundary
   const bridge = devMode ? createBridgeMock(bus) : createEvenBridgeService(bus);
@@ -104,6 +111,62 @@ export async function boot(): Promise<void> {
     renderer.showWelcome();
   }
 
+  // ── Session switching helper ──────────────────────────────
+  async function switchToSession(sessionId: string): Promise<void> {
+    const previousId = activeConversationId;
+    activeConversationId = sessionId;
+    writeActiveConversationId(sessionId);
+
+    // Clear display and reload with new session's messages
+    renderer.destroy();
+    await renderer.init();
+
+    if (store) {
+      const messages = await store.getMessages(sessionId);
+      for (const msg of messages) {
+        if (msg.role === 'user') {
+          renderer.addUserMessage(msg.text);
+        } else {
+          renderer.startStreaming();
+          renderer.appendStreamChunk(msg.text);
+          renderer.endStreaming();
+        }
+      }
+    }
+
+    // Emit local bus event for interested modules (auto-save uses getConversationId getter)
+    bus.emit('session:switched', { id: sessionId, previousId });
+  }
+
+  // ── Handle sync messages from hub context ──────────────────
+  syncBridge.onMessage((msg) => {
+    if (msg.origin === 'glasses') return; // ignore own echoes
+
+    switch (msg.type) {
+      case 'session:switched': {
+        // Hub switched session -- load new session into display
+        switchToSession(msg.sessionId);
+        break;
+      }
+      case 'session:deleted': {
+        // Hub deleted a session -- if it was active, switch to most recent
+        if (msg.sessionId === activeConversationId && sessionStore) {
+          sessionStore.listSessions().then((sessions) => {
+            if (sessions.length > 0) {
+              switchToSession(sessions[0].id);
+            }
+            // If no sessions remain, a new one will be created on next voice turn
+          });
+        }
+        break;
+      }
+      case 'session:created':
+      case 'session:renamed':
+        // No glasses-side action needed -- hub UI handles these
+        break;
+    }
+  });
+
   // Layer 5: Gateway + voice loop
   const gateway = createGatewayClient();
   const voiceLoopController = createVoiceLoopController({
@@ -159,6 +222,7 @@ export async function boot(): Promise<void> {
     cleaned = true;
 
     // Reverse initialization order (Layer 5 -> Layer 0)
+    syncBridge.destroy();        // cross-context sync (no dependencies)
     autoSave?.destroy();
     voiceLoopController.destroy();
     gateway.destroy();           // stops heartbeat, aborts in-flight fetch
