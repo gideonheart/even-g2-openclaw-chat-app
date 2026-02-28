@@ -84,6 +84,7 @@ export interface GlassesRenderer {
   isHidden(): boolean;
   showWelcome(): void;
   showConfigRequired(): void;
+  showError(message: string): void;
 }
 
 // ── Factory ───────────────────────────────────────────────
@@ -278,6 +279,22 @@ export function createGlassesRenderer(opts: {
     bridge.textContainerUpgrade(2, 'Open companion app to configure');
   }
 
+  function showError(message: string): void {
+    trimTurnBuffer();
+    const msg: ChatMessage = {
+      id: `msg-${nextMsgId++}`,
+      role: 'assistant',
+      text: `[Error] ${message}`,
+      complete: true,
+      timestamp: Date.now(),
+    };
+    viewport.messages.push(msg);
+    if (viewport.autoScroll) {
+      viewport.scrollOffset = 0;
+    }
+    renderAndPush();
+  }
+
   return {
     init,
     destroy,
@@ -293,5 +310,6 @@ export function createGlassesRenderer(opts: {
     isHidden: isHiddenFn,
     showWelcome,
     showConfigRequired,
+    showError,
   };
 }

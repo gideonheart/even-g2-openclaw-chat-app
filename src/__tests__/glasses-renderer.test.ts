@@ -289,6 +289,39 @@ describe('GlassesRenderer', () => {
     expect(chatCalls[0][1]).toBe('Open companion app to configure');
   });
 
+  // ── showError ───────────────────────────────────────────────
+
+  it('showError appends error message as assistant chat bubble', async () => {
+    await renderer.init();
+    bridge.textContainerUpgrade.mockClear();
+
+    renderer.showError('Request timed out. Tap to retry.');
+
+    const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+      (c: unknown[]) => c[0] === 2,
+    );
+    expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+    const chatText = chatCalls[chatCalls.length - 1][1] as string;
+    expect(chatText).toContain('[Error] Request timed out. Tap to retry.');
+  });
+
+  it('showError message has role assistant and is complete', async () => {
+    await renderer.init();
+    bridge.textContainerUpgrade.mockClear();
+
+    renderer.showError('test error');
+
+    // The error should render as a non-streaming (complete) message
+    // Verify it doesn't have the " ..." streaming suffix
+    const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+      (c: unknown[]) => c[0] === 2,
+    );
+    expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+    const chatText = chatCalls[chatCalls.length - 1][1] as string;
+    expect(chatText).toContain('[Error] test error');
+    expect(chatText).not.toContain(' ...');
+  });
+
   // ── turn buffer limit ─────────────────────────────────────
 
   it('addUserMessage trims old messages when buffer exceeds MAX_TURNS pairs', async () => {

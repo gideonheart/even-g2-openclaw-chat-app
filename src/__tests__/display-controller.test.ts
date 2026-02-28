@@ -22,6 +22,7 @@ interface MockRenderer {
   isHidden: Mock<() => boolean>;
   showWelcome: Mock;
   showConfigRequired: Mock;
+  showError: Mock;
 }
 
 // ── Mock GlassesRenderer (all methods as vi.fn()) ──────────
@@ -42,6 +43,7 @@ function createMockRenderer(): MockRenderer {
     isHidden: vi.fn<() => boolean>().mockReturnValue(false),
     showWelcome: vi.fn(),
     showConfigRequired: vi.fn(),
+    showError: vi.fn(),
   };
 }
 
@@ -128,15 +130,22 @@ describe('DisplayController', () => {
       expect(renderer.setIconState).toHaveBeenCalledWith('idle');
     });
 
-    it('gateway:chunk type=error -> endStreaming + setIconState(idle) after 500ms', () => {
+    it('gateway:chunk type=error -> endStreaming + showError + setIconState(idle) after 500ms', () => {
       bus.emit('gateway:chunk', { type: 'error', error: 'something broke' });
 
       expect(renderer.endStreaming).toHaveBeenCalledOnce();
+      expect(renderer.showError).toHaveBeenCalledWith('something broke');
       // Idle icon is delayed by 500ms settle period
       expect(renderer.setIconState).not.toHaveBeenCalledWith('idle');
 
       vi.advanceTimersByTime(500);
       expect(renderer.setIconState).toHaveBeenCalledWith('idle');
+    });
+
+    it('gateway:chunk type=error with no error field -> showError with fallback message', () => {
+      bus.emit('gateway:chunk', { type: 'error' });
+
+      expect(renderer.showError).toHaveBeenCalledWith('Something went wrong');
     });
   });
 
@@ -217,6 +226,22 @@ describe('DisplayController', () => {
       bus.emit('audio:recording-stop', { sessionId: 'session-1', blob: new Blob() });
 
       expect(renderer.setIconState).toHaveBeenCalledWith('sent');
+    });
+
+    it('audio:recording-start cancels pending settle timer from error', () => {
+      // Fire an error chunk to start the 500ms settle timer
+      bus.emit('gateway:chunk', { type: 'error', error: 'fail' });
+      renderer.setIconState.mockClear();
+
+      // Start recording immediately (before 500ms settle fires)
+      bus.emit('audio:recording-start', { sessionId: 'session-2' });
+      expect(renderer.setIconState).toHaveBeenCalledWith('recording');
+
+      renderer.setIconState.mockClear();
+
+      // Advance past the 500ms settle -- it should have been cancelled
+      vi.advanceTimersByTime(500);
+      expect(renderer.setIconState).not.toHaveBeenCalledWith('idle');
     });
   });
 });

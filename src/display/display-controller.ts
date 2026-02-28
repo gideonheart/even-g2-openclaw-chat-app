@@ -53,6 +53,7 @@ export function createDisplayController(opts: {
             break;
           case 'error':
             renderer.endStreaming();
+            renderer.showError(chunk.error ?? 'Something went wrong');
             if (settleTimer) clearTimeout(settleTimer);
             settleTimer = setTimeout(() => { settleTimer = null; renderer.setIconState('idle'); }, 500);
             break;
@@ -103,6 +104,9 @@ export function createDisplayController(opts: {
     // ── 4. Icon state wiring ──────────────────────────────
     unsubs.push(
       bus.on('audio:recording-start', () => {
+        // Cancel any pending settle timer from a previous error/response_end
+        // to prevent it from overwriting the recording icon (Pitfall 5)
+        if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
         renderer.setIconState('recording');
       }),
     );
