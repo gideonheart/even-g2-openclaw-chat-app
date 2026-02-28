@@ -13,7 +13,7 @@ async function main() {
     await boot();
   } else {
     const { initHub } = await import('./hub-main');
-    initHub();
+    await initHub();
   }
 }
 

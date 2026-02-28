@@ -6,7 +6,8 @@ import {
   importSettingsJson,
   FIELD_CONFIG,
 } from './settings';
-import { SESSIONS, findSession, isActiveSession } from './sessions';
+import { createSessionManager } from './sessions';
+import type { SessionManager } from './sessions';
 import { createLogStore, buildDiagnostics } from './logs';
 import { escHtml } from './utils';
 import {
@@ -16,6 +17,10 @@ import {
   buildSettingsViewModel,
   buildHealthViewModel,
 } from './app-wiring';
+import { createSessionStore } from './persistence/session-store';
+import { createConversationStore } from './persistence/conversation-store';
+import type { SessionStore } from './persistence/types';
+import { createSyncBridge } from './sync/sync-bridge';
 
 // ── App state ────────────────────────────────────────────────
 
@@ -23,6 +28,10 @@ const appState = createAppState(loadSettings());
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 const logStore = createLogStore();
+
+// ── Module-level session manager ─────────────────────────────
+
+let sessionManager: SessionManager | null = null;
 
 // ── DOM helpers ──────────────────────────────────────────────
 
@@ -228,55 +237,129 @@ function importSettingsAction(event: Event): void {
   (event.target as HTMLInputElement).value = '';
 }
 
-// ── Sessions ─────────────────────────────────────────────────
+// ── Sessions (dynamic, IndexedDB-backed) ─────────────────────
 
-function showSessions(): void {
+async function showSessions(): Promise<void> {
   const body = $('sessionModalBody');
+  body.innerHTML = '<div class="u-type-body-base u-tc-2nd" style="padding: 16px; text-align: center;">Loading...</div>';
+  $('sessionModal').classList.add('active');
+
+  if (!sessionManager) {
+    body.innerHTML = '<div class="u-type-body-base u-tc-2nd" style="padding: 16px; text-align: center;">Storage unavailable</div>';
+    return;
+  }
+
+  const sessions = await sessionManager.loadSessions();
+  const activeId = sessionManager.getActiveSessionId();
+
   let html = '<div style="display:grid; gap:6px; margin-top:8px;">';
-  SESSIONS.forEach((s) => {
-    const active = isActiveSession(s.id, appState.activeSession);
-    html += `<div class="list-item session-item ${active ? 'is-active' : ''}" data-session-id="${s.id}">`;
-    html += `<div class="list-item__content"><div class="list-item__title">${s.name}</div>`;
-    html += `<div class="list-item__subtitle">${s.desc}</div></div>`;
+
+  // "New Session" button at top
+  html += '<button class="btn btn--ghost" id="newSessionBtn" style="width:100%; text-align:left;">+ New Session</button>';
+
+  sessions.forEach((s) => {
+    const active = s.id === activeId;
+    html += `<div class="list-item session-item ${active ? 'is-active' : ''}" data-session-id="${escHtml(s.id)}">`;
+    html += `<div class="list-item__content"><div class="list-item__title">${escHtml(s.name)}</div>`;
+    html += `<div class="list-item__subtitle">${new Date(s.createdAt).toLocaleDateString()}</div></div>`;
     if (active) {
-      html += `<div class="session-active-badge"><span class="status-dot status-dot--ok"></span> Active</div>`;
+      html += '<div class="session-active-badge"><span class="status-dot status-dot--ok"></span> Active</div>';
     }
-    html += `</div>`;
+    // Rename and delete buttons
+    html += `<button class="btn btn--ghost session-rename-btn" data-session-id="${escHtml(s.id)}" style="padding:4px 8px;">Rename</button>`;
+    html += `<button class="btn btn--ghost session-delete-btn" data-session-id="${escHtml(s.id)}" style="padding:4px 8px; color:var(--c-error,#e53e3e);">Delete</button>`;
+    html += '</div>';
   });
   html += '</div>';
   body.innerHTML = html;
 
   // Bind click events
+  document.getElementById('newSessionBtn')?.addEventListener('click', handleNewSession);
+
   body.querySelectorAll('.session-item').forEach((el) => {
-    el.addEventListener('click', () => {
-      switchSession((el as HTMLElement).dataset.sessionId!);
+    el.addEventListener('click', (e) => {
+      // Don't switch if clicking rename/delete buttons
+      if ((e.target as HTMLElement).closest('.session-rename-btn, .session-delete-btn')) return;
+      handleSwitchSession((el as HTMLElement).dataset.sessionId!);
     });
   });
 
-  $('sessionModal').classList.add('active');
+  body.querySelectorAll('.session-rename-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      handleRenameSession((btn as HTMLElement).dataset.sessionId!);
+    });
+  });
+
+  body.querySelectorAll('.session-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      handleDeleteSession((btn as HTMLElement).dataset.sessionId!);
+    });
+  });
 }
 
-function switchSession(sessionId: string): void {
-  if (sessionId === appState.activeSession) {
+async function handleNewSession(): Promise<void> {
+  if (!sessionManager) return;
+  const session = await sessionManager.createSession();
+  sessionManager.switchSession(session.id);
+  appState.activeSession = session.id;
+  closeSessionModal();
+  showToast('New session created');
+  addLog('info', `New session created: ${session.name}`);
+  refreshHealthDisplay();
+}
+
+function handleSwitchSession(sessionId: string): void {
+  if (!sessionManager) return;
+  if (sessionId === sessionManager.getActiveSessionId()) {
     closeSessionModal();
     return;
   }
-  const session = findSession(sessionId);
-  if (!session) return;
+  sessionManager.switchSession(sessionId);
+  appState.activeSession = sessionId;
+  closeSessionModal();
+  showToast('Session switched');
+  addLog('info', 'Session switched', `sess-${Date.now()}`);
+  refreshHealthDisplay();
+}
 
-  appState.pendingConfirm = () => {
-    appState.activeSession = sessionId;
-    $('activeSessionDisplay').textContent = session.name.toLowerCase();
-    closeSessionModal();
+async function handleRenameSession(sessionId: string): Promise<void> {
+  if (!sessionManager) return;
+  const newName = prompt('Enter new session name:');
+  if (!newName || !newName.trim()) return;
+  await sessionManager.renameSession(sessionId, newName.trim());
+  showToast('Session renamed');
+  addLog('info', `Session renamed to "${newName.trim()}"`);
+  await showSessions(); // re-render the list
+}
+
+async function handleDeleteSession(sessionId: string): Promise<void> {
+  if (!sessionManager) return;
+  appState.pendingConfirm = async () => {
+    await sessionManager!.deleteSession(sessionId);
+    // If deleted the active session, switch to most recent
+    if (sessionId === sessionManager!.getActiveSessionId()) {
+      const remaining = await sessionManager!.loadSessions();
+      if (remaining.length > 0) {
+        sessionManager!.switchSession(remaining[0].id);
+        appState.activeSession = remaining[0].id;
+      }
+    }
     closeConfirm();
-    showToast(`Switched to ${session.name}`);
-    addLog('info', `Session switched to ${session.name}`, `sess-${Date.now()}`);
+    closeSessionModal();
+    showToast('Session deleted');
+    addLog('info', 'Session deleted');
     refreshHealthDisplay();
   };
-  closeSessionModal();
-  $('confirmTitle').textContent = 'Switch session?';
-  $('confirmBody').textContent = `Switch from current session to "${session.name}" (${session.desc})?`;
+  $('confirmTitle').textContent = 'Delete session?';
+  $('confirmBody').textContent = 'This will permanently delete this session and all its messages.';
   $('confirmModal').classList.add('active');
+}
+
+async function refreshSessionList(): Promise<void> {
+  // Only re-render if session modal is currently visible
+  if ($('sessionModal').classList.contains('active')) {
+    await showSessions();
+  }
 }
 
 function closeSessionModal(): void {
@@ -385,7 +468,9 @@ function init(): void {
   });
 
   // Quick actions on home
-  document.querySelector('[data-action="sessions"]')?.addEventListener('click', showSessions);
+  document.querySelector('[data-action="sessions"]')?.addEventListener('click', () => {
+    showSessions();
+  });
   document.querySelector('[data-action="stt"]')?.addEventListener('click', () => {
     show('settings');
     openSettingsField('sttProvider');
@@ -435,21 +520,55 @@ function init(): void {
   renderLogs();
 }
 
-export function initHub(): void {
+export async function initHub(): Promise<void> {
   init();
-  // Phase 9: open IndexedDB from hub context (same-origin shares data with glasses)
-  // Phase 12: hub will display conversations from shared IndexedDB
-  initPersistence();
+  const persistence = await initPersistence();
+  if (persistence) {
+    sessionManager = persistence.sessionManager;
+    // Set initial active session from IndexedDB
+    const activeId = sessionManager.getActiveSessionId();
+    if (activeId) {
+      appState.activeSession = activeId;
+      refreshHealthDisplay();
+    }
+  }
 }
 
-async function initPersistence(): Promise<void> {
+async function initPersistence(): Promise<{
+  sessionManager: SessionManager;
+  sessionStore: SessionStore;
+} | null> {
   try {
     const { isIndexedDBAvailable, openDB } = await import('./persistence/db');
-    if (isIndexedDBAvailable()) {
-      await openDB();
-      // DB connection established -- Phase 12 will use this for conversation display
-    }
+    if (!isIndexedDBAvailable()) return null;
+
+    const db = await openDB();
+    const conversationStore = createConversationStore(db);
+    const sessionStore = createSessionStore(db, conversationStore);
+    const syncBridge = createSyncBridge();
+
+    const mgr = createSessionManager({
+      sessionStore,
+      syncBridge,
+      origin: 'hub',
+    });
+
+    // Listen for sync messages from glasses context
+    syncBridge.onMessage((msg) => {
+      if (msg.origin === 'hub') return; // ignore own echoes
+      // Re-render session list on any session mutation from glasses
+      switch (msg.type) {
+        case 'session:created':
+        case 'session:renamed':
+        case 'session:deleted':
+        case 'session:switched':
+          refreshSessionList();
+          break;
+      }
+    });
+
+    return { sessionManager: mgr, sessionStore };
   } catch {
-    // IndexedDB unavailable in hub context -- not critical for hub
+    return null;
   }
 }
