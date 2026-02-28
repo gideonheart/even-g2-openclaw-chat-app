@@ -8,11 +8,13 @@ import {
   OsEventTypeList,
   CreateStartUpPageContainer,
   TextContainerProperty,
+  TextContainerUpgrade,
+  RebuildPageContainer,
 } from '@evenrealities/even_hub_sdk';
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk';
 import type { EventBus } from '../events';
 import type { AppEventMap } from '../types';
-import type { BridgeService } from './bridge-types';
+import type { BridgeService, PageContainerConfig } from './bridge-types';
 
 // Phase 2 minimal startup layout: one text container with event capture
 const STARTUP_LAYOUT = new CreateStartUpPageContainer({
@@ -109,5 +111,34 @@ export function createEvenBridgeService(
     return (await bridge?.audioControl(false)) ?? false;
   }
 
-  return { init, destroy, startAudio, stopAudio };
+  async function textContainerUpgrade(
+    containerID: number,
+    content: string,
+  ): Promise<boolean> {
+    if (!bridge) return false;
+    const upgrade = new TextContainerUpgrade({ containerID, content });
+    return bridge.textContainerUpgrade(upgrade);
+  }
+
+  async function rebuildPageContainer(
+    config: PageContainerConfig,
+  ): Promise<boolean> {
+    if (!bridge) return false;
+    const container = new RebuildPageContainer({
+      containerTotalNum: config.containerTotalNum,
+      textObject: config.textObject.map(
+        (t) => new TextContainerProperty(t),
+      ),
+    });
+    return bridge.rebuildPageContainer(container);
+  }
+
+  return {
+    init,
+    destroy,
+    startAudio,
+    stopAudio,
+    textContainerUpgrade,
+    rebuildPageContainer,
+  };
 }

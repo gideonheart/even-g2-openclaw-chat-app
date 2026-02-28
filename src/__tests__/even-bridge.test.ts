@@ -14,6 +14,8 @@ const { mockBridge, getOnEvenHubEventCb, getOnDeviceStatusChangedCb, resetCbs } 
       createStartUpPageContainer: vi.fn().mockResolvedValue(0),
       shutDownPageContainer: vi.fn().mockResolvedValue(true),
       audioControl: vi.fn().mockResolvedValue(true),
+      textContainerUpgrade: vi.fn().mockResolvedValue(true),
+      rebuildPageContainer: vi.fn().mockResolvedValue(true),
       onDeviceStatusChanged: vi.fn((cb: (status: any) => void) => {
         _onDeviceStatusChangedCb = cb;
         return () => {

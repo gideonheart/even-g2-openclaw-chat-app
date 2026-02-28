@@ -11,6 +11,8 @@ function makeMockBridge(): BridgeService {
     destroy: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
     startAudio: vi.fn<() => Promise<boolean>>().mockResolvedValue(true),
     stopAudio: vi.fn<() => Promise<boolean>>().mockResolvedValue(true),
+    textContainerUpgrade: vi.fn<(id: number, c: string) => Promise<boolean>>().mockResolvedValue(true),
+    rebuildPageContainer: vi.fn().mockResolvedValue(true),
   };
 }
 

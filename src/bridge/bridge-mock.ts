@@ -5,7 +5,13 @@
 
 import type { EventBus } from '../events';
 import type { AppEventMap } from '../types';
-import type { BridgeService } from './bridge-types';
+import type { BridgeService, PageContainerConfig } from './bridge-types';
+
+/** Extended mock interface exposing inspection helpers for tests. */
+export interface MockBridgeService extends BridgeService {
+  getLastUpgrade(): { containerID: number; content: string } | null;
+  getLastPageConfig(): PageContainerConfig | null;
+}
 
 const KEY_MAP: Record<string, keyof AppEventMap> = {
   t: 'gesture:tap',
@@ -16,8 +22,10 @@ const KEY_MAP: Record<string, keyof AppEventMap> = {
 
 export function createBridgeMock(
   bus: EventBus<AppEventMap>,
-): BridgeService {
+): MockBridgeService {
   let keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  let lastUpgrade: { containerID: number; content: string } | null = null;
+  let lastPageConfig: PageContainerConfig | null = null;
 
   async function init(): Promise<void> {
     keydownHandler = (e: KeyboardEvent) => {
@@ -48,5 +56,43 @@ export function createBridgeMock(
     return true;
   }
 
-  return { init, destroy, startAudio, stopAudio };
+  async function textContainerUpgrade(
+    containerID: number,
+    content: string,
+  ): Promise<boolean> {
+    lastUpgrade = { containerID, content };
+    console.info(
+      `[BridgeMock] textContainerUpgrade(container=${containerID}, len=${content.length})`,
+    );
+    return true;
+  }
+
+  async function rebuildPageContainer(
+    config: PageContainerConfig,
+  ): Promise<boolean> {
+    lastPageConfig = config;
+    console.info(
+      `[BridgeMock] rebuildPageContainer(containers=${config.containerTotalNum})`,
+    );
+    return true;
+  }
+
+  function getLastUpgrade(): { containerID: number; content: string } | null {
+    return lastUpgrade;
+  }
+
+  function getLastPageConfig(): PageContainerConfig | null {
+    return lastPageConfig;
+  }
+
+  return {
+    init,
+    destroy,
+    startAudio,
+    stopAudio,
+    textContainerUpgrade,
+    rebuildPageContainer,
+    getLastUpgrade,
+    getLastPageConfig,
+  };
 }
