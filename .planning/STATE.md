@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Phase 3: Glasses Display Pipeline
+**Current focus:** Phase 6: Voice Loop Integration (next)
 
 ## Current Position
 
-Phase: 3 of 6 (Glasses Display Pipeline)
-Plan: 3 of 3 in current phase
-Status: Executing Phase 3 plans
-Last activity: 2026-02-28 - Completed 03-02 GlassesRenderer service with streaming/scroll/hide-wake
+Phase: 3 of 6 (Glasses Display Pipeline) -- COMPLETE
+Plan: 3 of 3 in current phase (all complete)
+Status: Phase 3 complete, ready for Phase 6
+Last activity: 2026-02-28 - Completed 03-03 display controller event wiring (Phase 3 complete)
 
-Progress: [########..] 80%
+Progress: [#########.] 90%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8 (Phase 1, Phase 4, Phase 5, Phase 2 Plans 1-3, Phase 3 Plans 1-2)
-- Average duration: ~15 min
-- Total execution time: ~1.87 hours
+- Total plans completed: 9 (Phase 1, Phase 4, Phase 5, Phase 2 Plans 1-3, Phase 3 Plans 1-3)
+- Average duration: ~14 min
+- Total execution time: ~1.92 hours
 
 **By Phase:**
 
@@ -40,6 +40,7 @@ Progress: [########..] 80%
 | Phase 02 P03 | 3min | 2 tasks | 3 files |
 | Phase 03 P01 | 4min | 6 tasks | 6 files |
 | Phase 03 P02 | 3min | 2 tasks | 7 files |
+| Phase 03 P03 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,8 @@ Recent decisions affecting current work:
 - [Phase 3-02]: BridgeService display methods use plain-object types (PageContainerConfig, TextContainerConfig) not SDK classes -- keeps interface SDK-free
 - [Phase 3-02]: All 3 containers use isEventCapture=0 to manage scrolling in JavaScript (firmware scroll has no position API)
 - [Phase 3-02]: Stream buffer accumulates in appendStreamChunk, flush timer handles batched rendering at 200ms cadence
+- [Phase 3-03]: Display controller registers hint-update handlers after gesture handler creation to ensure correct bus dispatch order
+- [Phase 3-03]: Controller wiring layer pattern: display-controller.ts subscribes to bus events and delegates to renderer, keeping renderer SDK-agnostic
 
 ### Pending Todos
 
@@ -86,5 +89,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 03-02-PLAN.md (GlassesRenderer service). Plan 03 (display event wiring) is next.
+Stopped at: Completed 03-03-PLAN.md (display controller event wiring). Phase 3 complete. Phase 6 (voice loop integration) is next.
 Resume file: None
