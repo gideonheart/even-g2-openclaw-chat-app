@@ -179,19 +179,17 @@ describe('EvenBridge service', () => {
     expect(result).toBe(true);
   });
 
-  it('ignores events with no recognizable eventType', async () => {
+  it('emits gesture:tap when eventType is undefined (CLICK_EVENT SDK quirk)', async () => {
     const service = createEvenBridgeService(bus);
     await service.init();
 
-    const handler = vi.fn();
-    bus.on('gesture:tap', handler);
-    bus.on('gesture:double-tap', handler);
-    bus.on('gesture:scroll-up', handler);
-    bus.on('gesture:scroll-down', handler);
+    const tapHandler = vi.fn();
+    bus.on('gesture:tap', tapHandler);
 
-    // Event with no eventType field
+    // Event with no eventType field -- SDK normalizes CLICK_EVENT (0) to undefined
     getOnEvenHubEventCb()!({});
 
-    expect(handler).not.toHaveBeenCalled();
+    expect(tapHandler).toHaveBeenCalledOnce();
+    expect(tapHandler.mock.calls[0][0]).toHaveProperty('timestamp');
   });
 });

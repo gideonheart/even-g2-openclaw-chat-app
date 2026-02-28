@@ -73,21 +73,21 @@ export function createEvenBridgeService(
         event.textEvent?.eventType ??
         event.sysEvent?.eventType;
 
-      if (eventType === undefined) return;
-
-      switch (eventType) {
-        case OsEventTypeList.CLICK_EVENT:
-          bus.emit('gesture:tap', { timestamp: now });
-          break;
-        case OsEventTypeList.DOUBLE_CLICK_EVENT:
-          bus.emit('gesture:double-tap', { timestamp: now });
-          break;
-        case OsEventTypeList.SCROLL_TOP_EVENT:
-          bus.emit('gesture:scroll-up', { timestamp: now });
-          break;
-        case OsEventTypeList.SCROLL_BOTTOM_EVENT:
-          bus.emit('gesture:scroll-down', { timestamp: now });
-          break;
+      // Handle CLICK_EVENT quirk: SDK fromJson normalizes 0 to undefined
+      if (eventType === OsEventTypeList.CLICK_EVENT || eventType === undefined) {
+        bus.emit('gesture:tap', { timestamp: now });
+      } else {
+        switch (eventType) {
+          case OsEventTypeList.DOUBLE_CLICK_EVENT:
+            bus.emit('gesture:double-tap', { timestamp: now });
+            break;
+          case OsEventTypeList.SCROLL_TOP_EVENT:
+            bus.emit('gesture:scroll-up', { timestamp: now });
+            break;
+          case OsEventTypeList.SCROLL_BOTTOM_EVENT:
+            bus.emit('gesture:scroll-down', { timestamp: now });
+            break;
+        }
       }
     });
 

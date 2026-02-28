@@ -14,7 +14,7 @@ export interface MockBridgeService extends BridgeService {
 }
 
 const KEY_MAP: Record<string, keyof AppEventMap> = {
-  t: 'gesture:tap',
+  ' ': 'gesture:tap',          // Spacebar = tap (toggle recording)
   d: 'gesture:double-tap',
   ArrowUp: 'gesture:scroll-up',
   ArrowDown: 'gesture:scroll-down',
@@ -36,7 +36,7 @@ export function createBridgeMock(
     };
     window.addEventListener('keydown', keydownHandler);
     console.info(
-      '[BridgeMock] Keyboard shortcuts active: T=tap, D=double-tap, Up/Down=scroll',
+      '[BridgeMock] Keyboard shortcuts active: Space=tap, D=double-tap, Up/Down=scroll',
     );
     bus.emit('bridge:connected', { deviceName: 'BridgeMock' });
   }

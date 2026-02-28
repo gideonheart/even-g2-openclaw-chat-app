@@ -104,8 +104,4 @@ export interface AppEventMap {
   'gateway:status': { status: ConnectionStatus };
   'gateway:chunk': VoiceTurnChunk;
   'log': { level: LogLevel; msg: string; cid?: string };
-  'display:state-change': { state: IconState };
-  'display:viewport-update': { text: string };
-  'display:hide': Record<string, never>;
-  'display:wake': Record<string, never>;
 }

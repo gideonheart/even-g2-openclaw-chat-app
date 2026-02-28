@@ -22,11 +22,11 @@ describe('BridgeMock', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key }));
   }
 
-  it('emits gesture:tap on "t" key', () => {
+  it('emits gesture:tap on spacebar', () => {
     const handler = vi.fn();
     bus.on('gesture:tap', handler);
 
-    dispatchKey('t');
+    dispatchKey(' ');
 
     expect(handler).toHaveBeenCalledOnce();
     expect(handler.mock.calls[0][0]).toHaveProperty('timestamp');
@@ -77,7 +77,7 @@ describe('BridgeMock', () => {
     bus.on('gesture:tap', handler);
 
     await service.destroy();
-    dispatchKey('t');
+    dispatchKey(' ');
 
     expect(handler).not.toHaveBeenCalled();
   });
