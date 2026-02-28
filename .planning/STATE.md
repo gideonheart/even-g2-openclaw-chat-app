@@ -10,14 +10,14 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 14-data-integrity-foundation
-Current Plan: 3 of 3
-Status: Phase 14 COMPLETE -- all 3 plans delivered
-Last activity: 2026-02-28 - Completed 14-03 (StorageHealth module + boot wiring for integrity checker and storage health)
+Current Plan: 4 of 5
+Status: Executing gap-closure plans (14-04 complete, 14-05 remaining)
+Last activity: 2026-02-28 - Completed 14-04 (reopenDB wiring into IDB onclose callbacks)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 31 (Phases 1-11 + Phase 13 gap closure + Phase 12 complete + Phase 14 complete)
+- Total plans completed: 32 (Phases 1-11 + Phase 13 gap closure + Phase 12 complete + Phase 14 plans 01-04)
 - Total tests: 398 (all passing)
 - Total LOC: ~10,600 TypeScript (64 files)
 - Total execution time: ~4.95 hours
@@ -39,7 +39,7 @@ Last activity: 2026-02-28 - Completed 14-03 (StorageHealth module + boot wiring 
 | 11 | 2/2 (command menu state + FSM extension, controller + boot wiring) | ~8m | 4m |
 | 12 | 3/3 (live conversation view + hub text input + history/search) | ~15m | 5m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
-| 14 | 3/3 (event types + onclose + sentinel filtering + integrity checker TDD + storage health + boot wiring) | ~11m | 3.7m |
+| 14 | 4/5 (event types + onclose + sentinel filtering + integrity checker TDD + storage health + boot wiring + reopenDB wiring) | ~13m | 3.3m |
 
 ## Accumulated Context
 
@@ -88,6 +88,8 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - Feature detection uses truthiness check (!navigator.storage) not 'in' operator to handle undefined safely (14-03)
 - Hub uses dynamic imports for integrity-checker and storage-health, consistent with hub lazy-loading pattern (14-03)
 - Glasses emits bus events for persistence:health and storage:evicted; hub uses console logging (no bus) (14-03)
+- reopenDB() uses .then()/.catch() in onclose callback (synchronous fire-and-forget, not async/await) (14-04)
+- Initial recoverable:true error kept before reopenDB call; recoverable:false only on max retry exhaustion (14-04)
 
 ### Pending Todos
 
@@ -113,5 +115,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 14-03-PLAN.md (StorageHealth + boot wiring). Phase 14 complete.
+Stopped at: Completed 14-04-PLAN.md (reopenDB wiring into IDB onclose callbacks)
 Resume file: None
