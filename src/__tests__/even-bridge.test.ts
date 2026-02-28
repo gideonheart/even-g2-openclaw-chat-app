@@ -1,6 +1,5 @@
 // ── Tests for EvenBridge SDK lifecycle and event mapping ────
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { EvenHubEvent, DeviceStatus } from '@evenrealities/even_hub_sdk';
 import { createEventBus } from '../events';
 import type { AppEventMap } from '../types';
 
