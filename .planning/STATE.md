@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 12 of 13 (Hub Conversation Features) -- IN PROGRESS
-Plan: 1 of 3 in current phase (12-01 complete)
+Plan: 2 of 3 in current phase (12-01, 12-02 complete)
 Status: Executing Phase 12
-Last activity: 2026-02-28 - Completed 12-01: Live conversation view with streaming indicator
+Last activity: 2026-02-28 - Completed 12-02: Hub text input with gateway and sync wiring
 
-Progress: [██████████████████████] 26/28 plans (v1.0-v1.1 + Phase 12 plan 1)
+Progress: [███████████████████████] 27/28 plans (v1.0-v1.1 + Phase 12 plans 1-2)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 26 (Phases 1-11 + Phase 13 gap closure + Phase 12 plan 1)
-- Total tests: 356 (all passing)
+- Total plans completed: 27 (Phases 1-11 + Phase 13 gap closure + Phase 12 plans 1-2)
+- Total tests: 360 (all passing)
 - Total LOC: ~7,900 TypeScript (59 files)
 - Total execution time: ~4.8 hours
 
@@ -39,7 +39,7 @@ Progress: [██████████████████████] 2
 | 9 | 2 (data layer TDD + wiring) | ~10m | 5m |
 | 10 | 3/3 (session store + sync bridge + glasses wiring + hub sessions) | ~16m | 5m |
 | 11 | 2/2 (command menu state + FSM extension, controller + boot wiring) | ~8m | 4m |
-| 12 | 1/3 (live conversation view + streaming indicator) | ~4m | 4m |
+| 12 | 2/3 (live conversation view + hub text input) | ~9m | 4.5m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
 
 ## Accumulated Context
@@ -72,6 +72,10 @@ All decisions logged in PROJECT.md Key Decisions table (20 entries with outcomes
 - textContent used for message rendering to prevent XSS without escHtml (12-01)
 - session:switched sync handler calls both refreshSessionList and loadLiveConversation (12-01)
 - hubConversationStore stored at module level for loadLiveConversation access (12-01)
+- Extracted streamSSEResponse helper to DRY SSE parsing between sendVoiceTurn and sendTextTurn (12-02)
+- Streaming div approach for hub text response: create div on response_start, update on delta (12-02)
+- Hub gateway client is separate instance from glasses gateway with independent lifecycle (12-02)
+- Send button disabled during request to prevent duplicate text submissions (12-02)
 
 ### Pending Todos
 
@@ -95,5 +99,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 12-01-PLAN.md (Live conversation view + streaming indicator)
+Stopped at: Completed 12-02-PLAN.md (Hub text input with gateway and sync wiring)
 Resume file: None
