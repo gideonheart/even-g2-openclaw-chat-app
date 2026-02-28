@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Phase 12 - Hub Conversation Features
+**Current focus:** v1.2 Milestone Complete — all phases shipped
 
 ## Current Position
 
-Phase: 12 of 13 (Hub Conversation Features) -- COMPLETE
-Plan: 3 of 3 in current phase (12-01, 12-02, 12-03 complete)
-Status: Phase 12 Complete
-Last activity: 2026-02-28 - Completed 12-03: Conversation history and search
+Phase: 13 of 13 (All phases complete)
+Plan: All plans complete
+Status: v1.2 Milestone Complete
+Last activity: 2026-02-28 - Phase 12 verified and complete, all v1.2 phases shipped
 
-Progress: [████████████████████████] 28/28 plans (v1.0-v1.1 + Phase 12 complete)
+Progress: [████████████████████████] 28/28 plans (v1.0 + v1.1 + v1.2 complete)
 
 ## Performance Metrics
 
@@ -103,5 +103,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 12-03-PLAN.md (Conversation history and search - Phase 12 complete)
+Stopped at: v1.2 milestone complete — all 13 phases shipped, 28/28 plans executed
 Resume file: None

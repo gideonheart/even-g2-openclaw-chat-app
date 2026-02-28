@@ -43,21 +43,18 @@ Users can have natural voice conversations with an AI assistant through their Ev
 - ✓ Graceful shutdown (gateway.destroy, audio cleanup) on unload — v1.1
 - ✓ CLICK_EVENT SDK quirk handled for real glasses hardware — v1.1
 
+- ✓ IndexedDB conversation persistence with auto-save and boot recovery — v1.2
+- ✓ Event bus bridge (BroadcastChannel + localStorage fallback) for real-time hub ↔ glasses sync — v1.2
+- ✓ Dynamic sessions: create, rename, delete with cascade delete of messages — v1.2
+- ✓ Glasses command menu via double-tap (/new, /reset, /switch, /rename, /delete) with confirmation — v1.2
+- ✓ Hub live view of glasses conversation with streaming indicator — v1.2
+- ✓ Hub text input with gateway sendTextTurn and streaming response — v1.2
+- ✓ Conversation history browsing with transcript viewer and delete — v1.2
+- ✓ Full-text search across conversation history with highlighted snippets — v1.2
+
 ### Active
 
-## Current Milestone: v1.2 Conversation Intelligence & Hub Interaction
-
-**Goal:** Make conversations persistent, browsable, and accessible from both glasses and hub — with dynamic sessions, a command menu, and real-time two-way sync.
-
-**Target features:**
-- IndexedDB conversation persistence
-- Event bus bridge for real-time hub ↔ glasses communication
-- Dynamic sessions (create, rename, delete)
-- Glasses command menu via double-tap (/new, /reset, /switch, /rename, /delete)
-- Hub text input into live conversation
-- Hub live view of glasses conversation
-- Conversation history browsing in hub
-- Full-text search across conversation history
+(No active requirements — v1.2 milestone complete)
 
 ### Out of Scope
 
@@ -75,7 +72,7 @@ Users can have natural voice conversations with an AI assistant through their Ev
 
 ## Context
 
-Shipped v1.1 Integration with 6,336 LOC TypeScript across 43 files, 265 passing tests.
+Shipped v1.2 Conversation Intelligence with ~7,900 LOC TypeScript across 59 files, 372 passing tests.
 Tech stack: Vite, TypeScript strict mode, Vitest, @evenrealities/even_hub_sdk, eventsource-parser, @evenrealities/evenhub-cli.
 
 Architecture: Pure-function core modules (gesture-fsm.ts, viewport.ts, icon-animator.ts) with zero SDK imports. Side effects confined to bridge boundary (even-bridge.ts). Event bus connects all modules. Factory pattern for services. Environment router (main.ts) detects Even App WebView vs browser and routes to glasses-main.ts or hub-main.ts. Layer 0-5 initialization sequence in glasses-main.ts ensures correct dependency order.
@@ -116,6 +113,12 @@ App is packaged as 42KB .ehpk artifact via `npm run pack` and ready for EvenHub 
 | Cleanup only in glasses mode | Browser devMode tab switching fires visibilitychange incorrectly | ✓ Good — v1.1 |
 | package_id without hyphens | evenhub-cli regex rejects hyphens in package_id | ✓ Good — v1.1 |
 | edition '202601' | evenhub-cli Zod enum only accepts '202601' | ✓ Good — v1.1 |
+| BroadcastChannel + localStorage fallback | Feature-detect BC, fall back to set+remove pattern for sync | ✓ Good — v1.2 |
+| Cascade delete via raw IDB cursor | Atomically deletes session + all messages in single transaction | ✓ Good — v1.2 |
+| FSM MENU_SELECT action | Tap in menu stays in menu state; controller decides close timing | ✓ Good — v1.2 |
+| Shared streamSSEResponse helper | DRY SSE parsing between sendVoiceTurn and sendTextTurn | ✓ Good — v1.2 |
+| textContent for message rendering | Prevents XSS without escHtml utility for live conversation | ✓ Good — v1.2 |
+| IDB cursor-based full-text search | searchMessages scans all messages with limit + snippet extraction | ✓ Good — v1.2 |
 
 ---
-*Last updated: 2026-02-28 after v1.2 milestone started*
+*Last updated: 2026-02-28 after v1.2 milestone complete (Phase 12)*

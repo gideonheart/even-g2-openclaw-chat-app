@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 1-5 (shipped 2026-02-28)
 - ✅ **v1.1 Integration** — Phases 6-8 (shipped 2026-02-28)
-- 🚧 **v1.2 Conversation Intelligence & Hub Interaction** — Phases 9-13 (in progress)
+- ✅ **v1.2 Conversation Intelligence & Hub Interaction** — Phases 9-13 (shipped 2026-02-28)
 
 ## Phases
 
@@ -28,11 +28,11 @@
 
 </details>
 
-### 🚧 v1.2 Conversation Intelligence & Hub Interaction (In Progress)
+### ✅ v1.2 Conversation Intelligence & Hub Interaction — SHIPPED 2026-02-28
 
 **Milestone Goal:** Make conversations persistent, browsable, and accessible from both glasses and hub -- with dynamic sessions, a glasses command menu, and real-time two-way sync.
 
-- [ ] **Phase 9: IndexedDB Persistence** - Conversation and message storage with auto-save and boot recovery
+- [x] **Phase 9: IndexedDB Persistence** - Conversation and message storage with auto-save and boot recovery (completed 2026-02-28, verified via Phase 13)
 - [x] **Phase 10: Dynamic Sessions & Cross-Context Sync** - Session CRUD, event bus bridge, and real-time hub-glasses relay (completed 2026-02-28)
 - [x] **Phase 11: Glasses Command Menu** - Double-tap overlay with session commands, scroll navigation, and auto-close (completed 2026-02-28)
 - [x] **Phase 12: Hub Conversation Features** - Live view, text input, history browsing, and full-text search (completed 2026-02-28)
@@ -52,8 +52,8 @@
 **Plans**: 2 plans
 
 Plans:
-- [ ] 09-01-PLAN.md — IndexedDB wrapper + conversation store (TDD)
-- [ ] 09-02-PLAN.md — Auto-save wiring + boot restore
+- [x] 09-01-PLAN.md — IndexedDB wrapper + conversation store (TDD)
+- [x] 09-02-PLAN.md — Auto-save wiring + boot restore
 
 ### Phase 10: Dynamic Sessions & Cross-Context Sync
 **Goal**: Users can manage multiple conversation sessions, and actions in one context (glasses or hub) are visible in the other in real time
@@ -68,9 +68,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 10-01-PLAN.md — Session store + sync bridge (TDD)
-- [ ] 10-02-PLAN.md — Glasses session switching + sync wiring
-- [ ] 10-03-PLAN.md — Hub dynamic sessions + sync relay
+- [x] 10-01-PLAN.md — Session store + sync bridge (TDD)
+- [x] 10-02-PLAN.md — Glasses session switching + sync wiring
+- [x] 10-03-PLAN.md — Hub dynamic sessions + sync relay
 
 ### Phase 11: Glasses Command Menu
 **Goal**: Users can access session management commands directly from the glasses via a double-tap overlay menu
@@ -85,8 +85,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 11-01-PLAN.md — Pure command menu state module + FSM MENU_SELECT extension (TDD)
-- [ ] 11-02-PLAN.md — Menu controller, renderer overlay, gesture dispatch, and boot wiring
+- [x] 11-01-PLAN.md — Pure command menu state module + FSM MENU_SELECT extension (TDD)
+- [x] 11-02-PLAN.md — Menu controller, renderer overlay, gesture dispatch, and boot wiring
 
 ### Phase 12: Hub Conversation Features
 **Goal**: The companion hub becomes a full conversation interface -- users can watch live conversations, type messages, browse history, and search across all past conversations
@@ -101,9 +101,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 12-01-PLAN.md — Live conversation view + streaming indicator (HUB-01, HUB-02)
-- [ ] 12-02-PLAN.md — Hub text input + gateway text turn API (HUB-03, HUB-04)
-- [ ] 12-03-PLAN.md — History browsing, deletion, and full-text search (HUB-05, HUB-06, HUB-07, HUB-08)
+- [x] 12-01-PLAN.md — Live conversation view + streaming indicator (HUB-01, HUB-02)
+- [x] 12-02-PLAN.md — Hub text input + gateway text turn API (HUB-03, HUB-04)
+- [x] 12-03-PLAN.md — History browsing, deletion, and full-text search (HUB-05, HUB-06, HUB-07, HUB-08)
 
 ### Phase 13: Phase 9 Verification & Sync Wiring
 **Goal**: Close Phase 9 verification gap and wire the sync message types that are currently dead code, enabling Phase 12's real-time hub features
@@ -118,7 +118,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 13-01-PLAN.md — Phase 9 verification + sync message wiring (conversation:named, message:added)
+- [x] 13-01-PLAN.md — Phase 9 verification + sync message wiring (conversation:named, message:added)
 
 ## Progress
 
@@ -135,8 +135,8 @@ Phases execute: 9 → 10 → **13** → 11 → 12 (Phase 13 must complete before
 | 6. Runtime Wiring | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 7. Error Handling & Lifecycle | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 8. EvenHub Submission | v1.1 | 1/1 | Complete | 2026-02-28 |
-| 9. IndexedDB Persistence | v1.2 | 2/2 | Unverified | - |
+| 9. IndexedDB Persistence | v1.2 | 2/2 | Complete | 2026-02-28 |
 | 10. Dynamic Sessions & Cross-Context Sync | v1.2 | 3/3 | Complete | 2026-02-28 |
-| 11. Glasses Command Menu | 2/2 | Complete    | 2026-02-28 | - |
-| 12. Hub Conversation Features | 3/3 | Complete    | 2026-02-28 | - |
-| 13. Phase 9 Verification & Sync Wiring | 1/1 | Complete    | 2026-02-28 | - |
+| 11. Glasses Command Menu | v1.2 | 2/2 | Complete | 2026-02-28 |
+| 12. Hub Conversation Features | v1.2 | 3/3 | Complete | 2026-02-28 |
+| 13. Phase 9 Verification & Sync Wiring | v1.2 | 1/1 | Complete | 2026-02-28 |
