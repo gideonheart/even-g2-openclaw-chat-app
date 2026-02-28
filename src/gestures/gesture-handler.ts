@@ -103,6 +103,10 @@ export function createGestureHandler(opts: {
         bus.emit('gesture:menu-toggle', { active: state === 'menu' });
         break;
       }
+      case 'MENU_SELECT': {
+        bus.emit('menu:select', { timestamp: Date.now() });
+        break;
+      }
       case 'SCROLL_UP':
       case 'SCROLL_DOWN':
         // These events are already on the bus from the bridge.

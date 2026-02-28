@@ -23,6 +23,8 @@ interface MockRenderer {
   showWelcome: Mock;
   showConfigRequired: Mock;
   showError: Mock;
+  showMenuOverlay: Mock;
+  restoreConversation: Mock;
 }
 
 // ── Mock GlassesRenderer (all methods as vi.fn()) ──────────
@@ -44,6 +46,8 @@ function createMockRenderer(): MockRenderer {
     showWelcome: vi.fn(),
     showConfigRequired: vi.fn(),
     showError: vi.fn(),
+    showMenuOverlay: vi.fn(),
+    restoreConversation: vi.fn(),
   };
 }
 
@@ -184,10 +188,16 @@ describe('DisplayController', () => {
   // ── Hide/wake flow (UIMD-01, UIMD-02) ──────────────────
 
   describe('hide/wake flow (UIMD-01, UIMD-02)', () => {
-    it('gesture:menu-toggle active=true -> renderer.hide', () => {
+    it('gesture:menu-toggle active=true -> sets menuActive flag (scroll guard), no hide', () => {
       bus.emit('gesture:menu-toggle', { active: true });
 
-      expect(renderer.hide).toHaveBeenCalledOnce();
+      // Menu controller handles overlay display; display controller only guards scroll
+      expect(renderer.hide).not.toHaveBeenCalled();
+
+      // Verify scroll guard is active: scroll events should NOT reach renderer
+      renderer.scrollUp.mockClear();
+      bus.emit('gesture:scroll-up', { timestamp: Date.now() });
+      expect(renderer.scrollUp).not.toHaveBeenCalled();
     });
 
     it('gesture:menu-toggle active=false -> renderer.wake', () => {

@@ -26,6 +26,7 @@ export function createDisplayController(opts: {
   // Collect all unsub functions for cleanup on destroy (same pattern as gesture-handler.ts)
   const unsubs: Array<() => void> = [];
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
+  let menuActive = false;
 
   async function init(): Promise<void> {
     await renderer.init();
@@ -64,6 +65,7 @@ export function createDisplayController(opts: {
     // ── 2. Scroll wiring (CHAT-05, CHAT-06) ───────────────
     unsubs.push(
       bus.on('gesture:scroll-up', () => {
+        if (menuActive) return;
         if (!renderer.isHidden()) {
           renderer.scrollUp();
         }
@@ -72,6 +74,7 @@ export function createDisplayController(opts: {
 
     unsubs.push(
       bus.on('gesture:scroll-down', () => {
+        if (menuActive) return;
         if (!renderer.isHidden()) {
           renderer.scrollDown();
         }
@@ -88,14 +91,15 @@ export function createDisplayController(opts: {
       }),
     );
 
-    // Menu toggle drives hide/wake:
-    // active=true (menu opens) -> hide display
-    // active=false (menu closes) -> wake display
+    // Menu toggle: track menuActive flag.
+    // Menu controller handles display via showMenuOverlay/restoreConversation.
+    // Display controller only guards scroll events and provides safety-net wake.
     unsubs.push(
       bus.on('gesture:menu-toggle', ({ active }) => {
         if (active) {
-          renderer.hide();
+          menuActive = true;
         } else {
+          menuActive = false;
           renderer.wake();
         }
       }),

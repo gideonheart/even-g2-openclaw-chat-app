@@ -85,6 +85,8 @@ export interface GlassesRenderer {
   showWelcome(): void;
   showConfigRequired(): void;
   showError(message: string): void;
+  showMenuOverlay(text: string): void;
+  restoreConversation(): void;
 }
 
 // ── Factory ───────────────────────────────────────────────
@@ -295,6 +297,15 @@ export function createGlassesRenderer(opts: {
     renderAndPush();
   }
 
+  function showMenuOverlay(text: string): void {
+    stopFlushTimer();
+    bridge.textContainerUpgrade(2, text);
+  }
+
+  function restoreConversation(): void {
+    renderAndPush();
+  }
+
   return {
     init,
     destroy,
@@ -311,5 +322,7 @@ export function createGlassesRenderer(opts: {
     showWelcome,
     showConfigRequired,
     showError,
+    showMenuOverlay,
+    restoreConversation,
   };
 }
