@@ -53,6 +53,17 @@ export function buildDiagnostics(
   settings: { gatewayUrl: string; sttProvider: string },
 ): DiagnosticsPayload {
   const logs = logStore.getAll();
+
+  // Read orphan count from localStorage (persisted by integrity check on boot)
+  let orphanCount: number | undefined;
+  try {
+    const orphanIdsJson = localStorage.getItem('openclaw-orphan-ids');
+    if (orphanIdsJson) {
+      const ids: string[] = JSON.parse(orphanIdsJson);
+      orphanCount = ids.length;
+    }
+  } catch { /* localStorage unavailable or invalid JSON */ }
+
   return {
     timestamp: new Date().toISOString(),
     settings: { gatewayUrl: settings.gatewayUrl, sttProvider: settings.sttProvider },
@@ -64,5 +75,6 @@ export function buildDiagnostics(
       time: l.time.toISOString(),
       cid: l.cid,
     })),
+    ...(orphanCount !== undefined && { orphanCount }),
   };
 }

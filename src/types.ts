@@ -36,6 +36,7 @@ export interface DiagnosticsPayload {
     time: string;
     cid: string | null;
   }>;
+  orphanCount?: number;  // Phase 14: orphaned message count from integrity check
 }
 
 export interface FieldConfig {
