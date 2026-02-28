@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 14-data-integrity-foundation
-Current Plan: 2 of 3
-Status: Plan 01 complete, ready for Plan 02
-Last activity: 2026-02-28 - Completed 14-01 (persistence event types, onclose handler, sentinel filtering)
+Current Plan: 3 of 3
+Status: Plan 02 complete, ready for Plan 03
+Last activity: 2026-02-28 - Completed 14-02 (IntegrityChecker TDD: orphan detection, sentinel, dangling pointer, cleanup)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 29 (Phases 1-11 + Phase 13 gap closure + Phase 12 complete + Phase 14 plan 01)
-- Total tests: 372 (all passing)
-- Total LOC: ~10,300 TypeScript (60 files)
-- Total execution time: ~4.8 hours
+- Total plans completed: 30 (Phases 1-11 + Phase 13 gap closure + Phase 12 complete + Phase 14 plans 01-02)
+- Total tests: 388 (all passing)
+- Total LOC: ~10,460 TypeScript (62 files)
+- Total execution time: ~4.9 hours
 
 **By Phase:**
 
@@ -39,7 +39,7 @@ Last activity: 2026-02-28 - Completed 14-01 (persistence event types, onclose ha
 | 11 | 2/2 (command menu state + FSM extension, controller + boot wiring) | ~8m | 4m |
 | 12 | 3/3 (live conversation view + hub text input + history/search) | ~15m | 5m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
-| 14 | 1/3 (event types + onclose + sentinel filtering) | ~3m | 3m |
+| 14 | 2/3 (event types + onclose + sentinel filtering + integrity checker TDD) | ~7m | 3.5m |
 
 ## Accumulated Context
 
@@ -82,6 +82,9 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - reopenDB uses Promise chain with setTimeout, not async/await, to stay safe outside IDB transactions (14-01)
 - SENTINEL_ID exported as named constant for reuse by integrity-checker in Plan 02 (14-01)
 - Sentinel filtered in 3 query methods but not getConversation to allow direct lookup (14-01)
+- localStorage dangling pointer check runs after tx.oncomplete to guarantee convIds Set is fully populated (14-02)
+- cleanupOrphans uses Promise.then chain for two-phase transaction sequencing (readonly verify, then readwrite delete) (14-02)
+- IntegrityReport and IntegrityChecker interfaces co-located in integrity-checker.ts (not types.ts) since module-specific (14-02)
 
 ### Pending Todos
 
@@ -107,5 +110,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 14-01-PLAN.md (data integrity foundation types/hooks/sentinel). Ready for 14-02.
+Stopped at: Completed 14-02-PLAN.md (IntegrityChecker TDD: check, writeSentinel, cleanupOrphans). Ready for 14-03.
 Resume file: None
