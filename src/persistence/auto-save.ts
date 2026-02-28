@@ -6,6 +6,7 @@
 import type { EventBus } from '../events';
 import type { AppEventMap } from '../types';
 import type { ConversationStore } from './types';
+import type { SyncBridge } from '../sync/sync-types';
 import { generateConversationName } from './conversation-store';
 
 const MAX_RETRIES = 3;
@@ -17,6 +18,8 @@ export interface AutoSaveOptions {
   getConversationId: () => string;
   /** Called when auto-naming triggers on first user message */
   onConversationNamed?: (name: string) => void;
+  /** Optional sync bridge for cross-context message notifications */
+  syncBridge?: SyncBridge;
 }
 
 export interface AutoSave {
@@ -24,7 +27,7 @@ export interface AutoSave {
 }
 
 export function createAutoSave(opts: AutoSaveOptions): AutoSave {
-  const { bus, store, getConversationId, onConversationNamed } = opts;
+  const { bus, store, getConversationId, onConversationNamed, syncBridge } = opts;
   const unsubs: Array<() => void> = [];
 
   let pendingAssistantText = '';
@@ -65,6 +68,15 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
               timestamp: Date.now(),
             }),
           ).then((ok) => {
+            if (ok && syncBridge) {
+              syncBridge.postMessage({
+                type: 'message:added',
+                origin: 'glasses',
+                conversationId: convId,
+                role: 'user',
+                text,
+              });
+            }
             if (!ok) {
               bus.emit('persistence:warning', {
                 message: 'Messages may not be saved',
@@ -104,6 +116,15 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
                 timestamp: Date.now(),
               }),
             ).then((ok) => {
+              if (ok && syncBridge) {
+                syncBridge.postMessage({
+                  type: 'message:added',
+                  origin: 'glasses',
+                  conversationId: convId,
+                  role: 'assistant',
+                  text,
+                });
+              }
               if (!ok) {
                 bus.emit('persistence:warning', {
                   message: 'Messages may not be saved',

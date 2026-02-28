@@ -184,9 +184,15 @@ export async function boot(): Promise<void> {
     bus,
     store,
     getConversationId: () => activeConversationId,
-    onConversationNamed: (_name) => {
-      // Future: update UI with conversation name (Phase 10+ concern)
+    onConversationNamed: (name) => {
+      syncBridge.postMessage({
+        type: 'conversation:named',
+        origin: 'glasses',
+        conversationId: activeConversationId,
+        name,
+      });
     },
+    syncBridge,
   }) : null;
 
   // ── Persistence warning listener ──

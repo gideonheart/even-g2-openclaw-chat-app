@@ -571,7 +571,12 @@ async function initPersistence(): Promise<{
         case 'session:renamed':
         case 'session:deleted':
         case 'session:switched':
+        case 'conversation:named':
+          // Session list shows conversation names -- refresh to show new name
           refreshSessionList();
+          break;
+        case 'message:added':
+          // Phase 12 will use this for live conversation view (HUB-01)
           break;
       }
     });

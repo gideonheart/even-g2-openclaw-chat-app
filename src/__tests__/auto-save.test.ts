@@ -5,6 +5,15 @@ import { createAutoSave } from '../persistence/auto-save';
 import { createEventBus } from '../events';
 import type { AppEventMap } from '../types';
 import type { ConversationStore } from '../persistence/types';
+import type { SyncBridge } from '../sync/sync-types';
+
+function createMockSyncBridge(): SyncBridge & { postMessage: ReturnType<typeof vi.fn> } {
+  return {
+    postMessage: vi.fn(),
+    onMessage: vi.fn(() => () => {}),
+    destroy: vi.fn(),
+  };
+}
 
 describe('auto-save', () => {
   let db: IDBDatabase;
@@ -191,5 +200,77 @@ describe('auto-save', () => {
 
     const messages = await store.getMessages(conversationId);
     expect(messages).toHaveLength(0);
+  });
+
+  // ── SyncBridge integration tests ──────────────────────────
+
+  it('posts message:added via syncBridge after successful user message save', async () => {
+    const mockBridge = createMockSyncBridge();
+    const autoSave = createAutoSave({
+      bus,
+      store,
+      getConversationId: () => conversationId,
+      syncBridge: mockBridge,
+    });
+
+    bus.emit('gateway:chunk', { type: 'transcript', text: 'Hello sync' });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockBridge.postMessage).toHaveBeenCalledWith({
+      type: 'message:added',
+      origin: 'glasses',
+      conversationId: expect.any(String),
+      role: 'user',
+      text: 'Hello sync',
+    });
+
+    autoSave.destroy();
+  });
+
+  it('posts message:added via syncBridge after successful assistant message save', async () => {
+    const mockBridge = createMockSyncBridge();
+    const autoSave = createAutoSave({
+      bus,
+      store,
+      getConversationId: () => conversationId,
+      syncBridge: mockBridge,
+    });
+
+    bus.emit('gateway:chunk', { type: 'response_delta', text: 'Assistant reply' });
+    bus.emit('gateway:chunk', { type: 'response_end' });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockBridge.postMessage).toHaveBeenCalledWith({
+      type: 'message:added',
+      origin: 'glasses',
+      conversationId: expect.any(String),
+      role: 'assistant',
+      text: 'Assistant reply',
+    });
+
+    autoSave.destroy();
+  });
+
+  it('does not post sync message when syncBridge is not provided', async () => {
+    // This test verifies existing tests still work without syncBridge (no crash)
+    const autoSave = createAutoSave({
+      bus,
+      store,
+      getConversationId: () => conversationId,
+      // No syncBridge -- must not crash
+    });
+
+    bus.emit('gateway:chunk', { type: 'transcript', text: 'No bridge' });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Verify message was saved (existing behavior preserved)
+    const messages = await store.getMessages(conversationId);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].text).toBe('No bridge');
+
+    autoSave.destroy();
   });
 });
