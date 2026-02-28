@@ -5,16 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Planning next milestone
+**Current focus:** v1.2 Conversation Intelligence & Hub Interaction
 
 ## Current Position
 
-Phase: 8 of 8 (all milestones complete)
-Plan: N/A
-Status: v1.1 Integration shipped
-Last activity: 2026-02-28 -- v1.1 milestone archived. App ready for EvenHub portal submission.
-
-Progress: [##########] 100% (v1.0 + v1.1 complete)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-28 — Milestone v1.2 started
 
 ## Performance Metrics
 

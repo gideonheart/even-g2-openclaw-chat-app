@@ -45,7 +45,19 @@ Users can have natural voice conversations with an AI assistant through their Ev
 
 ### Active
 
-(No active milestone — planning next)
+## Current Milestone: v1.2 Conversation Intelligence & Hub Interaction
+
+**Goal:** Make conversations persistent, browsable, and accessible from both glasses and hub — with dynamic sessions, a command menu, and real-time two-way sync.
+
+**Target features:**
+- IndexedDB conversation persistence
+- Event bus bridge for real-time hub ↔ glasses communication
+- Dynamic sessions (create, rename, delete)
+- Glasses command menu via double-tap (/new, /reset, /switch, /rename, /delete)
+- Hub text input into live conversation
+- Hub live view of glasses conversation
+- Conversation history browsing in hub
+- Full-text search across conversation history
 
 ### Out of Scope
 
@@ -106,4 +118,4 @@ App is packaged as 42KB .ehpk artifact via `npm run pack` and ready for EvenHub 
 | edition '202601' | evenhub-cli Zod enum only accepts '202601' | ✓ Good — v1.1 |
 
 ---
-*Last updated: 2026-02-28 after v1.1 milestone*
+*Last updated: 2026-02-28 after v1.2 milestone started*
