@@ -39,8 +39,7 @@ export async function boot(): Promise<void> {
 
   // Layer 3: Gesture handling (subscribes to bus FIRST -- before display controller)
   // The handler subscribes to gesture events in its constructor and drives the FSM.
-  // We don't reference the return value directly -- bus subscriptions are the integration point.
-  createGestureHandler({
+  const gestureHandler = createGestureHandler({
     bus,
     bridge,
     audioCapture,
@@ -60,7 +59,7 @@ export async function boot(): Promise<void> {
 
   // Layer 5: Gateway + voice loop
   const gateway = createGatewayClient();
-  createVoiceLoopController({
+  const voiceLoopController = createVoiceLoopController({
     bus,
     gateway,
     settings: () => settings,
@@ -80,5 +79,38 @@ export async function boot(): Promise<void> {
   } else {
     // Gateway URL not configured -- show blocking config message
     renderer.showConfigRequired();
+  }
+
+  // ── Lifecycle cleanup ───────────────────────────────────────
+  // Destroy all modules in reverse init order when the WebView closes.
+  // Double-call guard prevents duplicate teardown when both
+  // visibilitychange and pagehide fire in sequence.
+
+  let cleaned = false;
+  function cleanup(): void {
+    if (cleaned) return;
+    cleaned = true;
+
+    // Reverse initialization order (Layer 5 -> Layer 0)
+    voiceLoopController.destroy();
+    gateway.destroy();           // stops heartbeat, aborts in-flight fetch
+    displayController.destroy(); // stops icon animator, clears flush timer
+    gestureHandler.destroy();    // unsubscribes bus listeners
+    // audioCapture has no destroy() -- stopRecording is best-effort cleanup
+    audioCapture.stopRecording().catch(() => {});
+    bridge.destroy();            // unsubscribes SDK, shuts down page container
+    bus.clear();                 // clear all remaining subscriptions
+  }
+
+  // Only register lifecycle cleanup in glasses mode (not devMode).
+  // In browser dev mode, tab switching fires visibilitychange with 'hidden',
+  // which would destroy the voice loop during normal development.
+  if (!devMode) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        cleanup();
+      }
+    });
+    window.addEventListener('pagehide', cleanup);
   }
 }
