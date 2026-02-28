@@ -33,27 +33,16 @@ const CHAT_CONTAINER: TextContainerConfig = {
   xPosition: 0,
   yPosition: 34,
   width: 576,
-  height: 224,
+  height: 256,
   containerID: 2,
   containerName: 'chat',
   isEventCapture: 0,
   content: '',
 };
 
-const HINT_CONTAINER: TextContainerConfig = {
-  xPosition: 0,
-  yPosition: 260,
-  width: 576,
-  height: 28,
-  containerID: 3,
-  containerName: 'hint',
-  isEventCapture: 0,
-  content: '',
-};
-
 const CHAT_LAYOUT: PageContainerConfig = {
-  containerTotalNum: 3,
-  textObject: [STATUS_CONTAINER, CHAT_CONTAINER, HINT_CONTAINER],
+  containerTotalNum: 2,
+  textObject: [STATUS_CONTAINER, CHAT_CONTAINER],
 };
 
 const BLANK_LAYOUT: PageContainerConfig = {
@@ -75,6 +64,9 @@ const BLANK_LAYOUT: PageContainerConfig = {
 /** Streaming flush cadence in ms (CHAT-03). */
 const FLUSH_INTERVAL_MS = 200;
 
+/** Maximum number of turn pairs to keep in display buffer. */
+const MAX_TURNS = 8;
+
 // ── Public interface ──────────────────────────────────────
 
 export interface GlassesRenderer {
@@ -90,8 +82,8 @@ export interface GlassesRenderer {
   hide(): Promise<void>;
   wake(): Promise<void>;
   isHidden(): boolean;
-  getHintText(): string;
-  updateHint(text: string): void;
+  showWelcome(): void;
+  showConfigRequired(): void;
 }
 
 // ── Factory ───────────────────────────────────────────────
@@ -113,7 +105,7 @@ export function createGlassesRenderer(opts: {
   let hidden = false;
   let streamBuffer = '';
   let flushTimer: ReturnType<typeof setInterval> | null = null;
-  let hintText = '';
+  let welcomeShown = false;
   let iconAnimator: IconAnimator | null = null;
 
   // ── Helpers ─────────────────────────────────────────────
@@ -156,6 +148,12 @@ export function createGlassesRenderer(opts: {
     }
   }
 
+  function trimTurnBuffer(): void {
+    while (viewport.messages.length >= MAX_TURNS * 2) {
+      viewport.messages.shift();
+    }
+  }
+
   // ── Public methods ──────────────────────────────────────
 
   async function init(): Promise<void> {
@@ -176,7 +174,7 @@ export function createGlassesRenderer(opts: {
     streamBuffer = '';
     viewport = { messages: [], scrollOffset: 0, autoScroll: true };
     hidden = false;
-    hintText = '';
+    welcomeShown = false;
   }
 
   function setIconState(state: IconState): void {
@@ -184,6 +182,9 @@ export function createGlassesRenderer(opts: {
   }
 
   function addUserMessage(text: string): void {
+    trimTurnBuffer();
+    welcomeShown = true;
+
     const msg: ChatMessage = {
       id: `msg-${nextMsgId++}`,
       role: 'user',
@@ -200,6 +201,8 @@ export function createGlassesRenderer(opts: {
   }
 
   function startStreaming(): void {
+    trimTurnBuffer();
+
     const msg: ChatMessage = {
       id: `msg-${nextMsgId++}`,
       role: 'assistant',
@@ -229,6 +232,9 @@ export function createGlassesRenderer(opts: {
       last.complete = true;
     }
 
+    // Reset auto-scroll at end of turn (per user decision)
+    viewport.autoScroll = true;
+
     // Re-render with the complete marker
     renderAndPush();
   }
@@ -256,24 +262,21 @@ export function createGlassesRenderer(opts: {
 
     // Re-render current state
     renderAndPush();
-
-    // Re-render hint
-    if (hintText) {
-      bridge.textContainerUpgrade(3, hintText);
-    }
   }
 
   function isHiddenFn(): boolean {
     return hidden;
   }
 
-  function getHintTextFn(): string {
-    return hintText;
+  function showWelcome(): void {
+    if (!welcomeShown) {
+      bridge.textContainerUpgrade(2, 'Tap to ask');
+      welcomeShown = true;
+    }
   }
 
-  function updateHint(text: string): void {
-    hintText = text;
-    bridge.textContainerUpgrade(3, text);
+  function showConfigRequired(): void {
+    bridge.textContainerUpgrade(2, 'Open companion app to configure');
   }
 
   return {
@@ -289,7 +292,7 @@ export function createGlassesRenderer(opts: {
     hide: hideFn,
     wake,
     isHidden: isHiddenFn,
-    getHintText: getHintTextFn,
-    updateHint,
+    showWelcome,
+    showConfigRequired,
   };
 }

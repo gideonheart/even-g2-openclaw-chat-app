@@ -20,14 +20,8 @@ interface MockRenderer {
   hide: Mock<() => Promise<void>>;
   wake: Mock<() => Promise<void>>;
   isHidden: Mock<() => boolean>;
-  getHintText: Mock<() => string>;
-  updateHint: Mock;
-}
-
-interface MockGestureHandler {
-  getState: Mock;
-  getHintText: Mock<() => string>;
-  destroy: Mock;
+  showWelcome: Mock;
+  showConfigRequired: Mock;
 }
 
 // ── Mock GlassesRenderer (all methods as vi.fn()) ──────────
@@ -46,37 +40,27 @@ function createMockRenderer(): MockRenderer {
     hide: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
     wake: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
     isHidden: vi.fn<() => boolean>().mockReturnValue(false),
-    getHintText: vi.fn<() => string>().mockReturnValue(''),
-    updateHint: vi.fn(),
-  };
-}
-
-// ── Mock GestureHandlerAPI ──────────────────────────────────
-
-function createMockGestureHandler(): MockGestureHandler {
-  return {
-    getState: vi.fn().mockReturnValue('idle'),
-    getHintText: vi.fn<() => string>().mockReturnValue('Tap to record | Double-tap for menu'),
-    destroy: vi.fn(),
+    showWelcome: vi.fn(),
+    showConfigRequired: vi.fn(),
   };
 }
 
 describe('DisplayController', () => {
   let bus: ReturnType<typeof createEventBus<AppEventMap>>;
   let renderer: MockRenderer;
-  let gestureHandler: MockGestureHandler;
   let controller: DisplayController;
 
   beforeEach(async () => {
+    vi.useFakeTimers();
     bus = createEventBus<AppEventMap>();
     renderer = createMockRenderer();
-    gestureHandler = createMockGestureHandler();
-    controller = createDisplayController({ bus, renderer, gestureHandler });
+    controller = createDisplayController({ bus, renderer });
     await controller.init();
   });
 
   afterEach(() => {
     controller.destroy();
+    vi.useRealTimers();
   });
 
   // ── Lifecycle ────────────────────────────────────────────
@@ -93,18 +77,15 @@ describe('DisplayController', () => {
       renderer.startStreaming.mockClear();
       renderer.scrollUp.mockClear();
       renderer.setIconState.mockClear();
-      renderer.updateHint.mockClear();
 
       bus.emit('gateway:chunk', { type: 'transcript', text: 'hello' });
       bus.emit('gesture:scroll-up', { timestamp: Date.now() });
       bus.emit('audio:recording-start', { sessionId: 's1' });
-      bus.emit('gesture:tap', { timestamp: Date.now() });
 
       expect(renderer.addUserMessage).not.toHaveBeenCalled();
       expect(renderer.startStreaming).not.toHaveBeenCalled();
       expect(renderer.scrollUp).not.toHaveBeenCalled();
       expect(renderer.setIconState).not.toHaveBeenCalled();
-      expect(renderer.updateHint).not.toHaveBeenCalled();
     });
 
     it('destroy() calls renderer.destroy()', () => {
@@ -136,17 +117,25 @@ describe('DisplayController', () => {
       expect(renderer.appendStreamChunk).toHaveBeenCalledWith('chunk data');
     });
 
-    it('gateway:chunk type=response_end -> endStreaming + setIconState(idle)', () => {
+    it('gateway:chunk type=response_end -> endStreaming + setIconState(idle) after 500ms', () => {
       bus.emit('gateway:chunk', { type: 'response_end' });
 
       expect(renderer.endStreaming).toHaveBeenCalledOnce();
+      // Idle icon is delayed by 500ms settle period
+      expect(renderer.setIconState).not.toHaveBeenCalledWith('idle');
+
+      vi.advanceTimersByTime(500);
       expect(renderer.setIconState).toHaveBeenCalledWith('idle');
     });
 
-    it('gateway:chunk type=error -> endStreaming + setIconState(idle)', () => {
+    it('gateway:chunk type=error -> endStreaming + setIconState(idle) after 500ms', () => {
       bus.emit('gateway:chunk', { type: 'error', error: 'something broke' });
 
       expect(renderer.endStreaming).toHaveBeenCalledOnce();
+      // Idle icon is delayed by 500ms settle period
+      expect(renderer.setIconState).not.toHaveBeenCalledWith('idle');
+
+      vi.advanceTimersByTime(500);
       expect(renderer.setIconState).toHaveBeenCalledWith('idle');
     });
   });
@@ -228,46 +217,6 @@ describe('DisplayController', () => {
       bus.emit('audio:recording-stop', { sessionId: 'session-1', blob: new Blob() });
 
       expect(renderer.setIconState).toHaveBeenCalledWith('sent');
-    });
-  });
-
-  // ── Hint bar flow ────────────────────────────────────────
-
-  describe('hint bar flow', () => {
-    it('gesture:tap -> updateHint with gestureHandler.getHintText()', () => {
-      gestureHandler.getHintText.mockReturnValue('Tap to stop recording');
-      renderer.updateHint.mockClear();
-
-      bus.emit('gesture:tap', { timestamp: Date.now() });
-
-      expect(renderer.updateHint).toHaveBeenCalledWith('Tap to stop recording');
-    });
-
-    it('gesture:double-tap -> updateHint with gestureHandler.getHintText()', () => {
-      gestureHandler.getHintText.mockReturnValue('Double-tap to close | Scroll to navigate');
-      renderer.updateHint.mockClear();
-
-      bus.emit('gesture:double-tap', { timestamp: Date.now() });
-
-      expect(renderer.updateHint).toHaveBeenCalledWith('Double-tap to close | Scroll to navigate');
-    });
-
-    it('gesture:scroll-up -> updateHint with gestureHandler.getHintText()', () => {
-      gestureHandler.getHintText.mockReturnValue('Tap to record | Double-tap for menu');
-      renderer.updateHint.mockClear();
-
-      bus.emit('gesture:scroll-up', { timestamp: Date.now() });
-
-      expect(renderer.updateHint).toHaveBeenCalledWith('Tap to record | Double-tap for menu');
-    });
-
-    it('gesture:scroll-down -> updateHint with gestureHandler.getHintText()', () => {
-      gestureHandler.getHintText.mockReturnValue('AI is thinking... | Double-tap for menu');
-      renderer.updateHint.mockClear();
-
-      bus.emit('gesture:scroll-down', { timestamp: Date.now() });
-
-      expect(renderer.updateHint).toHaveBeenCalledWith('AI is thinking... | Double-tap for menu');
     });
   });
 });

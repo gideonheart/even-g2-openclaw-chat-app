@@ -40,17 +40,17 @@ describe('GlassesRenderer', () => {
 
   // ── init ──────────────────────────────────────────────────
 
-  it('init() calls rebuildPageContainer with 3-container layout', async () => {
+  it('init() calls rebuildPageContainer with 2-container layout', async () => {
     await renderer.init();
 
     expect(bridge.rebuildPageContainer).toHaveBeenCalledOnce();
     const config = bridge.rebuildPageContainer.mock.calls[0][0] as PageContainerConfig;
-    expect(config.containerTotalNum).toBe(3);
-    expect(config.textObject).toHaveLength(3);
+    expect(config.containerTotalNum).toBe(2);
+    expect(config.textObject).toHaveLength(2);
 
     // Verify container names
     const names = config.textObject.map((t) => t.containerName);
-    expect(names).toEqual(['status', 'chat', 'hint']);
+    expect(names).toEqual(['status', 'chat']);
 
     // Verify all containers have isEventCapture=0
     for (const container of config.textObject) {
@@ -196,7 +196,7 @@ describe('GlassesRenderer', () => {
     expect(renderer.isHidden()).toBe(true);
   });
 
-  it('wake() calls rebuildPageContainer with 3-container layout and re-renders', async () => {
+  it('wake() calls rebuildPageContainer with 2-container layout and re-renders', async () => {
     await renderer.init();
     renderer.addUserMessage('Persisted message');
     await renderer.hide();
@@ -207,7 +207,7 @@ describe('GlassesRenderer', () => {
 
     expect(bridge.rebuildPageContainer).toHaveBeenCalledOnce();
     const config = bridge.rebuildPageContainer.mock.calls[0][0] as PageContainerConfig;
-    expect(config.containerTotalNum).toBe(3);
+    expect(config.containerTotalNum).toBe(2);
     expect(renderer.isHidden()).toBe(false);
 
     // Re-renders the chat viewport with existing messages
@@ -233,20 +233,115 @@ describe('GlassesRenderer', () => {
     expect(statusCalls.length).toBeGreaterThanOrEqual(1);
   });
 
-  // ── hint text ─────────────────────────────────────────────
+  // ── showWelcome ────────────────────────────────────────────
 
-  it('updateHint writes to hint container (containerID=3)', async () => {
+  it('showWelcome writes "Tap to ask" to chat container', async () => {
     await renderer.init();
     bridge.textContainerUpgrade.mockClear();
 
-    renderer.updateHint('Tap to record');
+    renderer.showWelcome();
 
-    const hintCalls = bridge.textContainerUpgrade.mock.calls.filter(
-      (c: unknown[]) => c[0] === 3,
+    const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+      (c: unknown[]) => c[0] === 2,
     );
-    expect(hintCalls).toHaveLength(1);
-    expect(hintCalls[0][1]).toBe('Tap to record');
-    expect(renderer.getHintText()).toBe('Tap to record');
+    expect(chatCalls).toHaveLength(1);
+    expect(chatCalls[0][1]).toBe('Tap to ask');
+  });
+
+  it('showWelcome is no-op after first call', async () => {
+    await renderer.init();
+    renderer.showWelcome();
+    bridge.textContainerUpgrade.mockClear();
+
+    renderer.showWelcome();
+
+    const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+      (c: unknown[]) => c[0] === 2,
+    );
+    expect(chatCalls).toHaveLength(0);
+  });
+
+  it('showWelcome is no-op after addUserMessage', async () => {
+    await renderer.init();
+    renderer.addUserMessage('Hello');
+    bridge.textContainerUpgrade.mockClear();
+
+    renderer.showWelcome();
+
+    const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+      (c: unknown[]) => c[0] === 2,
+    );
+    expect(chatCalls).toHaveLength(0);
+  });
+
+  // ── showConfigRequired ─────────────────────────────────────
+
+  it('showConfigRequired writes blocking message to chat container', async () => {
+    await renderer.init();
+    bridge.textContainerUpgrade.mockClear();
+
+    renderer.showConfigRequired();
+
+    const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+      (c: unknown[]) => c[0] === 2,
+    );
+    expect(chatCalls).toHaveLength(1);
+    expect(chatCalls[0][1]).toBe('Open companion app to configure');
+  });
+
+  // ── turn buffer limit ─────────────────────────────────────
+
+  it('addUserMessage trims old messages when buffer exceeds MAX_TURNS pairs', async () => {
+    await renderer.init();
+
+    // Add 8 turn pairs (16 messages) plus streaming
+    for (let i = 0; i < 8; i++) {
+      renderer.addUserMessage(`User ${i}`);
+      renderer.startStreaming();
+      renderer.appendStreamChunk(`Bot ${i}`);
+      renderer.endStreaming();
+    }
+
+    bridge.textContainerUpgrade.mockClear();
+
+    // Adding one more user message should trim the oldest pair
+    renderer.addUserMessage('User 8');
+
+    // The viewport should not contain the first message
+    const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+      (c: unknown[]) => c[0] === 2,
+    );
+    expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+    const chatText = chatCalls[chatCalls.length - 1][1];
+    expect(chatText).not.toContain('User 0');
+    expect(chatText).toContain('User 8');
+  });
+
+  // ── auto-scroll reset ──────────────────────────────────────
+
+  it('endStreaming resets auto-scroll to true', async () => {
+    await renderer.init();
+
+    renderer.addUserMessage('Test');
+    renderer.startStreaming();
+    renderer.appendStreamChunk('Response');
+
+    // Scroll up pauses auto-scroll
+    renderer.scrollUp();
+
+    // End streaming should reset auto-scroll
+    renderer.endStreaming();
+    bridge.textContainerUpgrade.mockClear();
+
+    // Next startStreaming + appendStreamChunk + flush should auto-scroll (render)
+    renderer.startStreaming();
+    renderer.appendStreamChunk('New response');
+    vi.advanceTimersByTime(200);
+
+    const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+      (c: unknown[]) => c[0] === 2,
+    );
+    expect(chatCalls.length).toBeGreaterThanOrEqual(1);
   });
 
   // ── CHAT-07: 2000-char limit ──────────────────────────────
