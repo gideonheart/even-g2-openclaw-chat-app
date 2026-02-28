@@ -22,7 +22,7 @@
 
 **Milestone Goal:** Wire all v1.0 library modules into a working end-to-end voice loop and package for EvenHub submission.
 
-- [ ] **Phase 6: Runtime Wiring** - Wire all modules into a working voice loop via main.ts assembly
+- [x] **Phase 6: Runtime Wiring** - Wire all modules into a working voice loop via main.ts assembly (2/2 plans)
 - [ ] **Phase 7: Error Handling & Lifecycle** - Resilient voice loop with error recovery and graceful shutdown
 - [ ] **Phase 8: EvenHub Submission** - App manifest, production build, and .ehpk submission artifact
 
@@ -40,8 +40,8 @@
 **Plans**: 2 plans
 
 Plans:
-- [ ] 06-01-PLAN.md -- Module-level fixes (orphaned events, CLICK_EVENT quirk, keyboard shortcut) + VoiceLoopController
-- [ ] 06-02-PLAN.md -- Runtime router, glasses boot sequence, display turn lifecycle
+- [x] 06-01-PLAN.md -- Module-level fixes (orphaned events, CLICK_EVENT quirk, keyboard shortcut) + VoiceLoopController
+- [x] 06-02-PLAN.md -- Runtime router, glasses boot sequence, display turn lifecycle
 
 ### Phase 7: Error Handling & Lifecycle
 **Goal**: Voice loop recovers gracefully from errors -- gateway failures return the user to idle state, timeouts provide feedback, and app shutdown cleans up resources
@@ -81,6 +81,6 @@ Plans:
 | 3. Glasses Display & Streaming | v1.0 | 3/3 | Complete | 2026-02-28 |
 | 4. Gateway API Client | v1.0 | 1/1 | Complete | 2026-02-28 |
 | 5. Companion Hub UI | v1.0 | 3/3 | Complete | 2026-02-28 |
-| 6. Runtime Wiring | v1.1 | 0/2 | In progress | - |
+| 6. Runtime Wiring | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 7. Error Handling & Lifecycle | v1.1 | 0/? | Not started | - |
 | 8. EvenHub Submission | v1.1 | 0/? | Not started | - |

@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Phase 6 - Runtime Wiring (v1.1 Integration)
+**Current focus:** Phase 7 - Error Handling & Lifecycle (v1.1 Integration)
 
 ## Current Position
 
-Phase: 6 of 8 (Runtime Wiring)
-Plan: 2 of 2 in current phase
-Status: All plans complete, pending verification
-Last activity: 2026-02-28 -- Plan 06-02 complete: runtime router, glasses boot, display turn lifecycle
+Phase: 7 of 8 (Error Handling & Lifecycle)
+Plan: 0 of ? in current phase (plans not yet defined)
+Status: Ready to plan
+Last activity: 2026-02-28 -- Phase 6 (Runtime Wiring) complete. Verification PASSED (7/7 requirements).
 
-Progress: [######....] 62% (5/8 phases complete)
+Progress: [#######...] 75% (6/8 phases complete)
 
 ## Performance Metrics
 
@@ -33,6 +33,7 @@ Progress: [######....] 62% (5/8 phases complete)
 | 3 | 3 (viewport+icons, renderer, controller) | ~10m | 3m |
 | 4 | 1 (API client) | ~20m | 20m |
 | 5 | 3 (hub UI + logs + mobile polish) | ~40m | 13m |
+| 6 | 2 (module fixes + runtime wiring) | ~10m | 5m |
 
 ## Accumulated Context
 
@@ -59,5 +60,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Phase 6 plans complete (06-01, 06-02). Pending verification.
+Stopped at: Phase 6 complete. Phase 7 (Error Handling & Lifecycle) ready for planning.
 Resume file: None
