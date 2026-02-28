@@ -1,0 +1,15 @@
+{
+  "package_id": "lv.kingdom.bibele.openclawchat",
+  "edition": "202601",
+  "name": "OpenClaw Chat",
+  "version": "0.1.0",
+  "min_app_version": "0.1.0",
+  "tagline": "Voice chat with OpenClaw AI on Even G2",
+  "description": "EvenHub companion app for Even G2 that provides voice/chat UX and connects to an OpenClaw backend gateway for STT + AI responses.",
+  "author": "bibele.kingdom.lv",
+  "entrypoint": "index.html",
+  "permissions": {
+    "network": ["*"],
+    "microphone": true
+  }
+}
