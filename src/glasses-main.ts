@@ -13,7 +13,7 @@ import { createGlassesRenderer } from './display/glasses-renderer';
 import { createDisplayController } from './display/display-controller';
 import { createGatewayClient } from './api/gateway-client';
 import { createVoiceLoopController } from './voice-loop-controller';
-import { openDB, isIndexedDBAvailable, setOnUnexpectedClose } from './persistence/db';
+import { openDB, isIndexedDBAvailable, setOnUnexpectedClose, reopenDB } from './persistence/db';
 import { createConversationStore } from './persistence/conversation-store';
 import { createAutoSave } from './persistence/auto-save';
 import { restoreOrCreateConversation, writeActiveConversationId } from './persistence/boot-restore';
@@ -90,6 +90,18 @@ export async function boot(): Promise<void> {
           message: 'Database connection unexpectedly closed',
         });
         bus.emit('log', { level: 'error', msg: 'Database connection unexpectedly closed' });
+
+        // Attempt to reopen the database (RES-15)
+        reopenDB().then(() => {
+          bus.emit('log', { level: 'info', msg: 'Database reconnected successfully' });
+        }).catch(() => {
+          bus.emit('persistence:error', {
+            type: 'database-closed',
+            recoverable: false,
+            message: 'Failed to reopen database after max retries',
+          });
+          bus.emit('log', { level: 'error', msg: 'Database reopen failed after max retries -- restart required' });
+        });
       });
     } catch {
       // IndexedDB unavailable -- continue with in-memory

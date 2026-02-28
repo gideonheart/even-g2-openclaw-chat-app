@@ -946,7 +946,7 @@ async function initPersistence(): Promise<{
     // Phase 14: Dynamic imports for integrity and storage health
     const { createIntegrityChecker } = await import('./persistence/integrity-checker');
     const { createStorageHealth } = await import('./persistence/storage-health');
-    const { setOnUnexpectedClose } = await import('./persistence/db');
+    const { setOnUnexpectedClose, reopenDB } = await import('./persistence/db');
 
     // Phase 14: Integrity check
     const integrityChecker = createIntegrityChecker(db);
@@ -978,6 +978,13 @@ async function initPersistence(): Promise<{
     // Hook IDB onclose
     setOnUnexpectedClose(() => {
       console.error('[hub] Database connection unexpectedly closed');
+
+      // Attempt to reopen the database (RES-15)
+      reopenDB().then(() => {
+        console.log('[hub] Database reconnected successfully');
+      }).catch(() => {
+        console.error('[hub] Database reopen failed after max retries -- restart required');
+      });
     });
 
     const syncBridge = createSyncBridge();
