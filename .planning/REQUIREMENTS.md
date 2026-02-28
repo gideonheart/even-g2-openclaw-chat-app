@@ -16,9 +16,9 @@ Requirements for v1.2 Conversation Intelligence & Hub Interaction. Each maps to 
 
 ### Sessions
 
-- [ ] **SESS-01**: User can create new sessions
-- [ ] **SESS-02**: User can rename sessions
-- [ ] **SESS-03**: User can delete sessions (cascade-deletes associated conversations)
+- [x] **SESS-01**: User can create new sessions
+- [x] **SESS-02**: User can rename sessions
+- [x] **SESS-03**: User can delete sessions (cascade-deletes associated conversations)
 - [ ] **SESS-04**: User can switch between sessions (active session receives new voice turns)
 
 ### Command Menu
@@ -31,8 +31,8 @@ Requirements for v1.2 Conversation Intelligence & Hub Interaction. Each maps to 
 
 ### Cross-Context Sync
 
-- [ ] **SYNC-01**: Event bus bridge enables real-time hub-glasses communication
-- [ ] **SYNC-02**: Fallback mechanism if BroadcastChannel is unavailable in WebView
+- [x] **SYNC-01**: Event bus bridge enables real-time hub-glasses communication
+- [x] **SYNC-02**: Fallback mechanism if BroadcastChannel is unavailable in WebView
 
 ### Hub Interaction
 
@@ -84,17 +84,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PERS-02 | Phase 9 | Complete |
 | PERS-03 | Phase 9 | Complete |
 | PERS-04 | Phase 9 | Complete |
-| SESS-01 | Phase 10 | Pending |
-| SESS-02 | Phase 10 | Pending |
-| SESS-03 | Phase 10 | Pending |
+| SESS-01 | Phase 10 | Complete |
+| SESS-02 | Phase 10 | Complete |
+| SESS-03 | Phase 10 | Complete |
 | SESS-04 | Phase 10 | Pending |
 | MENU-01 | Phase 11 | Pending |
 | MENU-02 | Phase 11 | Pending |
 | MENU-03 | Phase 11 | Pending |
 | MENU-04 | Phase 11 | Pending |
 | MENU-05 | Phase 11 | Pending |
-| SYNC-01 | Phase 10 | Pending |
-| SYNC-02 | Phase 10 | Pending |
+| SYNC-01 | Phase 10 | Complete |
+| SYNC-02 | Phase 10 | Complete |
 | HUB-01 | Phase 12 | Pending |
 | HUB-02 | Phase 12 | Pending |
 | HUB-03 | Phase 12 | Pending |
