@@ -49,6 +49,7 @@ Recent decisions affecting current work:
 - [Execution]: Phase 5 companion hub was built first as vanilla JS prototype, then backfilled with TypeScript + tests
 - [Execution]: Phase 4 gateway client built as typed module with SSE parser, heartbeat, auto-reconnect
 - [Architecture]: Migrated from inline `<script>` to Vite + TypeScript modules with data-attribute event binding
+- [Phase quick-1]: 3 P1 items identified as blocking Phase 2: gateway reconnect no-op, missing event bus, zero main.ts test coverage
 
 ### Pending Todos
 
