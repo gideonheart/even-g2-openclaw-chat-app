@@ -12,11 +12,11 @@ This roadmap delivers a voice-chat companion app for Even G2 smart glasses, prog
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation & Settings** - Types, settings store with secret partitioning, TS strict mode, Vitest setup
+- [x] **Phase 1: Foundation & Settings** - Types, settings store with secret partitioning, TS strict mode, Vitest setup
 - [ ] **Phase 2: Even Bridge & Input Pipeline** - SDK wrapper, gesture FSM with tap/double-tap debounce, audio capture
 - [ ] **Phase 3: Glasses Display & Streaming** - Icon HUD, bubble chat renderer, virtualized viewport, stream throttle, UI modes
-- [ ] **Phase 4: Gateway API Client** - HTTP client, SSE streaming via fetch + eventsource-parser, health monitoring, reconnection
-- [ ] **Phase 5: Companion Hub UI** - Home, health, logs, sessions, simulator, shell navigation, mobile polish
+- [x] **Phase 4: Gateway API Client** - HTTP client, SSE streaming via fetch + eventsource-parser, health monitoring, reconnection
+- [x] **Phase 5: Companion Hub UI** - Home, health, logs, sessions, simulator, shell navigation, mobile polish
 - [ ] **Phase 6: Voice Loop Integration & Submission** - End-to-end wiring, EvenHub submission package with app metadata
 
 ## Phase Details
@@ -31,11 +31,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Secret fields (session key) display masked by default with a show/hide toggle, and exported JSON omits secrets unless explicitly included
   4. User can import a previously exported JSON settings file and the app validates it before applying
   5. Running `npx vitest` executes a test suite against core modules with TypeScript in strict mode
-**Plans**: TBD
+**Plans**: Complete
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [x] 01-01: TypeScript strict mode + Vite + Vitest infrastructure
+- [x] 01-02: Settings store with types, validation, secret partitioning, export/import
 
 ### Phase 2: Even Bridge & Input Pipeline
 **Goal**: Users can interact with the glasses via all four gestures and initiate voice recording through tap, with the bridge abstracting all SDK complexity behind typed events
@@ -79,10 +79,10 @@ Plans:
   1. API client sends audio to the gateway and receives streaming SSE responses using fetch() + eventsource-parser (not native EventSource), with no secrets stored in frontend code
   2. Connection health is monitored via heartbeat detection, and the health status is queryable by other modules
   3. After connectivity loss (phone sleep, network drop), the client automatically reconnects without user intervention
-**Plans**: TBD
+**Plans**: Complete
 
 Plans:
-- [ ] 04-01: TBD
+- [x] 04-01: Gateway client with SSE parser, heartbeat, auto-reconnect (13 tests)
 
 ### Phase 5: Companion Hub UI
 **Goal**: Users have a fully functional mobile/desktop companion app with home status, health diagnostics, session management, logs, simulator access, and polished navigation
@@ -95,12 +95,12 @@ Plans:
   4. User can view a session list with active marker, switch sessions with confirmation dialog and toast feedback
   5. Simulator is accessible at /preview-glasses.html with a launch button in the hub marked "dev-only", and state can be handed off via query parameters
   6. Bottom navigation uses clean SVG line icons matching Even native design, with correct active states on iPhone viewport, and the app has no horizontal scroll or clipped cards on any mobile viewport (safe-area insets handled)
-**Plans**: TBD
+**Plans**: Complete
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
-- [ ] 05-03: TBD
+- [x] 05-01: Home, health, sessions, settings pages with native Even design tokens
+- [x] 05-02: Logs view with filtering, diagnostics copy, simulator integration
+- [x] 05-03: Mobile polish, safe-area handling, bottom nav finalization
 
 ### Phase 6: Voice Loop Integration & Submission
 **Goal**: The complete voice conversation loop works end-to-end (gesture to audio to gateway to streaming display) and the app is packaged for EvenHub submission
@@ -124,9 +124,9 @@ Note: Phase 4 depends only on Phase 1, so it could execute in parallel with Phas
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Settings | 0/2 | Not started | - |
+| 1. Foundation & Settings | 2/2 | Complete | 2026-02-28 |
 | 2. Even Bridge & Input Pipeline | 0/3 | Not started | - |
 | 3. Glasses Display & Streaming | 0/3 | Not started | - |
-| 4. Gateway API Client | 0/1 | Not started | - |
-| 5. Companion Hub UI | 0/3 | Not started | - |
+| 4. Gateway API Client | 1/1 | Complete | 2026-02-28 |
+| 5. Companion Hub UI | 3/3 | Complete | 2026-02-28 |
 | 6. Voice Loop Integration & Submission | 0/2 | Not started | - |

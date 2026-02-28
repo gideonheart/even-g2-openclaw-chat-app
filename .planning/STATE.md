@@ -2,36 +2,38 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-27)
+See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Phase 1: Foundation & Settings
+**Current focus:** Phase 2: Even Bridge & Input Pipeline
 
 ## Current Position
 
-Phase: 1 of 6 (Foundation & Settings)
-Plan: 0 of 2 in current phase
+Phase: 2 of 6 (Even Bridge & Input Pipeline)
+Plan: 0 of 3 in current phase
 Status: Ready to plan
-Last activity: 2026-02-28 -- Roadmap created with 6 phases covering 64 requirements
+Last activity: 2026-02-28 -- Completed Phase 1 (TypeScript + Vitest + modular architecture) and Phase 4 (Gateway API client) and Phase 5 (Companion Hub UI)
 
-Progress: [..........] 0%
+Progress: [#####.....] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 3 (Phase 1, Phase 4, Phase 5 — executed directly from OVERNIGHT_TODO + infrastructure build)
+- Average duration: ~30 min
+- Total execution time: ~1.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 1 | 1 (infra) | ~30m | 30m |
+| 4 | 1 (API client) | ~20m | 20m |
+| 5 | 1 (hub UI) | ~40m | 40m |
 
 **Recent Trend:**
-- Last 5 plans: -
-- Trend: -
+- Last 3 phases: completed
+- Trend: fast execution
 
 *Updated after each plan completion*
 
@@ -44,10 +46,13 @@ Recent decisions affecting current work:
 
 - [Roadmap]: 6-phase structure derived from dependency chain: foundation -> bridge -> display -> API -> hub -> integration
 - [Roadmap]: Phase 4 (Gateway API) depends only on Phase 1, enabling potential parallel execution with Phases 2-3
+- [Execution]: Phase 5 companion hub was built first as vanilla JS prototype, then backfilled with TypeScript + tests
+- [Execution]: Phase 4 gateway client built as typed module with SSE parser, heartbeat, auto-reconnect
+- [Architecture]: Migrated from inline `<script>` to Vite + TypeScript modules with data-attribute event binding
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
@@ -58,5 +63,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Roadmap created, ready to plan Phase 1
+Stopped at: Phase 1+4+5 complete, ready to plan Phase 2 (Even Bridge & Input Pipeline) or Phase 3 (Glasses Display)
 Resume file: None
