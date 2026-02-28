@@ -6,6 +6,7 @@ import type {
   ConversationRecord,
   ConversationStore,
   MessageRecord,
+  SearchResult,
 } from './types';
 
 // ── Auto-naming ──────────────────────────────────────────
@@ -29,6 +30,37 @@ export function generateConversationName(firstMessage: string): string {
   }
 
   return truncated + '...';
+}
+
+// ── Snippet extraction ───────────────────────────────────
+
+/**
+ * Extract a snippet around the first occurrence of `query` in `text`.
+ * Returns `{ before, match, after }` with context characters and ellipsis
+ * when the match is not at the start/end of the text.
+ */
+export function extractSnippet(
+  text: string,
+  query: string,
+  contextChars = 40,
+): { before: string; match: string; after: string } {
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const idx = lowerText.indexOf(lowerQuery);
+
+  if (idx === -1) return { before: '', match: '', after: '' };
+
+  const matchEnd = idx + query.length;
+
+  let before = text.slice(Math.max(0, idx - contextChars), idx);
+  if (idx > contextChars) before = '...' + before;
+
+  const match = text.slice(idx, matchEnd);
+
+  let after = text.slice(matchEnd, matchEnd + contextChars);
+  if (matchEnd + contextChars < text.length) after = after + '...';
+
+  return { before, match, after };
 }
 
 // ── Store factory ────────────────────────────────────────
@@ -181,6 +213,67 @@ export function createConversationStore(
     });
   }
 
+  // ── Search ──────────────────────────────────────────────
+
+  function searchMessages(
+    query: string,
+    limit = 50,
+  ): Promise<SearchResult[]> {
+    if (!query || !query.trim()) return Promise.resolve([]);
+
+    const lowerQuery = query.toLowerCase();
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(
+        ['conversations', 'messages'],
+        'readonly',
+      );
+
+      // First load all conversation names into a map
+      const nameMap = new Map<string, string>();
+      const results: SearchResult[] = [];
+      const convReq = tx.objectStore('conversations').getAll();
+
+      convReq.onsuccess = () => {
+        for (const conv of convReq.result as ConversationRecord[]) {
+          nameMap.set(conv.id, conv.name);
+        }
+
+        // Then scan messages
+        const msgStore = tx.objectStore('messages');
+        const cursorReq = msgStore.openCursor();
+
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (cursor && results.length < limit) {
+            const msg = cursor.value as MessageRecord;
+            if (msg.text.toLowerCase().includes(lowerQuery)) {
+              results.push({
+                messageId: msg.id,
+                conversationId: msg.conversationId,
+                conversationName:
+                  nameMap.get(msg.conversationId) ?? 'Unknown',
+                role: msg.role,
+                text: msg.text,
+                timestamp: msg.timestamp,
+                snippet: extractSnippet(msg.text, query),
+              });
+            }
+            cursor.continue();
+          }
+        };
+      };
+
+      tx.oncomplete = () => {
+        // Sort by timestamp descending (most recent first)
+        resolve(
+          results.sort((a, b) => b.timestamp - a.timestamp),
+        );
+      };
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   return {
     createConversation,
     getConversation,
@@ -189,5 +282,6 @@ export function createConversationStore(
     addMessage,
     getMessages,
     getLastConversation,
+    searchMessages,
   };
 }

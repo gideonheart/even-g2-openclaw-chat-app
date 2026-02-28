@@ -3,6 +3,7 @@ import { openDB, closeDB, DB_NAME } from '../persistence/db';
 import {
   createConversationStore,
   generateConversationName,
+  extractSnippet,
 } from '../persistence/conversation-store';
 import type { ConversationStore } from '../persistence/types';
 
@@ -167,6 +168,120 @@ describe('conversation-store', () => {
       const messages = await store.getMessages('unknown-id');
       expect(messages).toEqual([]);
     });
+  });
+  // ── Search ─────────────────────────────────────────────
+
+  describe('searchMessages', () => {
+    it('finds messages containing the query (case-insensitive)', async () => {
+      const conv = await store.createConversation('Test Chat');
+      const t = Date.now();
+      await store.addMessage(conv.id, { role: 'user', text: 'Hello world', timestamp: t });
+      await store.addMessage(conv.id, { role: 'assistant', text: 'Hi there', timestamp: t + 100 });
+      await store.addMessage(conv.id, { role: 'user', text: 'HELLO again', timestamp: t + 200 });
+
+      const results = await store.searchMessages('hello');
+      expect(results).toHaveLength(2);
+      expect(results.every((r) => r.text.toLowerCase().includes('hello'))).toBe(true);
+    });
+
+    it('returns empty array for empty query', async () => {
+      const conv = await store.createConversation('Test');
+      await store.addMessage(conv.id, { role: 'user', text: 'Hello', timestamp: Date.now() });
+
+      expect(await store.searchMessages('')).toEqual([]);
+      expect(await store.searchMessages('   ')).toEqual([]);
+    });
+
+    it('respects limit parameter', async () => {
+      const conv = await store.createConversation('Test');
+      const t = Date.now();
+      for (let i = 0; i < 5; i++) {
+        await store.addMessage(conv.id, { role: 'user', text: `Match item ${i}`, timestamp: t + i });
+      }
+
+      const results = await store.searchMessages('Match', 3);
+      expect(results).toHaveLength(3);
+    });
+
+    it('snippet extraction includes context around match', async () => {
+      const conv = await store.createConversation('Test');
+      await store.addMessage(conv.id, {
+        role: 'user',
+        text: 'The quick brown fox jumps over the lazy dog',
+        timestamp: Date.now(),
+      });
+
+      const results = await store.searchMessages('fox');
+      expect(results).toHaveLength(1);
+      expect(results[0].snippet.match).toBe('fox');
+      expect(results[0].snippet.before).toContain('brown');
+      expect(results[0].snippet.after).toContain('jumps');
+    });
+
+    it('includes conversation name in results', async () => {
+      const conv = await store.createConversation('My Special Chat');
+      await store.addMessage(conv.id, { role: 'user', text: 'findme', timestamp: Date.now() });
+
+      const results = await store.searchMessages('findme');
+      expect(results).toHaveLength(1);
+      expect(results[0].conversationName).toBe('My Special Chat');
+    });
+
+    it('returns results sorted by timestamp descending', async () => {
+      const conv = await store.createConversation('Test');
+      const t = Date.now();
+      await store.addMessage(conv.id, { role: 'user', text: 'apple first', timestamp: t });
+      await store.addMessage(conv.id, { role: 'user', text: 'apple second', timestamp: t + 500 });
+      await store.addMessage(conv.id, { role: 'user', text: 'apple third', timestamp: t + 1000 });
+
+      const results = await store.searchMessages('apple');
+      expect(results).toHaveLength(3);
+      expect(results[0].text).toBe('apple third');
+      expect(results[1].text).toBe('apple second');
+      expect(results[2].text).toBe('apple first');
+    });
+  });
+});
+
+// ── Snippet extraction ───────────────────────────────────
+
+describe('extractSnippet', () => {
+  it('extracts snippet with context', () => {
+    const result = extractSnippet('The quick brown fox jumps over', 'fox');
+    expect(result.match).toBe('fox');
+    expect(result.before).toContain('brown');
+    expect(result.after).toContain('jumps');
+  });
+
+  it('adds ellipsis when match is in the middle of long text', () => {
+    const text = 'A'.repeat(60) + 'TARGET' + 'B'.repeat(60);
+    const result = extractSnippet(text, 'TARGET');
+    expect(result.before.startsWith('...')).toBe(true);
+    expect(result.after.endsWith('...')).toBe(true);
+  });
+
+  it('handles match at start of text (no leading ellipsis)', () => {
+    const result = extractSnippet('Hello world and more text', 'Hello');
+    expect(result.before).toBe('');
+    expect(result.match).toBe('Hello');
+    expect(result.after).toContain('world');
+  });
+
+  it('handles match at end of text (no trailing ellipsis)', () => {
+    const result = extractSnippet('Some text ending with target', 'target');
+    expect(result.match).toBe('target');
+    expect(result.after).toBe('');
+    expect(result.before).toContain('with');
+  });
+
+  it('returns empty snippet for no match', () => {
+    const result = extractSnippet('Hello world', 'xyz');
+    expect(result).toEqual({ before: '', match: '', after: '' });
+  });
+
+  it('preserves original casing of the match', () => {
+    const result = extractSnippet('The QuIcK Fox', 'quick');
+    expect(result.match).toBe('QuIcK');
   });
 });
 

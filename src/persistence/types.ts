@@ -15,6 +15,16 @@ export interface MessageRecord {
   timestamp: number;
 }
 
+export interface SearchResult {
+  messageId: string;
+  conversationId: string;
+  conversationName: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: number;
+  snippet: { before: string; match: string; after: string };
+}
+
 export interface ConversationStore {
   createConversation(name?: string): Promise<ConversationRecord>;
   getConversation(id: string): Promise<ConversationRecord | undefined>;
@@ -29,6 +39,7 @@ export interface ConversationStore {
   ): Promise<string>;
   getMessages(conversationId: string): Promise<MessageRecord[]>;
   getLastConversation(): Promise<ConversationRecord | undefined>;
+  searchMessages(query: string, limit?: number): Promise<SearchResult[]>;
 }
 
 export interface SessionStore {
