@@ -9,19 +9,19 @@ Requirements for v1.1 Integration milestone. Wires existing v1.0 library modules
 
 ### Voice Loop Wiring
 
-- [ ] **LOOP-01**: User can complete a full voice turn: tap -> record -> send -> see streaming response on glasses
-- [ ] **LOOP-02**: Runtime main.ts detects Even App WebView vs browser and routes to correct boot path
-- [ ] **LOOP-03**: Glasses boot sequence initializes all modules in correct dependency order (bus -> bridge -> audio -> gesture -> display -> voice loop)
-- [ ] **LOOP-04**: VoiceLoopController bridges gateway client events to the app event bus
-- [ ] **LOOP-05**: bridge:audio-frame events are forwarded to audioCapture.onFrame() for glasses-mode PCM recording
-- [ ] **LOOP-06**: CLICK_EVENT SDK quirk is handled so tap gestures work on real glasses hardware
+- [x] **LOOP-01**: User can complete a full voice turn: tap -> record -> send -> see streaming response on glasses
+- [x] **LOOP-02**: Runtime main.ts detects Even App WebView vs browser and routes to correct boot path
+- [x] **LOOP-03**: Glasses boot sequence initializes all modules in correct dependency order (bus -> bridge -> audio -> gesture -> display -> voice loop)
+- [x] **LOOP-04**: VoiceLoopController bridges gateway client events to the app event bus
+- [x] **LOOP-05**: bridge:audio-frame events are forwarded to audioCapture.onFrame() for glasses-mode PCM recording
+- [x] **LOOP-06**: CLICK_EVENT SDK quirk is handled so tap gestures work on real glasses hardware
 
 ### Error Handling & Lifecycle
 
 - [ ] **ERR-01**: FSM transitions to idle state when gateway returns an error mid-turn
 - [ ] **ERR-02**: Gateway requests timeout after 30 seconds with user-visible feedback
 - [ ] **ERR-03**: App performs graceful shutdown (gateway.destroy, audio cleanup) on unload
-- [ ] **ERR-04**: Orphaned event types removed from AppEventMap (display:state-change, viewport-update, hide, wake)
+- [x] **ERR-04**: Orphaned event types removed from AppEventMap (display:state-change, viewport-update, hide, wake)
 
 ### EvenHub Submission
 
@@ -69,16 +69,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LOOP-01 | Phase 6 | Pending |
-| LOOP-02 | Phase 6 | Pending |
-| LOOP-03 | Phase 6 | Pending |
-| LOOP-04 | Phase 6 | Pending |
-| LOOP-05 | Phase 6 | Pending |
-| LOOP-06 | Phase 6 | Pending |
+| LOOP-01 | Phase 6 | Complete |
+| LOOP-02 | Phase 6 | Complete |
+| LOOP-03 | Phase 6 | Complete |
+| LOOP-04 | Phase 6 | Complete |
+| LOOP-05 | Phase 6 | Complete |
+| LOOP-06 | Phase 6 | Complete |
 | ERR-01 | Phase 7 | Pending |
 | ERR-02 | Phase 7 | Pending |
 | ERR-03 | Phase 7 | Pending |
-| ERR-04 | Phase 6 | Pending |
+| ERR-04 | Phase 6 | Complete |
 | SUB-01 | Phase 8 | Pending |
 | SUB-02 | Phase 8 | Pending |
 | SUB-03 | Phase 8 | Pending |
@@ -91,4 +91,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-28*
-*Last updated: 2026-02-28 after v1.1 roadmap creation*
+*Last updated: 2026-02-28 after Phase 6 completion*
