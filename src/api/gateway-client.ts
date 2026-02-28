@@ -3,6 +3,7 @@ import type {
   ConnectionStatus,
   GatewayHealthState,
   SSEEvent,
+  TextTurnRequest,
   VoiceTurnChunk,
   VoiceTurnRequest,
 } from '../types';
@@ -154,6 +155,94 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
 
   const TURN_TIMEOUT_MS = 30_000;
 
+  // ── Shared SSE response streamer ───────────────────────────
+  // Both sendVoiceTurn and sendTextTurn use the same SSE parsing loop.
+
+  async function streamSSEResponse(resp: Response, timeoutId: ReturnType<typeof setTimeout>): Promise<void> {
+    const reader = resp.body?.getReader();
+    if (!reader) {
+      emitChunk({ type: 'error', error: 'No response body stream' });
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE events (terminated by double newline)
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
+
+      for (const part of parts) {
+        const events = parseSSELines(part + '\n\n');
+        for (const evt of events) {
+          try {
+            const chunk = JSON.parse(evt.data) as VoiceTurnChunk;
+            emitChunk(chunk);
+          } catch {
+            // Non-JSON SSE data, emit as raw response delta
+            emitChunk({ type: 'response_delta', text: evt.data });
+          }
+        }
+      }
+    }
+
+    // Flush remaining buffer
+    if (buffer.trim()) {
+      const events = parseSSELines(buffer);
+      for (const evt of events) {
+        try {
+          const chunk = JSON.parse(evt.data) as VoiceTurnChunk;
+          emitChunk(chunk);
+        } catch {
+          emitChunk({ type: 'response_delta', text: evt.data });
+        }
+      }
+    }
+
+    clearTimeout(timeoutId);
+  }
+
+  // ── Shared error handler for turn methods ──────────────────
+
+  function handleTurnError(
+    err: unknown,
+    timeoutId: ReturnType<typeof setTimeout>,
+  ): 'abort' | 'timeout' | 'retry' | 'fatal' {
+    clearTimeout(timeoutId);
+
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      const reason = abortController?.signal?.reason;
+      if (reason instanceof DOMException && reason.name === 'TimeoutError') {
+        emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
+        setStatus('error');
+        return 'timeout';
+      }
+      return 'abort'; // Intentional cancellation
+    }
+
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
+      setStatus('error');
+      return 'timeout';
+    }
+
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    emitChunk({ type: 'error', error: message });
+
+    if (health.reconnectAttempts < opts.maxReconnectAttempts) {
+      return 'retry';
+    } else {
+      setStatus('error');
+      return 'fatal';
+    }
+  }
+
   // ── Voice turn (audio upload + SSE stream) ─────────────────
 
   async function sendVoiceTurn(
@@ -170,9 +259,6 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
 
     abortController = new AbortController();
 
-    // Compose manual abort + timeout into a single signal.
-    // AbortSignal.any() is not available in all runtimes, so we wire
-    // a setTimeout that aborts the controller with a TimeoutError name.
     const timeoutId = setTimeout(() => {
       abortController!.abort(new DOMException('signal timed out', 'TimeoutError'));
     }, TURN_TIMEOUT_MS);
@@ -206,88 +292,73 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       setStatus('connected');
       health.reconnectAttempts = 0;
 
-      // Stream SSE response via ReadableStream
-      const reader = resp.body?.getReader();
-      if (!reader) {
-        emitChunk({ type: 'error', error: 'No response body stream' });
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Process complete SSE events (terminated by double newline)
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-
-        for (const part of parts) {
-          const events = parseSSELines(part + '\n\n');
-          for (const evt of events) {
-            try {
-              const chunk = JSON.parse(evt.data) as VoiceTurnChunk;
-              emitChunk(chunk);
-            } catch {
-              // Non-JSON SSE data, emit as raw response delta
-              emitChunk({ type: 'response_delta', text: evt.data });
-            }
-          }
-        }
-      }
-
-      // Flush remaining buffer
-      if (buffer.trim()) {
-        const events = parseSSELines(buffer);
-        for (const evt of events) {
-          try {
-            const chunk = JSON.parse(evt.data) as VoiceTurnChunk;
-            emitChunk(chunk);
-          } catch {
-            emitChunk({ type: 'response_delta', text: evt.data });
-          }
-        }
-      }
-
-      clearTimeout(timeoutId);
+      await streamSSEResponse(resp, timeoutId);
     } catch (err: unknown) {
-      clearTimeout(timeoutId);
-
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        // Check if this abort was caused by our timeout timer
-        const reason = abortController?.signal?.reason;
-        if (reason instanceof DOMException && reason.name === 'TimeoutError') {
-          emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
-          setStatus('error');
-          return;
-        }
-        return; // Intentional cancellation (user-initiated abort)
-      }
-
-      // Timeout errors emit an error chunk but do NOT trigger retry/backoff
-      if (err instanceof DOMException && err.name === 'TimeoutError') {
-        emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
-        setStatus('error');
-        return;
-      }
-
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      emitChunk({ type: 'error', error: message });
-
-      // Auto-reconnect with exponential backoff
-      if (health.reconnectAttempts < opts.maxReconnectAttempts) {
+      const result = handleTurnError(err, timeoutId);
+      if (result === 'retry') {
         health.reconnectAttempts++;
         setStatus('connecting');
         const delay = opts.reconnectBaseDelayMs * Math.pow(2, health.reconnectAttempts - 1);
         await new Promise((r) => setTimeout(r, delay));
-        // Actually retry the request (recursive call)
         return sendVoiceTurn(settings, request);
-      } else {
+      }
+    }
+  }
+
+  // ── Text turn (JSON body + SSE stream) ─────────────────────
+
+  async function sendTextTurn(
+    settings: AppSettings,
+    request: TextTurnRequest,
+  ): Promise<void> {
+    if (!settings.gatewayUrl) {
+      emitChunk({ type: 'error', error: 'Gateway URL not configured' });
+      return;
+    }
+
+    // Cancel any in-progress request
+    abort();
+
+    abortController = new AbortController();
+
+    const timeoutId = setTimeout(() => {
+      abortController!.abort(new DOMException('signal timed out', 'TimeoutError'));
+    }, TURN_TIMEOUT_MS);
+    const combinedSignal = abortController.signal;
+    setStatus('connecting');
+
+    try {
+      const resp = await fetch(`${settings.gatewayUrl}/text/turn`, {
+        method: 'POST',
+        body: JSON.stringify({ sessionId: request.sessionId, text: request.text }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(settings.sessionKey ? { 'X-Session-Key': settings.sessionKey } : {}),
+        },
+        signal: combinedSignal,
+      });
+
+      if (!resp.ok) {
+        emitChunk({
+          type: 'error',
+          error: `Gateway returned ${resp.status}: ${resp.statusText}`,
+        });
         setStatus('error');
+        return;
+      }
+
+      setStatus('connected');
+      health.reconnectAttempts = 0;
+
+      await streamSSEResponse(resp, timeoutId);
+    } catch (err: unknown) {
+      const result = handleTurnError(err, timeoutId);
+      if (result === 'retry') {
+        health.reconnectAttempts++;
+        setStatus('connecting');
+        const delay = opts.reconnectBaseDelayMs * Math.pow(2, health.reconnectAttempts - 1);
+        await new Promise((r) => setTimeout(r, delay));
+        return sendTextTurn(settings, request);
       }
     }
   }
@@ -315,6 +386,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
 
   return {
     sendVoiceTurn,
+    sendTextTurn,
     checkHealth,
     startHeartbeat,
     stopHeartbeat,

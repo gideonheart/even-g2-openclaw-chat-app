@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseSSELines, createGatewayClient } from '../api/gateway-client';
-import type { AppSettings, VoiceTurnRequest, VoiceTurnChunk } from '../types';
+import type { AppSettings, VoiceTurnRequest, TextTurnRequest, VoiceTurnChunk } from '../types';
 
 describe('gateway-client', () => {
   describe('parseSSELines', () => {
@@ -286,6 +286,138 @@ describe('gateway-client', () => {
       // No error chunk emitted, no retry
       expect(chunks).toHaveLength(0);
       expect(client.getHealth().reconnectAttempts).toBe(0);
+    });
+  });
+
+  describe('sendTextTurn', () => {
+    const testSettings: AppSettings = {
+      gatewayUrl: 'https://gw.test',
+      sessionKey: 'key-123',
+      sttProvider: 'whisperx',
+      apiKey: 'ak-test',
+    };
+
+    const testTextRequest: TextTurnRequest = {
+      sessionId: 'sess-1',
+      text: 'Hello, assistant!',
+    };
+
+    function createSSEStream(events: string[]): ReadableStream<Uint8Array> {
+      const encoder = new TextEncoder();
+      return new ReadableStream({
+        start(controller) {
+          for (const evt of events) {
+            controller.enqueue(encoder.encode(evt));
+          }
+          controller.close();
+        },
+      });
+    }
+
+    let originalFetch: typeof globalThis.fetch;
+
+    beforeEach(() => {
+      originalFetch = globalThis.fetch;
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it('POSTs to /text/turn with JSON body and Content-Type header', async () => {
+      const sseData = ['data: {"type":"response_end"}\n\n'];
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        body: createSSEStream(sseData),
+      });
+
+      const client = createGatewayClient();
+      await client.sendTextTurn(testSettings, testTextRequest);
+
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(url).toBe('https://gw.test/text/turn');
+      expect(init.method).toBe('POST');
+      expect(init.headers['Content-Type']).toBe('application/json');
+      expect(init.headers['X-Session-Key']).toBe('key-123');
+      const body = JSON.parse(init.body);
+      expect(body).toEqual({ sessionId: 'sess-1', text: 'Hello, assistant!' });
+    });
+
+    it('emits chunks from the SSE response stream', async () => {
+      const sseData = [
+        'data: {"type":"response_start","turnId":"t1"}\n\n',
+        'data: {"type":"response_delta","text":"Hi there"}\n\n',
+        'data: {"type":"response_end"}\n\n',
+      ];
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        body: createSSEStream(sseData),
+      });
+
+      const client = createGatewayClient();
+      const chunks: VoiceTurnChunk[] = [];
+      client.onChunk((c) => chunks.push(c));
+
+      await client.sendTextTurn(testSettings, testTextRequest);
+
+      expect(chunks).toHaveLength(3);
+      expect(chunks[0].type).toBe('response_start');
+      expect(chunks[1].type).toBe('response_delta');
+      expect(chunks[1].text).toBe('Hi there');
+      expect(chunks[2].type).toBe('response_end');
+    });
+
+    it('emits an error chunk when gateway URL is not configured', async () => {
+      const client = createGatewayClient();
+      const chunks: VoiceTurnChunk[] = [];
+      client.onChunk((c) => chunks.push(c));
+
+      const noUrlSettings: AppSettings = {
+        ...testSettings,
+        gatewayUrl: '',
+      };
+
+      await client.sendTextTurn(noUrlSettings, testTextRequest);
+
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0]).toEqual({ type: 'error', error: 'Gateway URL not configured' });
+    });
+
+    it('aborts the previous request before starting a new one', async () => {
+      const sseData = ['data: {"type":"response_end"}\n\n'];
+
+      // Track abort signals
+      const abortSignals: AbortSignal[] = [];
+      let fetchCount = 0;
+
+      globalThis.fetch = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+        fetchCount++;
+        if (init?.signal) abortSignals.push(init.signal);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          body: createSSEStream(sseData),
+        });
+      });
+
+      const client = createGatewayClient();
+
+      // First request
+      await client.sendTextTurn(testSettings, testTextRequest);
+      // Second request should abort the first controller
+      await client.sendTextTurn(testSettings, testTextRequest);
+
+      expect(fetchCount).toBe(2);
+      // The first request's signal should have been aborted by the second call
+      expect(abortSignals[0].aborted).toBe(true);
     });
   });
 });

@@ -71,6 +71,11 @@ export interface VoiceTurnRequest {
   sttProvider: SttProvider;
 }
 
+export interface TextTurnRequest {
+  sessionId: string;
+  text: string;
+}
+
 export interface VoiceTurnChunk {
   type: 'transcript' | 'response_start' | 'response_delta' | 'response_end' | 'error';
   text?: string;
