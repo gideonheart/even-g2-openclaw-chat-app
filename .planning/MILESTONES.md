@@ -57,3 +57,30 @@
 
 ---
 
+
+## v1.2 Conversation Intelligence & Hub Interaction (Shipped: 2026-02-28)
+
+**Phases completed:** 5 phases (9-13), 11 plans, 372 tests
+**Lines of code:** ~10,300 TypeScript (60 files)
+**Timeline:** 2 days (2026-02-27 → 2026-02-28)
+**Git range:** `899e58e` → `5c8739c` (73 files changed, +11,067/-320)
+
+**Delivered:** Persistent conversations, multi-session management, glasses command menu, and full hub conversation interface — making the chat app stateful with real-time two-way sync between glasses and companion hub.
+
+**Key accomplishments:**
+1. IndexedDB persistence layer with auto-save on every message and boot recovery of active conversation
+2. Dynamic session management: create, rename, delete (cascade), switch — from both glasses and hub
+3. Cross-context sync via BroadcastChannel + localStorage fallback for real-time hub ↔ glasses relay
+4. Glasses command menu: double-tap overlay with /new, /switch, /rename, /reset, /delete and confirmation dialogs
+5. Hub live conversation view with streaming indicator, text input with gateway sendTextTurn
+6. Conversation history browsing with transcript viewer, delete, and full-text search with highlighted snippets
+
+**v1.1 tech debt resolved:**
+- ✅ Phase 9 formally verified (PERS-01–04) via Phase 13 gap closure
+- ✅ conversation:named and message:added SyncMessages wired (no longer dead code)
+- ✅ onConversationNamed callback posts sync message instead of no-op stub
+
+**Archive:** `.planning/milestones/v1.2-ROADMAP.md`, `.planning/milestones/v1.2-REQUIREMENTS.md`, `.planning/milestones/v1.2-MILESTONE-AUDIT.md`
+
+---
+

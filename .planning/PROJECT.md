@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A public EvenHub app for Even G2 smart glasses that provides voice/chat UX for interacting with an OpenClaw AI agent. Users speak through the glasses, audio is sent to a backend gateway (`openclaw-even-g2-voice-gateway`) for STT processing and OpenClaw agent responses, which stream back as bubble chat in a compact HUD rendered on the 576x288 glasses display. The app includes a companion mobile/desktop hub for settings, diagnostics, and session management. Shipped as a complete end-to-end voice loop with error recovery, graceful shutdown, and a 42KB .ehpk EvenHub submission artifact.
+A public EvenHub app for Even G2 smart glasses that provides voice/chat UX for interacting with an OpenClaw AI agent. Users speak through the glasses, audio is sent to a backend gateway (`openclaw-even-g2-voice-gateway`) for STT processing and OpenClaw agent responses, which stream back as bubble chat in a compact HUD rendered on the 576x288 glasses display. The companion hub provides live conversation view, text input, session management, conversation history browsing with full-text search, and a glasses command menu for hands-free session control. Conversations persist in IndexedDB with real-time two-way sync between glasses and hub via BroadcastChannel.
 
 ## Core Value
 
@@ -54,7 +54,7 @@ Users can have natural voice conversations with an AI assistant through their Ev
 
 ### Active
 
-(No active requirements — v1.2 milestone complete)
+(No active requirements — planning next milestone)
 
 ### Out of Scope
 
@@ -72,12 +72,14 @@ Users can have natural voice conversations with an AI assistant through their Ev
 
 ## Context
 
-Shipped v1.2 Conversation Intelligence with ~7,900 LOC TypeScript across 59 files, 372 passing tests.
-Tech stack: Vite, TypeScript strict mode, Vitest, @evenrealities/even_hub_sdk, eventsource-parser, @evenrealities/evenhub-cli.
+Shipped v1.2 Conversation Intelligence with ~10,300 LOC TypeScript across 60 files, 372 passing tests (25 suites).
+Tech stack: Vite, TypeScript strict mode, Vitest, @evenrealities/even_hub_sdk, eventsource-parser, @evenrealities/evenhub-cli, fake-indexeddb (dev).
 
-Architecture: Pure-function core modules (gesture-fsm.ts, viewport.ts, icon-animator.ts) with zero SDK imports. Side effects confined to bridge boundary (even-bridge.ts). Event bus connects all modules. Factory pattern for services. Environment router (main.ts) detects Even App WebView vs browser and routes to glasses-main.ts or hub-main.ts. Layer 0-5 initialization sequence in glasses-main.ts ensures correct dependency order.
+Architecture: Pure-function core modules (gesture-fsm.ts, viewport.ts, icon-animator.ts, command-menu.ts) with zero SDK imports. Side effects confined to bridge boundary (even-bridge.ts). Event bus + SyncBridge connects all modules across contexts. Factory pattern for services. Environment router (main.ts) detects Even App WebView vs browser and routes to glasses-main.ts or hub-main.ts. Layer 0-5 initialization sequence in glasses-main.ts ensures correct dependency order. IndexedDB persistence layer with ConversationStore and SessionStore. BroadcastChannel sync with localStorage fallback for cross-context messaging.
 
-App is packaged as 42KB .ehpk artifact via `npm run pack` and ready for EvenHub portal submission.
+App is packaged as .ehpk artifact via `npm run pack` and ready for EvenHub portal submission.
+
+Three milestones shipped (v1.0 MVP → v1.1 Integration → v1.2 Conversation Intelligence) across 13 phases, 28 plans, in ~4.8 hours total execution time.
 
 ## Constraints
 
@@ -121,4 +123,4 @@ App is packaged as 42KB .ehpk artifact via `npm run pack` and ready for EvenHub 
 | IDB cursor-based full-text search | searchMessages scans all messages with limit + snippet extraction | ✓ Good — v1.2 |
 
 ---
-*Last updated: 2026-02-28 after v1.2 milestone complete (Phase 12)*
+*Last updated: 2026-02-28 after v1.2 milestone*
