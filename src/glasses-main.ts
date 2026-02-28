@@ -36,6 +36,7 @@ export async function boot(): Promise<void> {
   // ── Persistence: try to open IndexedDB, fall back to in-memory ──
   let store: ConversationStore | null = null;
   let sessionStore: SessionStore | null = null;
+  let evictionDetected = false;
   if (isIndexedDBAvailable()) {
     try {
       const db = await openDB();
@@ -51,6 +52,7 @@ export async function boot(): Promise<void> {
         const hadPreviousData = localStorage.getItem('openclaw-conversation-count');
         if (hadPreviousData && report.conversationCount === 0) {
           bus.emit('storage:evicted', {});
+          evictionDetected = true;
         }
         await integrityChecker.writeSentinel();
       }
@@ -129,9 +131,62 @@ export async function boot(): Promise<void> {
         });
         bus.emit('log', { level: 'error', msg: 'Database connection unexpectedly closed' });
 
-        // Attempt to reopen the database (RES-15)
-        reopenDB().then(() => {
-          bus.emit('log', { level: 'info', msg: 'Database reconnected successfully' });
+        // Attempt to reopen and propagate new handle to all IDB-dependent modules (RES-15)
+        reopenDB().then((newDb) => {
+          // Recreate stores from fresh handle
+          store = createConversationStore(newDb);
+          sessionStore = createSessionStore(newDb, store);
+
+          // Destroy and recreate autoSave with new store (captures store in closure)
+          autoSave?.destroy();
+          autoSave = createAutoSave({
+            bus,
+            store,
+            getConversationId: () => activeConversationId,
+            onConversationNamed: (name) => {
+              syncBridge.postMessage({
+                type: 'conversation:named',
+                origin: 'glasses',
+                conversationId: activeConversationId,
+                name,
+              });
+            },
+            syncBridge,
+          });
+
+          // Destroy and recreate driftReconciler with new store
+          driftReconciler?.destroy();
+          driftReconciler = createDriftReconciler({
+            store,
+            onDriftDetected: (info) => {
+              bus.emit('sync:drift-detected', info);
+              bus.emit('log', {
+                level: 'warn',
+                msg: `Sync drift: local=${info.localCount} remote=${info.remoteCount} conv=${info.conversationId}`,
+              });
+            },
+            onReconciled: (info) => {
+              bus.emit('sync:reconciled', info);
+              bus.emit('log', { level: 'info', msg: `Sync reconciled: ${info.conversationId}` });
+            },
+          });
+
+          // Destroy and recreate syncMonitor with new store
+          syncMonitor?.destroy();
+          syncMonitor = createSyncMonitor({
+            bridge: syncBridge,
+            store,
+            origin: 'glasses',
+            getActiveConversationId: () => activeConversationId,
+            onHeartbeat: driftReconciler
+              ? (conversationId, remoteCount) => {
+                  driftReconciler!.handleHeartbeat(conversationId, remoteCount).catch(() => {});
+                }
+              : undefined,
+          });
+          syncMonitor.startHeartbeat();
+
+          bus.emit('log', { level: 'info', msg: 'Database reconnected -- all stores refreshed' });
         }).catch(() => {
           bus.emit('persistence:error', {
             type: 'database-closed',
@@ -154,7 +209,7 @@ export async function boot(): Promise<void> {
   const syncBridge = createSyncBridge();
 
   // ── Sync hardening: SyncMonitor + DriftReconciler (Phase 16) ──
-  const driftReconciler = store ? createDriftReconciler({
+  let driftReconciler = store ? createDriftReconciler({
     store,
     onDriftDetected: (info) => {
       bus.emit('sync:drift-detected', info);
@@ -169,7 +224,7 @@ export async function boot(): Promise<void> {
     },
   }) : null;
 
-  const syncMonitor = store ? createSyncMonitor({
+  let syncMonitor = store ? createSyncMonitor({
     bridge: syncBridge,
     store,
     origin: 'glasses',
@@ -243,6 +298,11 @@ export async function boot(): Promise<void> {
   } else {
     // Show welcome message (per user decision: "Tap to ask" -- functional tone, first time only)
     renderer.showWelcome();
+  }
+
+  // Show eviction notification after renderer is initialized (RES-04)
+  if (evictionDetected) {
+    renderer.showError('Data was cleared by system');
   }
 
   // Start sync heartbeat after display init and restore are complete (Phase 16)
@@ -351,7 +411,7 @@ export async function boot(): Promise<void> {
   });
 
   // ── Persistence: wire auto-save after voice loop is ready ──
-  const autoSave = store ? createAutoSave({
+  let autoSave = store ? createAutoSave({
     bus,
     store,
     getConversationId: () => activeConversationId,
@@ -403,6 +463,7 @@ export async function boot(): Promise<void> {
     cleaned = true;
 
     // Reverse initialization order (Layer 5 -> Layer 0)
+    driftReconciler?.destroy();  // clear mismatch counter before stopping heartbeat
     syncMonitor?.destroy();      // stop heartbeat before bridge teardown
     syncBridge.destroy();        // cross-context sync (no dependencies)
     autoSave?.destroy();
