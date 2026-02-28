@@ -21,6 +21,7 @@ import { createSessionStore } from './persistence/session-store';
 import { createConversationStore } from './persistence/conversation-store';
 import type { SessionStore } from './persistence/types';
 import { createSyncBridge } from './sync/sync-bridge';
+import type { SyncBridge } from './sync/sync-types';
 
 // ── App state ────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ const logStore = createLogStore();
 // ── Module-level session manager ─────────────────────────────
 
 let sessionManager: SessionManager | null = null;
+let hubSyncBridge: SyncBridge | null = null;
 
 // ── DOM helpers ──────────────────────────────────────────────
 
@@ -525,6 +527,7 @@ export async function initHub(): Promise<void> {
   const persistence = await initPersistence();
   if (persistence) {
     sessionManager = persistence.sessionManager;
+    hubSyncBridge = persistence.syncBridge;
     // Set initial active session from IndexedDB
     const activeId = sessionManager.getActiveSessionId();
     if (activeId) {
@@ -532,11 +535,17 @@ export async function initHub(): Promise<void> {
       refreshHealthDisplay();
     }
   }
+
+  // Clean up sync bridge on tab close
+  window.addEventListener('beforeunload', () => {
+    hubSyncBridge?.destroy();
+  });
 }
 
 async function initPersistence(): Promise<{
   sessionManager: SessionManager;
   sessionStore: SessionStore;
+  syncBridge: SyncBridge;
 } | null> {
   try {
     const { isIndexedDBAvailable, openDB } = await import('./persistence/db');
@@ -567,7 +576,7 @@ async function initPersistence(): Promise<{
       }
     });
 
-    return { sessionManager: mgr, sessionStore };
+    return { sessionManager: mgr, sessionStore, syncBridge };
   } catch {
     return null;
   }

@@ -145,7 +145,9 @@ export async function boot(): Promise<void> {
     switch (msg.type) {
       case 'session:switched': {
         // Hub switched session -- load new session into display
-        switchToSession(msg.sessionId);
+        switchToSession(msg.sessionId).catch(() => {
+          // sync switch failed -- glasses will retry on next message
+        });
         break;
       }
       case 'session:deleted': {
@@ -156,6 +158,8 @@ export async function boot(): Promise<void> {
               switchToSession(sessions[0].id);
             }
             // If no sessions remain, a new one will be created on next voice turn
+          }).catch(() => {
+            // session list unavailable
           });
         }
         break;
