@@ -247,6 +247,18 @@ export function createConversationStore(
     });
   }
 
+  // ── Count ──────────────────────────────────────────────
+
+  function countMessages(conversationId: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('messages', 'readonly');
+      const index = tx.objectStore('messages').index('by-conversation');
+      const req = index.count(IDBKeyRange.only(conversationId));
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
   // ── Search ──────────────────────────────────────────────
 
   function searchMessages(
@@ -321,5 +333,6 @@ export function createConversationStore(
     verifyMessage,
     getLastConversation,
     searchMessages,
+    countMessages,
   };
 }

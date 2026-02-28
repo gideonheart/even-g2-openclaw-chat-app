@@ -42,6 +42,7 @@ export interface ConversationStore {
   verifyMessage(messageId: string): Promise<boolean>;
   getLastConversation(): Promise<ConversationRecord | undefined>;
   searchMessages(query: string, limit?: number): Promise<SearchResult[]>;
+  countMessages(conversationId: string): Promise<number>;
 }
 
 export interface SessionStore {

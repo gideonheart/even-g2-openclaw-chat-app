@@ -132,4 +132,15 @@ export interface AppEventMap {
     isAvailable: boolean;
   };
   'storage:evicted': {};
+
+  // Phase 16: Sync Hardening
+  'sync:drift-detected': {
+    localCount: number;
+    remoteCount: number;
+    conversationId: string;
+  };
+  'sync:reconciled': {
+    conversationId: string;
+    action: 'full-reload';
+  };
 }

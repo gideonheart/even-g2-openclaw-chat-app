@@ -212,6 +212,26 @@ describe('conversation-store', () => {
     });
   });
 
+  // ── countMessages ──────────────────────────────────────
+
+  describe('countMessages', () => {
+    it('returns the number of messages for a conversation', async () => {
+      const conv = await store.createConversation('Test');
+      const t = Date.now();
+      await store.addMessage(conv.id, { role: 'user', text: 'One', timestamp: t });
+      await store.addMessage(conv.id, { role: 'assistant', text: 'Two', timestamp: t + 100 });
+      await store.addMessage(conv.id, { role: 'user', text: 'Three', timestamp: t + 200 });
+
+      const count = await store.countMessages(conv.id);
+      expect(count).toBe(3);
+    });
+
+    it('returns 0 for a non-existent conversation', async () => {
+      const count = await store.countMessages('non-existent-id');
+      expect(count).toBe(0);
+    });
+  });
+
   // ── Search ─────────────────────────────────────────────
 
   describe('searchMessages', () => {
