@@ -9,8 +9,8 @@ Requirements for initial release (EvenHub submission). Each maps to roadmap phas
 
 ### Voice Interaction
 
-- [ ] **VOICE-01**: User can tap to start voice recording on glasses
-- [ ] **VOICE-02**: User can tap again to stop voice recording
+- [x] **VOICE-01**: User can tap to start voice recording on glasses
+- [x] **VOICE-02**: User can tap again to stop voice recording
 - [ ] **VOICE-03**: Audio is captured from glasses microphone via Even SDK bridge events
 - [ ] **VOICE-04**: Captured audio is buffered and sent to backend gateway for STT processing
 
@@ -34,11 +34,11 @@ Requirements for initial release (EvenHub submission). Each maps to roadmap phas
 
 ### Gesture Input
 
-- [ ] **GEST-01**: Tap gesture maps to start/stop voice recording
-- [ ] **GEST-02**: Double-tap gesture maps to menu/wake toggle
-- [ ] **GEST-03**: Scroll-up gesture maps to conversation history scroll up
-- [ ] **GEST-04**: Scroll-down gesture maps to scroll down / jump to latest
-- [ ] **GEST-05**: Tap vs double-tap disambiguation uses 250-300ms debounce window in FSM
+- [x] **GEST-01**: Tap gesture maps to start/stop voice recording
+- [x] **GEST-02**: Double-tap gesture maps to menu/wake toggle
+- [x] **GEST-03**: Scroll-up gesture maps to conversation history scroll up
+- [x] **GEST-04**: Scroll-down gesture maps to scroll down / jump to latest
+- [x] **GEST-05**: Tap vs double-tap disambiguation uses 250-300ms debounce window in FSM
 - [ ] **GEST-06**: Gesture hint bar displayed on glasses when contextually relevant
 
 ### Settings
@@ -170,14 +170,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BRDG-01 | Phase 2 | Pending |
 | BRDG-02 | Phase 2 | Pending |
 | BRDG-03 | Phase 2 | Pending |
-| GEST-01 | Phase 2 | Pending |
-| GEST-02 | Phase 2 | Pending |
-| GEST-03 | Phase 2 | Pending |
-| GEST-04 | Phase 2 | Pending |
-| GEST-05 | Phase 2 | Pending |
+| GEST-01 | Phase 2 | Complete |
+| GEST-02 | Phase 2 | Complete |
+| GEST-03 | Phase 2 | Complete |
+| GEST-04 | Phase 2 | Complete |
+| GEST-05 | Phase 2 | Complete |
 | GEST-06 | Phase 2 | Pending |
-| VOICE-01 | Phase 2 | Pending |
-| VOICE-02 | Phase 2 | Pending |
+| VOICE-01 | Phase 2 | Complete |
+| VOICE-02 | Phase 2 | Complete |
 | VOICE-03 | Phase 2 | Pending |
 | VOICE-04 | Phase 2 | Pending |
 | ICONS-01 | Phase 3 | Pending |

@@ -50,7 +50,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Gesture FSM pure function (TDD: state transitions for all 4 gestures across 5 states)
+- [x] 02-01-PLAN.md — Gesture FSM pure function (TDD: state transitions for all 4 gestures across 5 states)
 - [ ] 02-02-PLAN.md — EvenBridge service, dev mock bridge, audio capture with glasses/browser fallback
 - [ ] 02-03-PLAN.md — Gesture handler wiring with debounce, action dispatch, and hint bar text
 
