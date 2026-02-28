@@ -104,4 +104,6 @@ export interface AppEventMap {
   'gateway:status': { status: ConnectionStatus };
   'gateway:chunk': VoiceTurnChunk;
   'log': { level: LogLevel; msg: string; cid?: string };
+  'persistence:warning': { message: string };
+  'persistence:restored': { conversationId: string; messageCount: number };
 }
