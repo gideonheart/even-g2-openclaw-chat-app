@@ -1,25 +1,25 @@
-import { STT_LABELS } from './types';
 import type { AppSettings, LogLevel } from './types';
 import {
   loadSettings,
   saveSettings as persistSettings,
   exportSettingsJson,
   importSettingsJson,
-  maskSecret,
   FIELD_CONFIG,
 } from './settings';
 import { SESSIONS, findSession, isActiveSession } from './sessions';
 import { createLogStore, buildDiagnostics } from './logs';
-import { escHtml, truncate } from './utils';
+import { escHtml } from './utils';
+import {
+  createAppState,
+  connectGlasses as connectGlassesPure,
+  disconnectGlasses as disconnectGlassesPure,
+  buildSettingsViewModel,
+  buildHealthViewModel,
+} from './app-wiring';
 
 // ── App state ────────────────────────────────────────────────
 
-let settings: AppSettings = loadSettings();
-let glassesConnected = false;
-let activeSession = 'gideon';
-let currentLogFilter: LogLevel | 'all' = 'all';
-let pendingConfirm: (() => void) | null = null;
-let currentEditField: string | null = null;
+const appState = createAppState(loadSettings());
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 const logStore = createLogStore();
@@ -44,7 +44,7 @@ function showToast(msg: string): void {
 
 function renderLogs(): void {
   const list = $('logList');
-  const filtered = logStore.filter(currentLogFilter);
+  const filtered = logStore.filter(appState.currentLogFilter);
   if (filtered.length === 0) {
     list.innerHTML =
       '<div class="u-type-body-base u-tc-2nd" style="padding: 16px; text-align: center;">No log entries.</div>';
@@ -73,34 +73,25 @@ function addLog(level: LogLevel, msg: string, cid: string | null = null): void {
 // ── Settings display ─────────────────────────────────────────
 
 function refreshSettingsDisplay(): void {
-  $('settGatewayDisplay').textContent = settings.gatewayUrl
-    ? truncate(settings.gatewayUrl, 30)
-    : 'Not set';
-  $('settKeyDisplay').textContent = maskSecret(settings.sessionKey);
-  $('settSttDisplay').textContent =
-    STT_LABELS[settings.sttProvider] || settings.sttProvider;
-  $('settApiKeyDisplay').textContent = maskSecret(settings.apiKey);
-  $('sttDisplay').textContent =
-    STT_LABELS[settings.sttProvider] || settings.sttProvider;
+  const vm = buildSettingsViewModel(appState.settings);
+  $('settGatewayDisplay').textContent = vm.gatewayDisplay;
+  $('settKeyDisplay').textContent = vm.sessionKeyDisplay;
+  $('settSttDisplay').textContent = vm.sttDisplay;
+  $('settApiKeyDisplay').textContent = vm.apiKeyDisplay;
+  $('sttDisplay').textContent = vm.sttDisplay;
 }
 
 function refreshHealthDisplay(): void {
-  const gwOk = !!settings.gatewayUrl;
-  const sttOk = !!settings.sttProvider;
-  const sessOk = !!activeSession;
+  const vm = buildHealthViewModel(appState.settings, appState.activeSession);
 
-  setHealthDot('hGatewayDot', gwOk ? 'ok' : 'off');
-  $('hGatewayStatus').textContent = gwOk
-    ? truncate(settings.gatewayUrl, 35)
-    : 'Not configured';
+  setHealthDot('hGatewayDot', vm.gateway.dot);
+  $('hGatewayStatus').textContent = vm.gateway.label;
 
-  setHealthDot('hSttDot', sttOk ? 'ok' : 'off');
-  $('hSttStatus').textContent = sttOk
-    ? STT_LABELS[settings.sttProvider] || settings.sttProvider
-    : 'Not configured';
+  setHealthDot('hSttDot', vm.stt.dot);
+  $('hSttStatus').textContent = vm.stt.label;
 
-  setHealthDot('hSessionDot', sessOk ? 'ok' : 'off');
-  $('hSessionStatus').textContent = sessOk ? activeSession : 'No session';
+  setHealthDot('hSessionDot', vm.session.dot);
+  $('hSessionStatus').textContent = vm.session.label;
 }
 
 function setHealthDot(id: string, state: string): void {
@@ -111,7 +102,7 @@ function setHealthDot(id: string, state: string): void {
 
 function openSettingsField(fieldId: string): void {
   show('settings');
-  currentEditField = fieldId;
+  appState.currentEditField = fieldId;
   const config = FIELD_CONFIG[fieldId];
   if (!config) return;
 
@@ -126,13 +117,13 @@ function openSettingsField(fieldId: string): void {
     html += `<div class="field"><select class="input" id="fieldInput">`;
     config.options?.forEach((opt) => {
       const sel =
-        settings[fieldId as keyof AppSettings] === opt.value ? 'selected' : '';
+        appState.settings[fieldId as keyof AppSettings] === opt.value ? 'selected' : '';
       html += `<option value="${opt.value}" ${sel}>${opt.label}</option>`;
     });
     html += `</select></div>`;
   } else {
     const inputType = config.secret ? 'password' : 'text';
-    const value = (settings[fieldId as keyof AppSettings] as string) || '';
+    const value = (appState.settings[fieldId as keyof AppSettings] as string) || '';
     html += `<div class="field"><div class="field-row">`;
     html += `<div class="field" style="flex:1;"><input class="input" type="${inputType}" id="fieldInput" value="${escHtml(value)}" placeholder="${config.placeholder || ''}" autocomplete="off" /></div>`;
     if (config.secret) {
@@ -173,8 +164,8 @@ function toggleFieldVisibility(): void {
 }
 
 function saveField(): void {
-  if (!currentEditField) return;
-  const config = FIELD_CONFIG[currentEditField];
+  if (!appState.currentEditField) return;
+  const config = FIELD_CONFIG[appState.currentEditField];
   const input = document.getElementById('fieldInput') as HTMLInputElement;
   const value = input.value.trim();
 
@@ -185,8 +176,8 @@ function saveField(): void {
     return;
   }
 
-  (settings as unknown as Record<string, string>)[currentEditField] = value;
-  persistSettings(settings);
+  (appState.settings as unknown as Record<string, string>)[appState.currentEditField] = value;
+  persistSettings(appState.settings);
   refreshSettingsDisplay();
   refreshHealthDisplay();
   addLog('info', 'Settings saved');
@@ -195,7 +186,7 @@ function saveField(): void {
 }
 
 function closeSettingsEdit(): void {
-  currentEditField = null;
+  appState.currentEditField = null;
   $('settingsList').classList.add('active');
   $('settingsEdit').classList.remove('active');
 }
@@ -203,7 +194,7 @@ function closeSettingsEdit(): void {
 // ── Export / import ──────────────────────────────────────────
 
 function exportSettingsAction(): void {
-  const json = exportSettingsJson(settings);
+  const json = exportSettingsJson(appState.settings);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -221,8 +212,8 @@ function importSettingsAction(event: Event): void {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      settings = importSettingsJson(e.target!.result as string, settings);
-      persistSettings(settings);
+      appState.settings = importSettingsJson(e.target!.result as string, appState.settings);
+      persistSettings(appState.settings);
       refreshSettingsDisplay();
       refreshHealthDisplay();
       showToast('Settings imported');
@@ -243,7 +234,7 @@ function showSessions(): void {
   const body = $('sessionModalBody');
   let html = '<div style="display:grid; gap:6px; margin-top:8px;">';
   SESSIONS.forEach((s) => {
-    const active = isActiveSession(s.id, activeSession);
+    const active = isActiveSession(s.id, appState.activeSession);
     html += `<div class="list-item session-item ${active ? 'is-active' : ''}" data-session-id="${s.id}">`;
     html += `<div class="list-item__content"><div class="list-item__title">${s.name}</div>`;
     html += `<div class="list-item__subtitle">${s.desc}</div></div>`;
@@ -266,15 +257,15 @@ function showSessions(): void {
 }
 
 function switchSession(sessionId: string): void {
-  if (sessionId === activeSession) {
+  if (sessionId === appState.activeSession) {
     closeSessionModal();
     return;
   }
   const session = findSession(sessionId);
   if (!session) return;
 
-  pendingConfirm = () => {
-    activeSession = sessionId;
+  appState.pendingConfirm = () => {
+    appState.activeSession = sessionId;
     $('activeSessionDisplay').textContent = session.name.toLowerCase();
     closeSessionModal();
     closeConfirm();
@@ -293,40 +284,38 @@ function closeSessionModal(): void {
 }
 
 function confirmAction(): void {
-  if (pendingConfirm) pendingConfirm();
-  pendingConfirm = null;
+  if (appState.pendingConfirm) appState.pendingConfirm();
+  appState.pendingConfirm = null;
 }
 
 function closeConfirm(): void {
   $('confirmModal').classList.remove('active');
-  pendingConfirm = null;
+  appState.pendingConfirm = null;
 }
 
 // ── Glasses connection (mock) ────────────────────────────────
 
 function connectGlasses(): void {
-  glassesConnected = true;
+  const result = connectGlassesPure(appState, addLog);
   $('gState').innerHTML =
     '<span class="status-dot status-dot--ok"></span> Connected';
-  $('gBattery').textContent = '87 %';
-  addLog('info', 'Glasses connected (mock)', 'conn-' + Date.now());
+  $('gBattery').textContent = result.battery;
   showToast('Glasses connected');
 }
 
 function disconnectGlasses(): void {
-  glassesConnected = false;
+  const result = disconnectGlassesPure(appState, addLog);
   $('gState').innerHTML =
     '<span class="status-dot status-dot--off"></span> Disconnected';
-  $('gBattery').textContent = '-- %';
-  addLog('info', 'Glasses disconnected');
+  $('gBattery').textContent = result.battery;
 }
 
 // ── Simulator launch ─────────────────────────────────────────
 
 function launchSimulator(): void {
   const params = new URLSearchParams({
-    session: activeSession,
-    connected: glassesConnected ? '1' : '0',
+    session: appState.activeSession,
+    connected: appState.glassesConnected ? '1' : '0',
   });
   window.open(`./preview-glasses.html?${params.toString()}`, '_blank');
   addLog('info', 'Simulator opened');
@@ -357,7 +346,7 @@ function show(page: string): void {
 // ── Diagnostics copy ─────────────────────────────────────────
 
 function copyDiagnostics(): void {
-  const diag = buildDiagnostics(logStore, activeSession, glassesConnected, settings);
+  const diag = buildDiagnostics(logStore, appState.activeSession, appState.glassesConnected, appState.settings);
   navigator.clipboard
     .writeText(JSON.stringify(diag, null, 2))
     .then(() => showToast('Diagnostics copied to clipboard'))
@@ -367,7 +356,7 @@ function copyDiagnostics(): void {
 // ── Log filters ──────────────────────────────────────────────
 
 function filterLogs(level: LogLevel | 'all', btn: HTMLElement): void {
-  currentLogFilter = level;
+  appState.currentLogFilter = level;
   document
     .querySelectorAll('.log-filter')
     .forEach((b) => b.classList.remove('active'));
@@ -381,7 +370,7 @@ function init(): void {
   // Seed demo logs
   addLog('info', 'App initialized');
   addLog('info', 'Settings loaded from localStorage');
-  if (!settings.gatewayUrl) {
+  if (!appState.settings.gatewayUrl) {
     addLog('warn', 'Gateway URL not configured');
   }
 
