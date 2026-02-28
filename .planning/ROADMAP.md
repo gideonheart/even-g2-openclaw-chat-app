@@ -47,12 +47,12 @@ Plans:
   3. Double-tap toggles the menu/wake state; scroll-up and scroll-down dispatch their respective navigation actions
   4. Audio is captured from the glasses microphone (or browser fallback in dev mode) and buffered for sending to the gateway
   5. A gesture hint bar appears on the glasses display when contextually relevant (e.g., during conversation scroll)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
-- [ ] 02-03: TBD
+- [ ] 02-01-PLAN.md — Gesture FSM pure function (TDD: state transitions for all 4 gestures across 5 states)
+- [ ] 02-02-PLAN.md — EvenBridge service, dev mock bridge, audio capture with glasses/browser fallback
+- [ ] 02-03-PLAN.md — Gesture handler wiring with debounce, action dispatch, and hint bar text
 
 ### Phase 3: Glasses Display & Streaming
 **Goal**: Users see a responsive glasses HUD with animated state icons and streaming bubble chat that renders efficiently on the 576x288 canvas
