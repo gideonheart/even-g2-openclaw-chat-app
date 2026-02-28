@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Phase 10 - Dynamic Sessions & Cross-Context Sync
+**Current focus:** Phase 13 - Phase 9 Verification & Sync Wiring (gap closure)
 
 ## Current Position
 
-Phase: 10 of 12 (Dynamic Sessions & Cross-Context Sync)
-Plan: 3 of 3 in current phase
-Status: Phase 10 complete
-Last activity: 2026-02-28 - Completed quick task 4: Apply 4 priority pre-close fixes
+Phase: 13 of 13 (Phase 9 Verification & Sync Wiring)
+Plan: 1 of 1 in current phase
+Status: Phase 13 complete
+Last activity: 2026-02-28 - Completed 13-01: Phase 9 verification + sync wiring
 
-Progress: [████████████████████] 22/22 plans (v1.0-v1.1 complete, Phase 10 complete)
+Progress: [████████████████████] 23/23 plans (v1.0-v1.1 complete, Phase 10 complete, Phase 13 gap closure complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22 (Phases 1-10 all complete)
-- Total tests: 325 (all passing)
+- Total plans completed: 23 (Phases 1-10 + Phase 13 gap closure complete)
+- Total tests: 328 (all passing)
 - Total LOC: ~7,600 TypeScript (58 files)
 - Total execution time: ~4.7 hours
 
@@ -38,6 +38,7 @@ Progress: [████████████████████] 22/22 p
 | 8 | 1 (evenhub submission) | ~3m | 3m |
 | 9 | 2 (data layer TDD + wiring) | ~10m | 5m |
 | 10 | 3/3 (session store + sync bridge + glasses wiring + hub sessions) | ~16m | 5m |
+| 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
 
 ## Accumulated Context
 
@@ -54,6 +55,10 @@ All decisions logged in PROJECT.md Key Decisions table (20 entries with outcomes
 - SessionManager wraps SessionStore + SyncBridge in single facade for all session ops (10-03)
 - Removed hardcoded SESSIONS array; sessions loaded dynamically from IndexedDB (10-03)
 - activeSession default '' (set from IndexedDB on boot), initHub() now async (10-03)
+- syncBridge optional in AutoSaveOptions to preserve backward compatibility (13-01)
+- message:added posted only after successful save to prevent hub showing unpersisted messages (13-01)
+- Hub message:added is no-op break for now; Phase 12 will build live conversation view (13-01)
+- conversation:named falls through to refreshSessionList() since hub shows conversation names (13-01)
 
 ### Pending Todos
 
@@ -77,5 +82,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed quick task 4 (5 pre-close fixes: dedup, cleanup, unused param, dead code, async guards).
+Stopped at: Completed 13-01-PLAN.md (Phase 9 verification + sync wiring gap closure)
 Resume file: None

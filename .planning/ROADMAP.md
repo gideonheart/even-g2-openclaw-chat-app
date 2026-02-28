@@ -36,7 +36,7 @@
 - [x] **Phase 10: Dynamic Sessions & Cross-Context Sync** - Session CRUD, event bus bridge, and real-time hub-glasses relay (completed 2026-02-28)
 - [ ] **Phase 11: Glasses Command Menu** - Double-tap overlay with session commands, scroll navigation, and auto-close
 - [ ] **Phase 12: Hub Conversation Features** - Live view, text input, history browsing, and full-text search
-- [ ] **Phase 13: Phase 9 Verification & Sync Wiring** - Verify persistence, fix sync message stubs, wire auto-save relay *(gap closure)*
+- [x] **Phase 13: Phase 9 Verification & Sync Wiring** - Verify persistence, fix sync message stubs, wire auto-save relay *(gap closure)* (completed 2026-02-28)
 
 ## Phase Details
 
@@ -139,4 +139,4 @@ Phases execute: 9 → 10 → **13** → 11 → 12 (Phase 13 must complete before
 | 10. Dynamic Sessions & Cross-Context Sync | v1.2 | 3/3 | Complete | 2026-02-28 |
 | 11. Glasses Command Menu | v1.2 | 0/? | Not started | - |
 | 12. Hub Conversation Features | v1.2 | 0/? | Not started | - |
-| 13. Phase 9 Verification & Sync Wiring | v1.2 | 0/? | Not started | - |
+| 13. Phase 9 Verification & Sync Wiring | 1/1 | Complete   | 2026-02-28 | - |
