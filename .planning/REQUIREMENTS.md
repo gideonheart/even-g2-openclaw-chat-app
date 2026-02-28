@@ -19,7 +19,7 @@ Requirements for v1.2 Conversation Intelligence & Hub Interaction. Each maps to 
 - [x] **SESS-01**: User can create new sessions
 - [x] **SESS-02**: User can rename sessions
 - [x] **SESS-03**: User can delete sessions (cascade-deletes associated conversations)
-- [ ] **SESS-04**: User can switch between sessions (active session receives new voice turns)
+- [x] **SESS-04**: User can switch between sessions (active session receives new voice turns)
 
 ### Command Menu
 
@@ -87,7 +87,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SESS-01 | Phase 10 | Complete |
 | SESS-02 | Phase 10 | Complete |
 | SESS-03 | Phase 10 | Complete |
-| SESS-04 | Phase 10 | Pending |
+| SESS-04 | Phase 10 | Complete |
 | MENU-01 | Phase 11 | Pending |
 | MENU-02 | Phase 11 | Pending |
 | MENU-03 | Phase 11 | Pending |

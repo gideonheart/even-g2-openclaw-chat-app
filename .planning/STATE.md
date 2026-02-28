@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 10 of 12 (Dynamic Sessions & Cross-Context Sync)
-Plan: 1 of 3 in current phase
-Status: Plan 10-01 complete, ready for Plan 10-02
-Last activity: 2026-02-28 — Plan 10-01 complete (session store + sync bridge)
+Plan: 2 of 3 in current phase
+Status: Plan 10-02 complete, ready for Plan 10-03
+Last activity: 2026-02-28 — Plan 10-02 complete (glasses sync bridge wiring)
 
-Progress: [██████████████████░░] 20/22 plans (v1.0-v1.1 complete, Phase 10 in progress)
+Progress: [███████████████████░] 21/22 plans (v1.0-v1.1 complete, Phase 10 in progress)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 20 (Phases 1-9, Phase 10 plan 01)
-- Total tests: 322 (all passing)
+- Total plans completed: 21 (Phases 1-9, Phase 10 plans 01-02)
+- Total tests: 325 (all passing)
 - Total LOC: ~7,400 TypeScript (58 files)
 - Total execution time: ~4.6 hours
 
@@ -37,7 +37,7 @@ Progress: [██████████████████░░] 20/22 p
 | 7 | 2 (error recovery + lifecycle cleanup) | ~15m | 8m |
 | 8 | 1 (evenhub submission) | ~3m | 3m |
 | 9 | 2 (data layer TDD + wiring) | ~10m | 5m |
-| 10 | 1/3 (session store + sync bridge) | ~6m | 6m |
+| 10 | 2/3 (session store + sync bridge + glasses wiring) | ~10m | 5m |
 
 ## Accumulated Context
 
@@ -48,6 +48,9 @@ All decisions logged in PROJECT.md Key Decisions table (20 entries with outcomes
 - Cascade delete uses raw IDB transaction with cursor for atomicity (10-01)
 - SyncBridge feature-detects BroadcastChannel, falls back to localStorage (10-01)
 - localStorage fallback uses set+remove pattern for repeated sends (10-01)
+- switchToSession uses renderer.destroy()+init() cycle to clear display (10-02)
+- SyncBridge initialized before Layer 1 hardware boundary for early sync readiness (10-02)
+- Session events added to AppEventMap for local bus coordination (10-02)
 
 ### Pending Todos
 
@@ -70,5 +73,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 10-01-PLAN.md (session store + sync bridge TDD). Ready for 10-02.
+Stopped at: Completed 10-02-PLAN.md (glasses sync bridge wiring). Ready for 10-03.
 Resume file: None
