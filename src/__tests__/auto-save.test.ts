@@ -94,7 +94,7 @@ describe('auto-save', () => {
     autoSave.destroy();
   });
 
-  it('resets pending text on error chunk', async () => {
+  it('saves partial text on error chunk and does not pollute next response', async () => {
     const autoSave = createAutoSave({
       bus,
       store,
@@ -104,14 +104,14 @@ describe('auto-save', () => {
     bus.emit('gateway:chunk', { type: 'response_start' });
     bus.emit('gateway:chunk', {
       type: 'response_delta',
-      text: 'should be discarded',
+      text: 'should be saved',
     });
     bus.emit('gateway:chunk', {
       type: 'error',
       error: 'Something went wrong',
     });
 
-    // Now start a new response — should NOT include the discarded text
+    // Now start a new response -- should NOT include the partial text
     bus.emit('gateway:chunk', { type: 'response_start' });
     bus.emit('gateway:chunk', {
       type: 'response_delta',
@@ -122,8 +122,10 @@ describe('auto-save', () => {
     await new Promise((r) => setTimeout(r, 50));
 
     const messages = await store.getMessages(conversationId);
-    expect(messages).toHaveLength(1);
-    expect(messages[0].text).toBe('fresh response');
+    expect(messages).toHaveLength(2);
+    const texts = messages.map((m) => m.text).sort();
+    expect(texts).toContain('fresh response');
+    expect(texts).toContain('should be saved [response interrupted]');
 
     autoSave.destroy();
   });

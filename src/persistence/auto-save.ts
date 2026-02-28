@@ -1,7 +1,11 @@
-// ── Auto-save — event bus subscriber that persists messages to IndexedDB ──
+// ── Auto-save -- event bus subscriber that persists messages to IndexedDB ──
 //
 // Subscribes to gateway:chunk events. Saves user messages on 'transcript',
 // assistant messages on 'response_end'. Fire-and-forget with retry logic.
+//
+// RES-06: First-write verification (read-back via separate readonly tx)
+// RES-07: Error escalation (persistence:error after retry exhaustion)
+// RES-08: Partial response preservation on error chunk
 
 import type { EventBus } from '../events';
 import type { AppEventMap } from '../types';
@@ -32,9 +36,29 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
 
   let pendingAssistantText = '';
   let hasUserMessage = false;
+  let storageVerified = false;
 
+  // RES-06: Verify first write via separate read-back
+  async function verifyFirstWrite(messageId: string): Promise<void> {
+    if (storageVerified) return;
+
+    const exists = await store.verifyMessage(messageId);
+    if (exists) {
+      storageVerified = true;
+    } else {
+      bus.emit('persistence:error', {
+        type: 'verify-failed',
+        recoverable: false,
+        message: 'Storage verification failed -- first message not readable',
+        conversationId: getConversationId(),
+      });
+    }
+  }
+
+  // RES-07: Enhanced saveWithRetry with error escalation
   async function saveWithRetry(
     operation: () => Promise<unknown>,
+    context?: { conversationId: string },
   ): Promise<boolean> {
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -48,8 +72,22 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
         }
       }
     }
+
+    // RES-07: Emit persistence:error after all retries exhausted
+    bus.emit('persistence:error', {
+      type: 'write-failed',
+      recoverable: false,
+      message: 'Failed to save message after retries',
+      conversationId: context?.conversationId,
+    });
+
     return false;
   }
+
+  // RES-06: Reset verification flag on persistence:warning
+  unsubs.push(bus.on('persistence:warning', () => {
+    storageVerified = false;
+  }));
 
   unsubs.push(
     bus.on('gateway:chunk', (chunk) => {
@@ -60,14 +98,22 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
           const isFirst = !hasUserMessage;
           hasUserMessage = true;
 
+          // Capture message ID for verification
+          let lastSavedId = '';
+
           // Fire-and-forget save
-          saveWithRetry(() =>
-            store.addMessage(convId, {
+          saveWithRetry(
+            async () => { lastSavedId = await store.addMessage(convId, {
               role: 'user',
               text,
               timestamp: Date.now(),
-            }),
+            }); },
+            { conversationId: convId },
           ).then((ok) => {
+            // RES-06: Verify first write
+            if (ok && !storageVerified) {
+              verifyFirstWrite(lastSavedId);
+            }
             if (ok && syncBridge) {
               syncBridge.postMessage({
                 type: 'message:added',
@@ -119,12 +165,13 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
             const text = pendingAssistantText;
             pendingAssistantText = '';
 
-            saveWithRetry(() =>
-              store.addMessage(convId, {
+            saveWithRetry(
+              () => store.addMessage(convId, {
                 role: 'assistant',
                 text,
                 timestamp: Date.now(),
               }),
+              { conversationId: convId },
             ).then((ok) => {
               if (ok && syncBridge) {
                 syncBridge.postMessage({
@@ -150,9 +197,30 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
           break;
         }
 
-        case 'error':
-          // Discard pending assistant text on error (don't save failed responses)
-          pendingAssistantText = '';
+        case 'error': {
+          // RES-08: Save partial response with interruption marker
+          if (pendingAssistantText) {
+            const convId = getConversationId();
+            const text = pendingAssistantText + ' [response interrupted]';
+            pendingAssistantText = '';
+            saveWithRetry(
+              () => store.addMessage(convId, { role: 'assistant', text, timestamp: Date.now() }),
+              { conversationId: convId },
+            ).then((ok) => {
+              if (ok && syncBridge) {
+                syncBridge.postMessage({
+                  type: 'message:added',
+                  origin: 'glasses',
+                  conversationId: convId,
+                  role: 'assistant',
+                  text,
+                });
+              }
+            });
+          } else {
+            pendingAssistantText = '';
+          }
+
           if (syncBridge) {
             syncBridge.postMessage({
               type: 'streaming:end',
@@ -161,6 +229,7 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
             });
           }
           break;
+        }
       }
     }),
   );
