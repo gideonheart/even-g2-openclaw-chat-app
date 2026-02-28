@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 Phase: 2 of 6 (Even Bridge & Input Pipeline)
 Plan: 0 of 3 in current phase
 Status: Ready to plan
-Last activity: 2026-02-28 - Completed quick task 1: Review last commits and document what was done well, what to refactor, and edge cases before Phase 2
+Last activity: 2026-02-28 - Completed quick task 2: Implement 3 P1 blockers (event bus, gateway reconnect, main.ts decomposition)
 
 Progress: [#####.....] 50%
 
@@ -50,6 +50,7 @@ Recent decisions affecting current work:
 - [Execution]: Phase 4 gateway client built as typed module with SSE parser, heartbeat, auto-reconnect
 - [Architecture]: Migrated from inline `<script>` to Vite + TypeScript modules with data-attribute event binding
 - [Phase quick-1]: 3 P1 items identified as blocking Phase 2: gateway reconnect no-op, missing event bus, zero main.ts test coverage
+- [Phase quick-2]: All 3 P1 blockers resolved: typed event bus created, gateway reconnect retry implemented, app-wiring extracted from main.ts with 28 new tests
 
 ### Pending Todos
 
@@ -66,9 +67,10 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | Review last commits and document what was done well, what to refactor, and edge cases before Phase 2 | 2026-02-28 | e10ca22 | [1-review-last-commits-and-document-what-wa](./quick/1-review-last-commits-and-document-what-wa/) |
+| 2 | Implement 3 P1 blockers: event bus, gateway reconnect retry, main.ts decomposition | 2026-02-28 | 1ffe894 | [2-implement-3-p1-blockers-gateway-reconnec](./quick/2-implement-3-p1-blockers-gateway-reconnec/) |
 
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Phase 1+4+5 complete, ready to plan Phase 2 (Even Bridge & Input Pipeline) or Phase 3 (Glasses Display)
+Stopped at: Completed quick-2 (3 P1 blockers). All blockers resolved, ready to plan Phase 2 (Even Bridge & Input Pipeline)
 Resume file: None
