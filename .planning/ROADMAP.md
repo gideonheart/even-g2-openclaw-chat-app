@@ -51,10 +51,11 @@ Plans:
   1. When the gateway returns an error mid-turn, the gesture FSM transitions back to idle and the user can immediately start a new voice turn without restarting the app
   2. If a gateway request takes longer than 30 seconds, the turn is cancelled with user-visible feedback on the glasses display and the user can retry
   3. When the app is closed or navigated away from, gateway connections are destroyed and audio resources are released -- no leaked timers or fetch requests
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: TBD
+- [ ] 07-01-PLAN.md -- Error recovery flow: FSM reset input, gateway timeout with AbortSignal.timeout(30s), user-visible error messages
+- [ ] 07-02-PLAN.md -- Graceful shutdown: lifecycle cleanup on visibilitychange/pagehide, module destroy in reverse order
 
 ### Phase 8: EvenHub Submission
 **Goal**: App is packaged as a valid EvenHub submission with correct metadata, a self-contained production build, and a working .ehpk artifact
@@ -82,5 +83,5 @@ Plans:
 | 4. Gateway API Client | v1.0 | 1/1 | Complete | 2026-02-28 |
 | 5. Companion Hub UI | v1.0 | 3/3 | Complete | 2026-02-28 |
 | 6. Runtime Wiring | v1.1 | 2/2 | Complete | 2026-02-28 |
-| 7. Error Handling & Lifecycle | v1.1 | 0/? | Not started | - |
+| 7. Error Handling & Lifecycle | v1.1 | 0/2 | Not started | - |
 | 8. EvenHub Submission | v1.1 | 0/? | Not started | - |
