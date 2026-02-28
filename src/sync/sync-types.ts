@@ -9,7 +9,9 @@ export type SyncMessage =
   | { type: 'session:deleted'; origin: SyncOrigin; sessionId: string }
   | { type: 'session:switched'; origin: SyncOrigin; sessionId: string }
   | { type: 'message:added'; origin: SyncOrigin; conversationId: string; role: string; text: string }
-  | { type: 'conversation:named'; origin: SyncOrigin; conversationId: string; name: string };
+  | { type: 'conversation:named'; origin: SyncOrigin; conversationId: string; name: string }
+  | { type: 'streaming:start'; origin: SyncOrigin; conversationId: string }
+  | { type: 'streaming:end'; origin: SyncOrigin; conversationId: string };
 
 export interface SyncBridge {
   postMessage(msg: SyncMessage): void;

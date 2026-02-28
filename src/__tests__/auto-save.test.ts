@@ -253,6 +253,101 @@ describe('auto-save', () => {
     autoSave.destroy();
   });
 
+  // ── Streaming sync message tests ──────────────────────────
+
+  it('posts streaming:start via syncBridge on response_start chunk', async () => {
+    const mockBridge = createMockSyncBridge();
+    const autoSave = createAutoSave({
+      bus,
+      store,
+      getConversationId: () => conversationId,
+      syncBridge: mockBridge,
+    });
+
+    bus.emit('gateway:chunk', { type: 'response_start' });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockBridge.postMessage).toHaveBeenCalledWith({
+      type: 'streaming:start',
+      origin: 'glasses',
+      conversationId,
+    });
+
+    autoSave.destroy();
+  });
+
+  it('posts streaming:end via syncBridge on response_end chunk after successful save', async () => {
+    const mockBridge = createMockSyncBridge();
+    const autoSave = createAutoSave({
+      bus,
+      store,
+      getConversationId: () => conversationId,
+      syncBridge: mockBridge,
+    });
+
+    bus.emit('gateway:chunk', { type: 'response_delta', text: 'Reply text' });
+    bus.emit('gateway:chunk', { type: 'response_end' });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockBridge.postMessage).toHaveBeenCalledWith({
+      type: 'streaming:end',
+      origin: 'glasses',
+      conversationId,
+    });
+
+    autoSave.destroy();
+  });
+
+  it('posts streaming:end via syncBridge on error chunk (cleanup)', async () => {
+    const mockBridge = createMockSyncBridge();
+    const autoSave = createAutoSave({
+      bus,
+      store,
+      getConversationId: () => conversationId,
+      syncBridge: mockBridge,
+    });
+
+    bus.emit('gateway:chunk', { type: 'response_start' });
+    bus.emit('gateway:chunk', { type: 'response_delta', text: 'partial' });
+    bus.emit('gateway:chunk', { type: 'error', error: 'Something broke' });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // streaming:start was posted on response_start, streaming:end on error
+    const streamingCalls = mockBridge.postMessage.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { type: string }).type.startsWith('streaming:'),
+    );
+    expect(streamingCalls).toHaveLength(2);
+    expect((streamingCalls[0][0] as { type: string }).type).toBe('streaming:start');
+    expect((streamingCalls[1][0] as { type: string }).type).toBe('streaming:end');
+
+    autoSave.destroy();
+  });
+
+  it('does not post streaming sync messages when syncBridge is not provided', async () => {
+    const autoSave = createAutoSave({
+      bus,
+      store,
+      getConversationId: () => conversationId,
+      // No syncBridge
+    });
+
+    bus.emit('gateway:chunk', { type: 'response_start' });
+    bus.emit('gateway:chunk', { type: 'response_delta', text: 'text' });
+    bus.emit('gateway:chunk', { type: 'response_end' });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Should not crash — messages still saved
+    const messages = await store.getMessages(conversationId);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].text).toBe('text');
+
+    autoSave.destroy();
+  });
+
   it('does not post sync message when syncBridge is not provided', async () => {
     // This test verifies existing tests still work without syncBridge (no crash)
     const autoSave = createAutoSave({

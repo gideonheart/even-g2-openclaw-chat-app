@@ -99,6 +99,16 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
           break;
         }
 
+        case 'response_start':
+          if (syncBridge) {
+            syncBridge.postMessage({
+              type: 'streaming:start',
+              origin: 'glasses',
+              conversationId: getConversationId(),
+            });
+          }
+          break;
+
         case 'response_delta':
           pendingAssistantText += chunk.text ?? '';
           break;
@@ -124,6 +134,11 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
                   role: 'assistant',
                   text,
                 });
+                syncBridge.postMessage({
+                  type: 'streaming:end',
+                  origin: 'glasses',
+                  conversationId: convId,
+                });
               }
               if (!ok) {
                 bus.emit('persistence:warning', {
@@ -138,6 +153,13 @@ export function createAutoSave(opts: AutoSaveOptions): AutoSave {
         case 'error':
           // Discard pending assistant text on error (don't save failed responses)
           pendingAssistantText = '';
+          if (syncBridge) {
+            syncBridge.postMessage({
+              type: 'streaming:end',
+              origin: 'glasses',
+              conversationId: getConversationId(),
+            });
+          }
           break;
       }
     }),
