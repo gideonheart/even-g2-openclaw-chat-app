@@ -71,8 +71,8 @@ describe('sync-bridge', () => {
     });
 
     it('postMessage sends to another bridge instance via BroadcastChannel', () => {
-      const bridgeA = createSyncBridge('glasses');
-      const bridgeB = createSyncBridge('hub');
+      const bridgeA = createSyncBridge();
+      const bridgeB = createSyncBridge();
 
       const received: SyncMessage[] = [];
       bridgeB.onMessage((msg) => received.push(msg));
@@ -88,7 +88,7 @@ describe('sync-bridge', () => {
     });
 
     it('messages from same bridge are NOT delivered to own handlers', () => {
-      const bridge = createSyncBridge('glasses');
+      const bridge = createSyncBridge();
 
       const received: SyncMessage[] = [];
       bridge.onMessage((msg) => received.push(msg));
@@ -102,8 +102,8 @@ describe('sync-bridge', () => {
     });
 
     it('onMessage returns unsubscribe function that stops delivery', () => {
-      const bridgeA = createSyncBridge('glasses');
-      const bridgeB = createSyncBridge('hub');
+      const bridgeA = createSyncBridge();
+      const bridgeB = createSyncBridge();
 
       const received: SyncMessage[] = [];
       const unsub = bridgeB.onMessage((msg) => received.push(msg));
@@ -121,8 +121,8 @@ describe('sync-bridge', () => {
     });
 
     it('destroy() closes channel and stops all handlers', () => {
-      const bridgeA = createSyncBridge('glasses');
-      const bridgeB = createSyncBridge('hub');
+      const bridgeA = createSyncBridge();
+      const bridgeB = createSyncBridge();
 
       const received: SyncMessage[] = [];
       bridgeB.onMessage((msg) => received.push(msg));
@@ -150,7 +150,7 @@ describe('sync-bridge', () => {
     });
 
     it('postMessage writes to localStorage key and receives via storage event', () => {
-      const bridge = createSyncBridge('glasses');
+      const bridge = createSyncBridge();
 
       const received: SyncMessage[] = [];
       bridge.onMessage((msg) => received.push(msg));
@@ -175,7 +175,7 @@ describe('sync-bridge', () => {
     });
 
     it('onMessage returns unsubscribe function that stops delivery', () => {
-      const bridge = createSyncBridge('glasses');
+      const bridge = createSyncBridge();
 
       const received: SyncMessage[] = [];
       const unsub = bridge.onMessage((msg) => received.push(msg));
@@ -206,7 +206,7 @@ describe('sync-bridge', () => {
     });
 
     it('ignores storage events for other keys', () => {
-      const bridge = createSyncBridge('glasses');
+      const bridge = createSyncBridge();
 
       const received: SyncMessage[] = [];
       bridge.onMessage((msg) => received.push(msg));
@@ -225,7 +225,7 @@ describe('sync-bridge', () => {
     });
 
     it('ignores storage events with null newValue', () => {
-      const bridge = createSyncBridge('glasses');
+      const bridge = createSyncBridge();
 
       const received: SyncMessage[] = [];
       bridge.onMessage((msg) => received.push(msg));
@@ -244,7 +244,7 @@ describe('sync-bridge', () => {
     });
 
     it('destroy() removes event listener and clears handlers', () => {
-      const bridge = createSyncBridge('glasses');
+      const bridge = createSyncBridge();
 
       const received: SyncMessage[] = [];
       bridge.onMessage((msg) => received.push(msg));
@@ -269,8 +269,8 @@ describe('sync-bridge', () => {
     it('uses BroadcastChannel when available', () => {
       (globalThis as any).BroadcastChannel = MockBroadcastChannel;
 
-      const bridgeA = createSyncBridge('glasses');
-      const bridgeB = createSyncBridge('hub');
+      const bridgeA = createSyncBridge();
+      const bridgeB = createSyncBridge();
 
       const received: SyncMessage[] = [];
       bridgeB.onMessage((msg) => received.push(msg));
@@ -286,7 +286,7 @@ describe('sync-bridge', () => {
     it('falls back to localStorage when BroadcastChannel is undefined', () => {
       delete (globalThis as any).BroadcastChannel;
 
-      const bridge = createSyncBridge('glasses');
+      const bridge = createSyncBridge();
 
       const received: SyncMessage[] = [];
       bridge.onMessage((msg) => received.push(msg));

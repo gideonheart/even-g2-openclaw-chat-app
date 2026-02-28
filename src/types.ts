@@ -15,12 +15,6 @@ export const STT_LABELS: Record<SttProvider, string> = {
   custom: 'Custom',
 };
 
-export interface Session {
-  id: string;
-  name: string;
-  desc: string;
-}
-
 export interface LogEntry {
   id: number;
   level: LogLevel;

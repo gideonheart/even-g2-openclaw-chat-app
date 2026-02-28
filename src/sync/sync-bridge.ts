@@ -4,7 +4,7 @@
 // Fallback: localStorage storage event (wider compatibility).
 // Uses the factory/closure pattern consistent with the codebase.
 
-import type { SyncBridge, SyncMessage, SyncOrigin } from './sync-types';
+import type { SyncBridge, SyncMessage } from './sync-types';
 
 const CHANNEL_NAME = 'openclaw-sync';
 const LS_KEY = 'openclaw-sync-msg';
@@ -84,7 +84,7 @@ function createLocalStorageBridge(): SyncBridge {
 
 // ── Factory with feature detection ─────────────────────────
 
-export function createSyncBridge(_origin?: SyncOrigin): SyncBridge {
+export function createSyncBridge(): SyncBridge {
   if (typeof BroadcastChannel !== 'undefined') {
     return createBroadcastChannelBridge();
   }

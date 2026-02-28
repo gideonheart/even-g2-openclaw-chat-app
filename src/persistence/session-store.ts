@@ -4,8 +4,7 @@
 // Uses the factory/closure pattern consistent with the codebase.
 
 import type { ConversationStore, SessionStore } from './types';
-
-const ACTIVE_SESSION_KEY = 'openclaw-active-conversation';
+import { ACTIVE_CONVERSATION_KEY } from './boot-restore';
 
 export function createSessionStore(
   db: IDBDatabase,
@@ -54,11 +53,11 @@ export function createSessionStore(
   }
 
   function getActiveSessionId(): string | null {
-    return localStorage.getItem(ACTIVE_SESSION_KEY);
+    return localStorage.getItem(ACTIVE_CONVERSATION_KEY);
   }
 
   function setActiveSessionId(id: string): void {
-    localStorage.setItem(ACTIVE_SESSION_KEY, id);
+    localStorage.setItem(ACTIVE_CONVERSATION_KEY, id);
   }
 
   return {
