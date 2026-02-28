@@ -57,9 +57,45 @@ export async function boot(): Promise<void> {
         localStorage.setItem('openclaw-conversation-count', String(report.conversationCount));
       } catch { /* localStorage unavailable */ }
 
-      // Log orphans for diagnostics (do NOT auto-delete on boot -- use grace period per RES-05)
+      // Orphan grace-period lifecycle (RES-05)
       if (report.orphanedMessageIds.length > 0) {
         bus.emit('log', { level: 'warn', msg: `Integrity: ${report.orphanedMessageIds.length} orphaned messages detected` });
+
+        // Check if we have previously-detected orphans past grace period
+        try {
+          const prevOrphansJson = localStorage.getItem('openclaw-orphan-ids');
+          const prevDetectedAt = localStorage.getItem('openclaw-orphan-detected-at');
+
+          if (prevOrphansJson && prevDetectedAt) {
+            const elapsed = Date.now() - Number(prevDetectedAt);
+            if (elapsed >= 30_000) {
+              // Grace period elapsed -- clean up confirmed-stale orphans
+              const prevOrphans: string[] = JSON.parse(prevOrphansJson);
+              // Only clean orphans that were ALSO detected in current boot (still orphaned)
+              const staleOrphans = prevOrphans.filter(id => report.orphanedMessageIds.includes(id));
+              if (staleOrphans.length > 0) {
+                const cleaned = await integrityChecker.cleanupOrphans(staleOrphans);
+                bus.emit('log', { level: 'info', msg: `Integrity: cleaned ${cleaned} stale orphaned messages` });
+              }
+              // Clear orphan tracking after cleanup attempt
+              localStorage.removeItem('openclaw-orphan-ids');
+              localStorage.removeItem('openclaw-orphan-detected-at');
+            } else {
+              // Grace period not elapsed -- update orphan list with current detection
+              localStorage.setItem('openclaw-orphan-ids', JSON.stringify(report.orphanedMessageIds));
+            }
+          } else {
+            // First detection -- persist orphan IDs and timestamp
+            localStorage.setItem('openclaw-orphan-ids', JSON.stringify(report.orphanedMessageIds));
+            localStorage.setItem('openclaw-orphan-detected-at', String(Date.now()));
+          }
+        } catch { /* localStorage unavailable */ }
+      } else {
+        // No orphans -- clear any previous orphan tracking
+        try {
+          localStorage.removeItem('openclaw-orphan-ids');
+          localStorage.removeItem('openclaw-orphan-detected-at');
+        } catch { /* localStorage unavailable */ }
       }
       if (report.danglingPointer) {
         bus.emit('log', { level: 'warn', msg: 'Integrity: dangling session pointer detected' });

@@ -964,8 +964,38 @@ async function initPersistence(): Promise<{
       localStorage.setItem('openclaw-conversation-count', String(report.conversationCount));
     } catch { /* localStorage unavailable */ }
 
+    // Orphan grace-period lifecycle (RES-05)
     if (report.orphanedMessageIds.length > 0) {
       console.warn(`[hub] Integrity: ${report.orphanedMessageIds.length} orphaned messages`);
+
+      try {
+        const prevOrphansJson = localStorage.getItem('openclaw-orphan-ids');
+        const prevDetectedAt = localStorage.getItem('openclaw-orphan-detected-at');
+
+        if (prevOrphansJson && prevDetectedAt) {
+          const elapsed = Date.now() - Number(prevDetectedAt);
+          if (elapsed >= 30_000) {
+            const prevOrphans: string[] = JSON.parse(prevOrphansJson);
+            const staleOrphans = prevOrphans.filter(id => report.orphanedMessageIds.includes(id));
+            if (staleOrphans.length > 0) {
+              const cleaned = await integrityChecker.cleanupOrphans(staleOrphans);
+              console.log(`[hub] Integrity: cleaned ${cleaned} stale orphaned messages`);
+            }
+            localStorage.removeItem('openclaw-orphan-ids');
+            localStorage.removeItem('openclaw-orphan-detected-at');
+          } else {
+            localStorage.setItem('openclaw-orphan-ids', JSON.stringify(report.orphanedMessageIds));
+          }
+        } else {
+          localStorage.setItem('openclaw-orphan-ids', JSON.stringify(report.orphanedMessageIds));
+          localStorage.setItem('openclaw-orphan-detected-at', String(Date.now()));
+        }
+      } catch { /* localStorage unavailable */ }
+    } else {
+      try {
+        localStorage.removeItem('openclaw-orphan-ids');
+        localStorage.removeItem('openclaw-orphan-detected-at');
+      } catch { /* localStorage unavailable */ }
     }
 
     // Storage health
