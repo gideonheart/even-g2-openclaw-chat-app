@@ -9,15 +9,15 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 16-sync-hardening
-Current Plan: 2 of 2
-Status: Phase 16 complete
-Last activity: 2026-02-28 - Completed quick task 8: Implement 3 pre-audit fixes from quick task 7 (heartbeat try/catch, .catch() on handleHeartbeat, send() removal)
+Phase: 16.5-integration-hardening
+Current Plan: 1 of 2
+Status: Plan 01 complete
+Last activity: 2026-02-28 - Completed 16.5-01: Glasses integration hardening (reopenDB handle propagation, eviction subscriber, cleanup teardown)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 37 (Phases 1-16 + Phase 13 gap closure)
+- Total plans completed: 38 (Phases 1-16.5 + Phase 13 gap closure)
 - Total tests: 436 (all passing)
 - Total LOC: ~10,800 TypeScript (66 files)
 - Total execution time: ~5.1 hours
@@ -42,6 +42,7 @@ Last activity: 2026-02-28 - Completed quick task 8: Implement 3 pre-audit fixes 
 | 14 | 5/5 (event types + onclose + sentinel filtering + integrity checker TDD + storage health + boot wiring + reopenDB wiring + orphan grace period) | ~17m | 3.4m |
 | 15 | 2/2 (write verification + error escalation + partial save + hub error escalation + partial response preservation) | ~19m | 9.5m |
 | 16 | 2/2 (sync monitor + drift reconciler + countMessages TDD + boot wiring) | ~8m | 4m |
+| 16.5 | 1/2 (glasses integration hardening: reopenDB propagation + eviction + cleanup) | ~4m | 4m |
 
 ## Accumulated Context
 
@@ -117,6 +118,9 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - DriftReconciler.handleHeartbeat() lets IDB errors propagate; callers in boot files add .catch(() => {}) (quick-8)
 - SyncMonitor.send() removed -- only heartbeats use seq tracking, now inlined in heartbeat callback (quick-8)
 - localSeq renamed to heartbeatSeq, sequenceGaps renamed to heartbeatGaps to clarify scope (quick-8)
+- Recreate all 5 IDB-dependent modules after reopenDB (store, sessionStore, autoSave, driftReconciler, syncMonitor) instead of partial refresh (16.5-01)
+- evictionDetected flag pattern: set boolean during boot, check after renderer init to avoid missed synchronous events (16.5-01)
+- driftReconciler.destroy() placed before syncMonitor.destroy() in cleanup to clear mismatch counter before stopping heartbeat (16.5-01)
 
 ### Pending Todos
 
@@ -144,5 +148,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed quick-8 (3 pre-audit fixes: heartbeat try/catch, .catch() on handleHeartbeat, send() removal + 4 new tests)
+Stopped at: Completed 16.5-01-PLAN.md (glasses integration hardening)
 Resume file: None
