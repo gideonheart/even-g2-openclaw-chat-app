@@ -39,7 +39,7 @@ Requirements for initial release (EvenHub submission). Each maps to roadmap phas
 - [x] **GEST-03**: Scroll-up gesture maps to conversation history scroll up
 - [x] **GEST-04**: Scroll-down gesture maps to scroll down / jump to latest
 - [x] **GEST-05**: Tap vs double-tap disambiguation uses 250-300ms debounce window in FSM
-- [ ] **GEST-06**: Gesture hint bar displayed on glasses when contextually relevant
+- [x] **GEST-06**: Gesture hint bar displayed on glasses when contextually relevant
 
 ### Settings
 
@@ -175,7 +175,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GEST-03 | Phase 2 | Complete |
 | GEST-04 | Phase 2 | Complete |
 | GEST-05 | Phase 2 | Complete |
-| GEST-06 | Phase 2 | Pending |
+| GEST-06 | Phase 2 | Complete |
 | VOICE-01 | Phase 2 | Complete |
 | VOICE-02 | Phase 2 | Complete |
 | VOICE-03 | Phase 2 | Complete |

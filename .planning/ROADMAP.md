@@ -13,7 +13,7 @@ This roadmap delivers a voice-chat companion app for Even G2 smart glasses, prog
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Settings** - Types, settings store with secret partitioning, TS strict mode, Vitest setup
-- [ ] **Phase 2: Even Bridge & Input Pipeline** - SDK wrapper, gesture FSM with tap/double-tap debounce, audio capture
+- [x] **Phase 2: Even Bridge & Input Pipeline** - SDK wrapper, gesture FSM with tap/double-tap debounce, audio capture
 - [ ] **Phase 3: Glasses Display & Streaming** - Icon HUD, bubble chat renderer, virtualized viewport, stream throttle, UI modes
 - [x] **Phase 4: Gateway API Client** - HTTP client, SSE streaming via fetch + eventsource-parser, health monitoring, reconnection
 - [x] **Phase 5: Companion Hub UI** - Home, health, logs, sessions, simulator, shell navigation, mobile polish
@@ -125,7 +125,7 @@ Note: Phase 4 depends only on Phase 1, so it could execute in parallel with Phas
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Settings | 2/2 | Complete | 2026-02-28 |
-| 2. Even Bridge & Input Pipeline | 0/3 | Not started | - |
+| 2. Even Bridge & Input Pipeline | 3/3 | Complete | 2026-02-28 |
 | 3. Glasses Display & Streaming | 0/3 | Not started | - |
 | 4. Gateway API Client | 1/1 | Complete | 2026-02-28 |
 | 5. Companion Hub UI | 3/3 | Complete | 2026-02-28 |

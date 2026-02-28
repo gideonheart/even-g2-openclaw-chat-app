@@ -5,38 +5,39 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Phase 2: Even Bridge & Input Pipeline
+**Current focus:** Phase 3: Glasses Display Pipeline
 
 ## Current Position
 
-Phase: 2 of 6 (Even Bridge & Input Pipeline)
-Plan: 2 of 3 in current phase
-Status: Executing
-Last activity: 2026-02-28 - Completed 02-02 EvenBridge service, mock bridge, and audio capture
+Phase: 3 of 6 (Glasses Display Pipeline)
+Plan: 1 of ? in current phase
+Status: Phase 2 complete, ready for Phase 3 planning
+Last activity: 2026-02-28 - Completed 02-03 gesture handler wiring (Phase 2 complete)
 
 Progress: [######....] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5 (Phase 1, Phase 4, Phase 5, Phase 2 Plans 1-2)
-- Average duration: ~20 min
-- Total execution time: ~1.7 hours
+- Total plans completed: 6 (Phase 1, Phase 4, Phase 5, Phase 2 Plans 1-3)
+- Average duration: ~18 min
+- Total execution time: ~1.75 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 | 1 (infra) | ~30m | 30m |
-| 2 | 2 (gesture FSM, bridge+audio) | ~10m | 5m |
+| 2 | 3 (gesture FSM, bridge+audio, handler wiring) | ~13m | 4m |
 | 4 | 1 (API client) | ~20m | 20m |
 | 5 | 1 (hub UI) | ~40m | 40m |
 
 **Recent Trend:**
-- Last 5 plans: completed
-- Trend: fast execution, SDK wrapper + audio capture in 6 min
+- Last 6 plans: completed
+- Trend: fast execution, gesture handler wiring in 3 min
 
 *Updated after each plan completion*
+| Phase 02 P03 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -54,6 +55,8 @@ Recent decisions affecting current work:
 - [Phase quick-2]: All 3 P1 blockers resolved: typed event bus created, gateway reconnect retry implemented, app-wiring extracted from main.ts with 28 new tests
 - [Phase 2-01]: Gesture FSM uses Record-based transition table with optional chaining fallback -- pure function, zero dependencies, 22 tests
 - [Phase 2-02]: Used vi.hoisted() for SDK mock in tests; BridgeMock identifies via deviceName 'BridgeMock'; AudioCapture onFrame() is fully synchronous for 100Hz PCM
+- [Phase 2-03]: 275ms tap debounce applies to tap only (not double-tap/scroll); STOP_RECORDING uses async blob retrieval; hint bar text is Phase 2 only (Phase 3 renders)
+- [Phase 02]: 275ms tap debounce applies only to tap inputs, not double-tap or scroll
 
 ### Pending Todos
 
@@ -75,5 +78,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 02-02-PLAN.md (EvenBridge service, mock bridge, audio capture). Plan 02-03 (gesture handler wiring) remains.
+Stopped at: Completed 02-03-PLAN.md (gesture handler wiring). Phase 2 complete. Phase 3 (Glasses Display Pipeline) is next.
 Resume file: None
