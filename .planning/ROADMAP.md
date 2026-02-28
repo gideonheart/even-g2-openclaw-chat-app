@@ -50,7 +50,12 @@ Phase 14 (Foundation)
     v
 Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
     |                    |                    |
-    +--------------------+--------------------+
+    +----+---------------+                    |
+         |                                    |
+         v                                    |
+  Phase 16.5 (Integration Hardening)          |
+         |                                    |
+         +------------------------------------+
                          |
                          v
                   Phase 18 (Error UX)
@@ -88,6 +93,19 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
   - [ ] 16-01-PLAN.md — Types, countMessages, SyncMonitor TDD, DriftReconciler TDD (Wave 1)
   - [ ] 16-02-PLAN.md — Boot wiring in glasses-main.ts and hub-main.ts (Wave 2)
 
+### Phase 16.5: Integration Hardening
+- **Goal:** Fix critical integration bugs in completed Phases 14/16 -- stale db handle after reopenDB(), dead-end event wiring, missing hub health emission, cleanup teardown gaps -- so Phase 18 can consume reliable signals.
+- **Requirements:** [RES-15, RES-02, RES-04, RES-11 (integration fixes for satisfied requirements)]
+- **Depends on:** Phases 15, 16 (completed)
+- **Blocks:** Phase 18 (Error UX needs these signals working correctly)
+- **Gap Closure:** Closes 4 integration issues + 3 broken flows from v1.3 audit
+- **Key deliverables:**
+  - Fix reopenDB() to propagate new IDBDatabase handle to all stores (Critical)
+  - Wire storage:evicted event subscribers in both glasses and hub contexts (Significant)
+  - Add hub persistence:health emission with 80%/95% threshold logging (Significant)
+  - Call driftReconciler.destroy() in glasses cleanup and hub beforeunload (Minor)
+- **Plans:** [To be planned]
+
 ### Phase 17: FSM & Gateway Resilience
 - **Goal:** Prevent stuck states and handle gateway failures gracefully -- watchdog timer for FSM, error classification for gateway, no auto-retry of mid-stream failures.
 - **Requirements:** [RES-13, RES-14, RES-20 (fsm events only)]
@@ -99,7 +117,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 ### Phase 18: Error UX
 - **Goal:** Surface all error and health signals to users appropriately -- minimal on glasses (status bar, auto-clear), rich on hub (toasts, banners, health page).
 - **Requirements:** [RES-16, RES-17, RES-18, RES-19]
-- **Depends on:** Phases 14-17 (consumes all error events from prior phases)
+- **Depends on:** Phases 14-17 + 16.5 (consumes all error events from prior phases; 16.5 fixes integration signals)
 - **Key deliverables:** error-presenter.ts (glasses + hub variants), health-indicator.ts, hub health page enhancements, error banner component
 - **Plans:** [To be planned]
 
@@ -130,6 +148,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 | 14. Data Integrity Foundation | 5/5 | Complete    | 2026-02-28 | -- |
 | 15. Write Verification & Auto-Save Hardening | 2/2 | Complete    | 2026-02-28 | -- |
 | 16. Sync Hardening | 2/2 | Complete    | 2026-02-28 | -- |
+| 16.5. Integration Hardening | v1.3 | 0/? | Not Started | -- |
 | 17. FSM & Gateway Resilience | v1.3 | 0/? | Not Started | -- |
 | 18. Error UX | v1.3 | 0/? | Not Started | -- |
 | 19. Test Infrastructure & Resilience Coverage | v1.3 | 0/? | Not Started | -- |
