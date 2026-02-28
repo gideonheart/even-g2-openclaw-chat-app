@@ -84,7 +84,9 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 - **Requirements:** [RES-09, RES-10, RES-11, RES-12, RES-20 (sync events only)]
 - **Depends on:** Phase 14 (uses ConversationStore.countMessages for drift detection)
 - **Key deliverables:** sync-monitor.ts, drift-reconciler.ts, SyncMessage seq field, heartbeat timer, sync event types
-- **Plans:** [To be planned]
+- **Plans:** 2 plans
+  - [ ] 16-01-PLAN.md — Types, countMessages, SyncMonitor TDD, DriftReconciler TDD (Wave 1)
+  - [ ] 16-02-PLAN.md — Boot wiring in glasses-main.ts and hub-main.ts (Wave 2)
 
 ### Phase 17: FSM & Gateway Resilience
 - **Goal:** Prevent stuck states and handle gateway failures gracefully -- watchdog timer for FSM, error classification for gateway, no auto-retry of mid-stream failures.
@@ -127,7 +129,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 | 13. Phase 9 Verification & Sync Wiring | v1.2 | 1/1 | Complete | 2026-02-28 |
 | 14. Data Integrity Foundation | 5/5 | Complete    | 2026-02-28 | -- |
 | 15. Write Verification & Auto-Save Hardening | 2/2 | Complete    | 2026-02-28 | -- |
-| 16. Sync Hardening | v1.3 | 0/? | Not Started | -- |
+| 16. Sync Hardening | v1.3 | 0/2 | Not Started | -- |
 | 17. FSM & Gateway Resilience | v1.3 | 0/? | Not Started | -- |
 | 18. Error UX | v1.3 | 0/? | Not Started | -- |
 | 19. Test Infrastructure & Resilience Coverage | v1.3 | 0/? | Not Started | -- |
