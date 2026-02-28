@@ -157,76 +157,76 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VOICE-01 | Phase TBD | Pending |
-| VOICE-02 | Phase TBD | Pending |
-| VOICE-03 | Phase TBD | Pending |
-| VOICE-04 | Phase TBD | Pending |
-| ICONS-01 | Phase TBD | Pending |
-| ICONS-02 | Phase TBD | Pending |
-| ICONS-03 | Phase TBD | Pending |
-| ICONS-04 | Phase TBD | Pending |
-| ICONS-05 | Phase TBD | Pending |
-| CHAT-01 | Phase TBD | Pending |
-| CHAT-02 | Phase TBD | Pending |
-| CHAT-03 | Phase TBD | Pending |
-| CHAT-04 | Phase TBD | Pending |
-| CHAT-05 | Phase TBD | Pending |
-| CHAT-06 | Phase TBD | Pending |
-| CHAT-07 | Phase TBD | Pending |
-| GEST-01 | Phase TBD | Pending |
-| GEST-02 | Phase TBD | Pending |
-| GEST-03 | Phase TBD | Pending |
-| GEST-04 | Phase TBD | Pending |
-| GEST-05 | Phase TBD | Pending |
-| GEST-06 | Phase TBD | Pending |
-| SETT-01 | Phase TBD | Pending |
-| SETT-02 | Phase TBD | Pending |
-| SETT-03 | Phase TBD | Pending |
-| SETT-04 | Phase TBD | Pending |
-| SETT-05 | Phase TBD | Pending |
-| SETT-06 | Phase TBD | Pending |
-| SETT-07 | Phase TBD | Pending |
-| SETT-08 | Phase TBD | Pending |
-| SESS-01 | Phase TBD | Pending |
-| SESS-02 | Phase TBD | Pending |
-| SESS-03 | Phase TBD | Pending |
-| HOME-01 | Phase TBD | Pending |
-| HOME-02 | Phase TBD | Pending |
-| HOME-03 | Phase TBD | Pending |
-| HLTH-01 | Phase TBD | Pending |
-| HLTH-02 | Phase TBD | Pending |
-| HLTH-03 | Phase TBD | Pending |
-| LOGS-01 | Phase TBD | Pending |
-| LOGS-02 | Phase TBD | Pending |
-| LOGS-03 | Phase TBD | Pending |
-| SIM-01 | Phase TBD | Pending |
-| SIM-02 | Phase TBD | Pending |
-| SIM-03 | Phase TBD | Pending |
-| API-01 | Phase TBD | Pending |
-| API-02 | Phase TBD | Pending |
-| API-03 | Phase TBD | Pending |
-| API-04 | Phase TBD | Pending |
-| BRDG-01 | Phase TBD | Pending |
-| BRDG-02 | Phase TBD | Pending |
-| BRDG-03 | Phase TBD | Pending |
-| UIMD-01 | Phase TBD | Pending |
-| UIMD-02 | Phase TBD | Pending |
-| MOBL-01 | Phase TBD | Pending |
-| MOBL-02 | Phase TBD | Pending |
-| SHEL-01 | Phase TBD | Pending |
-| SHEL-02 | Phase TBD | Pending |
-| SHEL-03 | Phase TBD | Pending |
-| SHEL-04 | Phase TBD | Pending |
-| PLAT-01 | Phase TBD | Pending |
-| PLAT-02 | Phase TBD | Pending |
-| PLAT-03 | Phase TBD | Pending |
-| PLAT-04 | Phase TBD | Pending |
+| SETT-01 | Phase 1 | Pending |
+| SETT-02 | Phase 1 | Pending |
+| SETT-03 | Phase 1 | Pending |
+| SETT-04 | Phase 1 | Pending |
+| SETT-05 | Phase 1 | Pending |
+| SETT-06 | Phase 1 | Pending |
+| SETT-07 | Phase 1 | Pending |
+| SETT-08 | Phase 1 | Pending |
+| PLAT-01 | Phase 1 | Pending |
+| PLAT-02 | Phase 1 | Pending |
+| BRDG-01 | Phase 2 | Pending |
+| BRDG-02 | Phase 2 | Pending |
+| BRDG-03 | Phase 2 | Pending |
+| GEST-01 | Phase 2 | Pending |
+| GEST-02 | Phase 2 | Pending |
+| GEST-03 | Phase 2 | Pending |
+| GEST-04 | Phase 2 | Pending |
+| GEST-05 | Phase 2 | Pending |
+| GEST-06 | Phase 2 | Pending |
+| VOICE-01 | Phase 2 | Pending |
+| VOICE-02 | Phase 2 | Pending |
+| VOICE-03 | Phase 2 | Pending |
+| VOICE-04 | Phase 2 | Pending |
+| ICONS-01 | Phase 3 | Pending |
+| ICONS-02 | Phase 3 | Pending |
+| ICONS-03 | Phase 3 | Pending |
+| ICONS-04 | Phase 3 | Pending |
+| ICONS-05 | Phase 3 | Pending |
+| CHAT-01 | Phase 3 | Pending |
+| CHAT-02 | Phase 3 | Pending |
+| CHAT-03 | Phase 3 | Pending |
+| CHAT-04 | Phase 3 | Pending |
+| CHAT-05 | Phase 3 | Pending |
+| CHAT-06 | Phase 3 | Pending |
+| CHAT-07 | Phase 3 | Pending |
+| UIMD-01 | Phase 3 | Pending |
+| UIMD-02 | Phase 3 | Pending |
+| API-01 | Phase 4 | Pending |
+| API-02 | Phase 4 | Pending |
+| API-03 | Phase 4 | Pending |
+| API-04 | Phase 4 | Pending |
+| HOME-01 | Phase 5 | Pending |
+| HOME-02 | Phase 5 | Pending |
+| HOME-03 | Phase 5 | Pending |
+| HLTH-01 | Phase 5 | Pending |
+| HLTH-02 | Phase 5 | Pending |
+| HLTH-03 | Phase 5 | Pending |
+| LOGS-01 | Phase 5 | Pending |
+| LOGS-02 | Phase 5 | Pending |
+| LOGS-03 | Phase 5 | Pending |
+| SESS-01 | Phase 5 | Pending |
+| SESS-02 | Phase 5 | Pending |
+| SESS-03 | Phase 5 | Pending |
+| SIM-01 | Phase 5 | Pending |
+| SIM-02 | Phase 5 | Pending |
+| SIM-03 | Phase 5 | Pending |
+| SHEL-01 | Phase 5 | Pending |
+| SHEL-02 | Phase 5 | Pending |
+| SHEL-03 | Phase 5 | Pending |
+| SHEL-04 | Phase 5 | Pending |
+| MOBL-01 | Phase 5 | Pending |
+| MOBL-02 | Phase 5 | Pending |
+| PLAT-03 | Phase 6 | Pending |
+| PLAT-04 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 56 total
-- Mapped to phases: 0
-- Unmapped: 56 (awaiting roadmap creation)
+- v1 requirements: 64 total
+- Mapped to phases: 64
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-28*
-*Last updated: 2026-02-28 after initial definition*
+*Last updated: 2026-02-28 after roadmap creation*
