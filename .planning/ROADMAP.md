@@ -64,11 +64,12 @@ Plans:
   3. User can delete a session and all its conversations are removed (no orphaned data)
   4. User can switch between sessions and the active session receives new voice turns
   5. An action performed on glasses (e.g., new message) appears in the hub within one second, and vice versa
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 10-01: TBD
-- [ ] 10-02: TBD
+- [ ] 10-01-PLAN.md — Session store + sync bridge (TDD)
+- [ ] 10-02-PLAN.md — Glasses session switching + sync wiring
+- [ ] 10-03-PLAN.md — Hub dynamic sessions + sync relay
 
 ### Phase 11: Glasses Command Menu
 **Goal**: Users can access session management commands directly from the glasses via a double-tap overlay menu
@@ -119,6 +120,6 @@ Phases execute in numeric order: 9 → 10 → 11 → 12
 | 7. Error Handling & Lifecycle | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 8. EvenHub Submission | v1.1 | 1/1 | Complete | 2026-02-28 |
 | 9. IndexedDB Persistence | v1.2 | 0/2 | Planned | - |
-| 10. Dynamic Sessions & Cross-Context Sync | v1.2 | 0/? | Not started | - |
+| 10. Dynamic Sessions & Cross-Context Sync | v1.2 | 0/3 | Planned | - |
 | 11. Glasses Command Menu | v1.2 | 0/? | Not started | - |
 | 12. Hub Conversation Features | v1.2 | 0/? | Not started | - |
