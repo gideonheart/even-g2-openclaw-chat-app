@@ -4,7 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 1-5 (shipped 2026-02-28)
 - ✅ **v1.1 Integration** — Phases 6-8 (shipped 2026-02-28)
-- 🚧 **v1.2 Conversation Intelligence & Hub Interaction** — Phases 9-12 (in progress)
+- 🚧 **v1.2 Conversation Intelligence & Hub Interaction** — Phases 9-13 (in progress)
 
 ## Phases
 
@@ -36,6 +36,7 @@
 - [x] **Phase 10: Dynamic Sessions & Cross-Context Sync** - Session CRUD, event bus bridge, and real-time hub-glasses relay (completed 2026-02-28)
 - [ ] **Phase 11: Glasses Command Menu** - Double-tap overlay with session commands, scroll navigation, and auto-close
 - [ ] **Phase 12: Hub Conversation Features** - Live view, text input, history browsing, and full-text search
+- [ ] **Phase 13: Phase 9 Verification & Sync Wiring** - Verify persistence, fix sync message stubs, wire auto-save relay *(gap closure)*
 
 ## Phase Details
 
@@ -104,10 +105,25 @@ Plans:
 - [ ] 12-02: TBD
 - [ ] 12-03: TBD
 
+### Phase 13: Phase 9 Verification & Sync Wiring
+**Goal**: Close Phase 9 verification gap and wire the sync message types that are currently dead code, enabling Phase 12's real-time hub features
+**Depends on**: Phase 10 (sync bridge infrastructure)
+**Requirements**: PERS-01, PERS-02, PERS-03, PERS-04 (verify), SYNC-01 (complete wiring)
+**Gap Closure**: Closes gaps from v1.2 milestone audit
+**Success Criteria** (what must be TRUE):
+  1. Phase 9 VERIFICATION.md exists and confirms PERS-01–04 pass
+  2. `onConversationNamed` callback in glasses-main.ts posts `conversation:named` SyncMessage (not a no-op stub)
+  3. Auto-save handler posts `message:added` SyncMessage to syncBridge after persisting
+  4. Both sync message types are no longer dead code — they are posted by glasses context and can be consumed by hub
+**Plans**: TBD
+
+Plans:
+- [ ] 13-01: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 9 → 10 → 11 → 12
+Phases execute: 9 → 10 → **13** → 11 → 12 (Phase 13 must complete before Phase 12)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -119,7 +135,8 @@ Phases execute in numeric order: 9 → 10 → 11 → 12
 | 6. Runtime Wiring | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 7. Error Handling & Lifecycle | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 8. EvenHub Submission | v1.1 | 1/1 | Complete | 2026-02-28 |
-| 9. IndexedDB Persistence | v1.2 | 0/2 | Planned | - |
-| 10. Dynamic Sessions & Cross-Context Sync | 3/3 | Complete    | 2026-02-28 | - |
+| 9. IndexedDB Persistence | v1.2 | 2/2 | Unverified | - |
+| 10. Dynamic Sessions & Cross-Context Sync | v1.2 | 3/3 | Complete | 2026-02-28 |
 | 11. Glasses Command Menu | v1.2 | 0/? | Not started | - |
 | 12. Hub Conversation Features | v1.2 | 0/? | Not started | - |
+| 13. Phase 9 Verification & Sync Wiring | v1.2 | 0/? | Not started | - |
