@@ -66,10 +66,10 @@ Plans:
   2. Production build produces self-contained output suitable for EvenHub packaging, with no reference to external assets or dev-only files
   3. Running the pack npm script produces a .ehpk artifact that can be submitted to the EvenHub portal
   4. Simulator (preview-glasses.html) is available during development but excluded from the production build output
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 08-01: TBD
+- [ ] 08-01-PLAN.md -- app.json metadata, Vite prod build config (simulator exclusion + relative paths), evenhub-cli install, pack script, .ehpk artifact
 
 ## Progress
 
@@ -84,4 +84,4 @@ Plans:
 | 5. Companion Hub UI | v1.0 | 3/3 | Complete | 2026-02-28 |
 | 6. Runtime Wiring | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 7. Error Handling & Lifecycle | v1.1 | 0/2 | Not started | - |
-| 8. EvenHub Submission | v1.1 | 0/? | Not started | - |
+| 8. EvenHub Submission | v1.1 | 0/1 | Not started | - |
