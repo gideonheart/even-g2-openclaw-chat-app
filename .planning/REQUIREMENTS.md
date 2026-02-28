@@ -80,35 +80,35 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PERS-01 | — | Pending |
-| PERS-02 | — | Pending |
-| PERS-03 | — | Pending |
-| PERS-04 | — | Pending |
-| SESS-01 | — | Pending |
-| SESS-02 | — | Pending |
-| SESS-03 | — | Pending |
-| SESS-04 | — | Pending |
-| MENU-01 | — | Pending |
-| MENU-02 | — | Pending |
-| MENU-03 | — | Pending |
-| MENU-04 | — | Pending |
-| MENU-05 | — | Pending |
-| SYNC-01 | — | Pending |
-| SYNC-02 | — | Pending |
-| HUB-01 | — | Pending |
-| HUB-02 | — | Pending |
-| HUB-03 | — | Pending |
-| HUB-04 | — | Pending |
-| HUB-05 | — | Pending |
-| HUB-06 | — | Pending |
-| HUB-07 | — | Pending |
-| HUB-08 | — | Pending |
+| PERS-01 | Phase 9 | Pending |
+| PERS-02 | Phase 9 | Pending |
+| PERS-03 | Phase 9 | Pending |
+| PERS-04 | Phase 9 | Pending |
+| SESS-01 | Phase 10 | Pending |
+| SESS-02 | Phase 10 | Pending |
+| SESS-03 | Phase 10 | Pending |
+| SESS-04 | Phase 10 | Pending |
+| MENU-01 | Phase 11 | Pending |
+| MENU-02 | Phase 11 | Pending |
+| MENU-03 | Phase 11 | Pending |
+| MENU-04 | Phase 11 | Pending |
+| MENU-05 | Phase 11 | Pending |
+| SYNC-01 | Phase 10 | Pending |
+| SYNC-02 | Phase 10 | Pending |
+| HUB-01 | Phase 12 | Pending |
+| HUB-02 | Phase 12 | Pending |
+| HUB-03 | Phase 12 | Pending |
+| HUB-04 | Phase 12 | Pending |
+| HUB-05 | Phase 12 | Pending |
+| HUB-06 | Phase 12 | Pending |
+| HUB-07 | Phase 12 | Pending |
+| HUB-08 | Phase 12 | Pending |
 
 **Coverage:**
-- v1.2 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18
+- v1.2 requirements: 23 total
+- Mapped to phases: 23
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-28*
-*Last updated: 2026-02-28 after initial definition*
+*Last updated: 2026-02-28 after roadmap creation*

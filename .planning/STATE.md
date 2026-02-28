@@ -5,14 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** v1.2 Conversation Intelligence & Hub Interaction
+**Current focus:** Phase 9 - IndexedDB Persistence
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-28 — Milestone v1.2 started
+Phase: 9 of 12 (IndexedDB Persistence)
+Plan: 0 of ? in current phase
+Status: Ready to plan
+Last activity: 2026-02-28 — v1.2 roadmap created (4 phases, 23 requirements)
+
+Progress: [████████████████░░░░] 17/17 plans (v1.0-v1.1), v1.2 starting
 
 ## Performance Metrics
 
@@ -47,7 +49,9 @@ None.
 
 ### Blockers/Concerns
 
-None — all resolved.
+- BroadcastChannel support in flutter_inappwebview is unverified on real hardware (SYNC-02 fallback ready)
+- IndexedDB durability in Even App WKWebView (iOS) may evict data under storage pressure
+- Gateway text turn API for hub text input (HUB-03/04) not confirmed with backend
 
 ### Quick Tasks Completed
 
@@ -60,5 +64,5 @@ None — all resolved.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: v1.1 milestone archived. All 8 phases complete. Ready for next milestone or EvenHub portal submission.
+Stopped at: v1.2 roadmap created. 4 phases (9-12) covering 23 requirements. Ready to plan Phase 9.
 Resume file: None
