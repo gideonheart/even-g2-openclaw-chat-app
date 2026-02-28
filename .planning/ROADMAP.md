@@ -64,12 +64,12 @@ Plans:
   3. User can scroll up through conversation history and scroll down / jump to latest using gestures, with only the visible viewport window rendered on glasses (virtualized)
   4. No single SDK text update exceeds 2000 characters
   5. Double-tap hides the glasses display (blank canvas); another double-tap wakes it back
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
-- [ ] 03-03: TBD
+- [ ] 03-01-PLAN.md — Viewport state management and icon animator pure functions (TDD)
+- [ ] 03-02-PLAN.md — GlassesRenderer service with bridge display integration, streaming, scroll, hide/wake
+- [ ] 03-03-PLAN.md — Display controller wiring bus events to renderer for end-to-end display pipeline
 
 ### Phase 4: Gateway API Client
 **Goal**: The app can communicate with the backend gateway to send audio and receive streaming AI responses over SSE, with resilient connectivity
