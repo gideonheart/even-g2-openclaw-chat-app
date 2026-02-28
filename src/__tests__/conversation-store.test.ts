@@ -76,7 +76,7 @@ describe('conversation-store', () => {
     it('returns all conversations sorted by updatedAt descending', async () => {
       const a = await store.createConversation('A');
       await new Promise((r) => setTimeout(r, 10));
-      const b = await store.createConversation('B');
+      await store.createConversation('B');
       await new Promise((r) => setTimeout(r, 10));
       // Update A to make it most recent
       await store.updateConversation(a.id, { name: 'A updated' });

@@ -13,6 +13,11 @@ import { createGlassesRenderer } from './display/glasses-renderer';
 import { createDisplayController } from './display/display-controller';
 import { createGatewayClient } from './api/gateway-client';
 import { createVoiceLoopController } from './voice-loop-controller';
+import { openDB, isIndexedDBAvailable } from './persistence/db';
+import { createConversationStore } from './persistence/conversation-store';
+import { createAutoSave } from './persistence/auto-save';
+import { restoreOrCreateConversation } from './persistence/boot-restore';
+import type { ConversationStore } from './persistence/types';
 
 export async function boot(): Promise<void> {
   // Layer 0: Foundation (no dependencies)
@@ -20,9 +25,33 @@ export async function boot(): Promise<void> {
   const settings = loadSettings();
   const devMode = typeof (window as any).flutter_inappwebview === 'undefined';
 
+  // ── Persistence: try to open IndexedDB, fall back to in-memory ──
+  let store: ConversationStore | null = null;
+  if (isIndexedDBAvailable()) {
+    try {
+      const db = await openDB();
+      store = createConversationStore(db);
+    } catch {
+      // IndexedDB unavailable -- continue with in-memory
+    }
+  }
+
+  // Restore or create conversation (runs early to minimize boot latency)
+  const restoreResult = await restoreOrCreateConversation({ store });
+  let activeConversationId = restoreResult.conversationId;
+
   // Layer 1: Hardware boundary
   const bridge = devMode ? createBridgeMock(bus) : createEvenBridgeService(bus);
   await bridge.init();
+
+  // Show storage/restore warnings briefly before normal boot indicator
+  if (!restoreResult.storageAvailable) {
+    bridge.textContainerUpgrade(1, 'Storage unavailable \u2014 conversations won\'t be saved');
+    await new Promise((r) => setTimeout(r, 2000));
+  } else if (restoreResult.error) {
+    bridge.textContainerUpgrade(1, 'Previous conversation couldn\'t be restored');
+    await new Promise((r) => setTimeout(r, 2000));
+  }
 
   // Boot indicator: show "Connecting..." while remaining layers initialize (~1 second).
   // displayController.init() will call rebuildPageContainer, replacing this text with the chat layout.
@@ -43,7 +72,7 @@ export async function boot(): Promise<void> {
     bus,
     bridge,
     audioCapture,
-    activeSessionId: () => 'gideon',
+    activeSessionId: () => activeConversationId,
   });
 
   // Layer 4: Display pipeline (subscribes AFTER gesture handler -- bus dispatch order matters)
@@ -54,8 +83,26 @@ export async function boot(): Promise<void> {
   });
   await displayController.init();
 
-  // Show welcome message (per user decision: "Tap to ask" -- functional tone, first time only)
-  renderer.showWelcome();
+  // ── Restore messages into display after display init ──
+  if (restoreResult.restored && restoreResult.messages.length > 0) {
+    for (const msg of restoreResult.messages) {
+      if (msg.role === 'user') {
+        renderer.addUserMessage(msg.text);
+      } else {
+        renderer.startStreaming();
+        renderer.appendStreamChunk(msg.text);
+        renderer.endStreaming();
+      }
+    }
+    // Emit restore event for any interested listeners
+    bus.emit('persistence:restored', {
+      conversationId: activeConversationId,
+      messageCount: restoreResult.messages.length,
+    });
+  } else {
+    // Show welcome message (per user decision: "Tap to ask" -- functional tone, first time only)
+    renderer.showWelcome();
+  }
 
   // Layer 5: Gateway + voice loop
   const gateway = createGatewayClient();
@@ -63,6 +110,26 @@ export async function boot(): Promise<void> {
     bus,
     gateway,
     settings: () => settings,
+  });
+
+  // ── Persistence: wire auto-save after voice loop is ready ──
+  const autoSave = store ? createAutoSave({
+    bus,
+    store,
+    getConversationId: () => activeConversationId,
+    onConversationNamed: (_name) => {
+      // Future: update UI with conversation name (Phase 10+ concern)
+    },
+  }) : null;
+
+  // ── Persistence warning listener ──
+  // Show subtle non-blocking warning when saves fail
+  let warningShown = false;
+  bus.on('persistence:warning', ({ message }) => {
+    if (!warningShown) {
+      warningShown = true;
+      renderer.showError(message);
+    }
   });
 
   // NOTE: 500ms settle period is handled in display-controller.ts,
@@ -92,6 +159,7 @@ export async function boot(): Promise<void> {
     cleaned = true;
 
     // Reverse initialization order (Layer 5 -> Layer 0)
+    autoSave?.destroy();
     voiceLoopController.destroy();
     gateway.destroy();           // stops heartbeat, aborts in-flight fetch
     displayController.destroy(); // stops icon animator, clears flush timer

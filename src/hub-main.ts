@@ -437,4 +437,19 @@ function init(): void {
 
 export function initHub(): void {
   init();
+  // Phase 9: open IndexedDB from hub context (same-origin shares data with glasses)
+  // Phase 12: hub will display conversations from shared IndexedDB
+  initPersistence();
+}
+
+async function initPersistence(): Promise<void> {
+  try {
+    const { isIndexedDBAvailable, openDB } = await import('./persistence/db');
+    if (isIndexedDBAvailable()) {
+      await openDB();
+      // DB connection established -- Phase 12 will use this for conversation display
+    }
+  } catch {
+    // IndexedDB unavailable in hub context -- not critical for hub
+  }
 }
