@@ -4,7 +4,6 @@ import { createConversationStore } from '../conversation-store';
 import { SENTINEL_ID } from '../conversation-store';
 import {
   createIntegrityChecker,
-  type IntegrityReport,
   type IntegrityChecker,
 } from '../integrity-checker';
 import type { ConversationStore } from '../types';
