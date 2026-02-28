@@ -115,4 +115,20 @@ export interface AppEventMap {
   'session:renamed': { id: string; name: string };
   'session:deleted': { id: string };
   'session:switched': { id: string; previousId: string };
+
+  // Phase 14: Data Integrity Foundation
+  'persistence:error': {
+    type: 'database-closed' | 'quota-exceeded' | 'write-failed' | 'verify-failed';
+    recoverable: boolean;
+    message?: string;
+    conversationId?: string;
+  };
+  'persistence:health': {
+    usageBytes: number;
+    quotaBytes: number;
+    usagePercent: number;
+    isPersisted: boolean;
+    isAvailable: boolean;
+  };
+  'storage:evicted': {};
 }
