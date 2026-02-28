@@ -10,8 +10,8 @@ Requirements for v1.2 Conversation Intelligence & Hub Interaction. Each maps to 
 ### Persistence
 
 - [x] **PERS-01**: Conversations persist in IndexedDB across page reloads and app restarts
-- [ ] **PERS-02**: Messages auto-save as they arrive (user transcripts and assistant responses)
-- [ ] **PERS-03**: Active conversation loads automatically on app boot with previous context
+- [x] **PERS-02**: Messages auto-save as they arrive (user transcripts and assistant responses)
+- [x] **PERS-03**: Active conversation loads automatically on app boot with previous context
 - [x] **PERS-04**: Conversation metadata auto-generated (name from first message, timestamps)
 
 ### Sessions
@@ -81,8 +81,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PERS-01 | Phase 9 | Complete |
-| PERS-02 | Phase 9 | Pending |
-| PERS-03 | Phase 9 | Pending |
+| PERS-02 | Phase 9 | Complete |
+| PERS-03 | Phase 9 | Complete |
 | PERS-04 | Phase 9 | Complete |
 | SESS-01 | Phase 10 | Pending |
 | SESS-02 | Phase 10 | Pending |
