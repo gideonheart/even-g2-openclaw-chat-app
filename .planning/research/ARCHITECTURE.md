@@ -1,460 +1,573 @@
-# Architecture Patterns
+# Architecture Patterns: Voice Loop Integration & EvenHub Submission
 
-**Domain:** Smart glasses voice/chat frontend (Even G2 + OpenClaw AI agent)
-**Researched:** 2026-02-27
-**Confidence:** MEDIUM-HIGH (Even Hub SDK docs verified via community notes + official demo apps; audio/streaming patterns verified via MDN + multiple sources)
+**Domain:** Even G2 smart glasses voice-chat app (v1.1 integration wiring)
+**Researched:** 2026-02-28
+**Confidence:** HIGH (based on direct codebase analysis + SDK documentation)
 
-## Recommended Architecture
+## Context
 
-The app is a **dual-surface web application** running inside Even's iPhone WebView. One logical app serves two rendering targets: the **companion hub** (mobile/desktop browser viewport at arbitrary resolution) and the **glasses HUD** (576x288 green monochrome 4-bit greyscale, rendered via Even Hub SDK container model over BLE). All sensitive operations proxy through `openclaw-even-g2-voice-gateway`.
+This is NOT a greenfield architecture document. v1.0 shipped 38 files with a clean, well-tested module graph. The question is strictly: how do the existing modules wire together at runtime in main.ts to create the end-to-end voice loop, and what build changes produce a self-contained EvenHub submission package?
 
-### System Topology
+## Existing Architecture (Verified from Source)
 
 ```
-[G2 Glasses]                    [iPhone WebView]              [Backend Gateway]
-  4x Mics ----BLE 5.x----> Even App (Flutter)            openclaw-even-g2-voice-gateway
-  Display  <---BLE 5.x---- EvenAppBridge (injected JS)         |
-  Touch/Ring gestures           |                              |-- STT (WhisperX/OpenAI)
-                                v                              |-- OpenClaw Agent
-                         [Your Web App]  ----HTTP/SSE---->     |-- Session mgmt
-                         (hub + glasses)                       |-- TTS (optional)
+                    Even Hub SDK (WebView bridge)
+                           |
+                    even-bridge.ts   <-- ONLY SDK import boundary
+                           |
+                      Event Bus      <-- createEventBus<AppEventMap>()
+                     /    |    \
+            gesture-   audio-    gateway-
+            handler    capture    client
+               |          |          |
+          gesture-fsm  (PCM/WebM)  (SSE stream)
+               |                     |
+         display-controller  --------+
+               |
+         glasses-renderer
+          /       |       \
+    viewport  icon-animator  bridge (SDK calls)
 ```
 
-**Key insight from research:** The Even Hub SDK does NOT give you a DOM on the glasses. It provides a **container-based display model** with max 4 containers per page, absolute pixel positioning, no CSS. Your web app calls `bridge.createStartUpPageContainer()` / `bridge.textContainerUpgrade()` to push text/images to the glasses. The companion hub IS a normal web page in the WebView. These are two completely separate rendering paths within one app.
+**Key invariants from v1.0:**
+- Pure-function core modules (gesture-fsm.ts, viewport.ts, icon-animator.ts) have zero SDK imports
+- All SDK interaction goes through BridgeService interface (even-bridge.ts or bridge-mock.ts)
+- Event bus is synchronous dispatch, registration order matters (display controller AFTER gesture handler)
+- Factory pattern for all services: `createXxx(opts)` returns interface object
+- GatewayClient has its own internal event system (onChunk/onStatusChange) separate from the bus
+
+## Recommended Architecture: Voice Loop Wiring
+
+### The Missing Piece: VoiceLoopController
+
+The voice loop is the data flow: `gesture:tap -> record -> audio blob -> gateway -> SSE chunks -> display`. All the individual segments exist. What is missing is a single orchestrator that:
+
+1. Listens for `audio:recording-stop` on the bus (gesture handler already emits this)
+2. Takes the audio blob and calls `gatewayClient.sendVoiceTurn()`
+3. Forwards gateway chunks to the bus as `gateway:chunk` events
+4. Manages the gateway status forwarding to the bus
+
+This is the **VoiceLoopController** -- a new, thin glue module.
 
 ### Component Boundaries
 
-| Component | Responsibility | Communicates With |
-|-----------|---------------|-------------------|
-| **AudioCapture** (`src/audio/`) | Receive PCM frames from glasses mic via bridge `audioEvent`, buffer and encode for backend | EvenBridge, GatewayClient |
-| **EvenBridge** (`src/bridge/`) | Initialize `EvenAppBridge`, manage page lifecycle, route events (audio, input, system) to handlers | AudioCapture, GestureEngine, GlassesRenderer |
-| **GlassesRenderer** (`src/glasses/`) | Manage up to 4 containers on glasses display, push text/image updates via SDK, handle viewport virtualization | EvenBridge, ChatStore |
-| **GestureEngine** (`src/gestures/`) | Finite state machine mapping raw SDK events (TOUCH, CLICK, SCROLL_UP/DOWN, LONG_PRESS) to app actions | EvenBridge, AppState |
-| **ChatStore** (`src/chat/`) | Maintain ordered chat history (messages + metadata), track streaming state, provide viewport window | GlassesRenderer, HubUI, GatewayClient |
-| **GatewayClient** (`src/api/`) | HTTP client for backend gateway -- send audio chunks, receive SSE streaming responses, session CRUD | ChatStore, AudioCapture, SessionManager |
-| **SessionManager** (`src/sessions/`) | Track active session, list sessions, switch sessions, persist session state | GatewayClient, SettingsStore |
-| **SettingsStore** (`src/settings/`) | Read/write settings to localStorage with type safety, mask secrets for display, export/import JSON | SessionManager, GatewayClient, HubUI |
-| **HubUI** (`src/ui/`) | Companion mobile/desktop screens (home, health, features, settings, logs) using Even design tokens | ChatStore, SettingsStore, SessionManager, AppState |
-| **AppState** (`src/app/`) | Global app state coordinator -- connection status, current mode (idle/recording/thinking), error state | All components |
-| **IconRegistry** (`src/icons/`) | Animation frame definitions for HUD state icons (recording blink, sent, thinking throb) | GlassesRenderer |
+| Component | Responsibility | Communicates With | Status |
+|-----------|---------------|-------------------|--------|
+| **EventBus** | Typed pub/sub backbone | All modules | EXISTS |
+| **EvenBridge / BridgeMock** | SDK boundary, gesture/audio forwarding | EventBus (publishes gesture:*, bridge:*) | EXISTS |
+| **AudioCapture** | PCM frame buffering / MediaRecorder | GestureHandler (lifecycle), Bridge (PCM frames) | EXISTS |
+| **GestureHandler** | FSM + action dispatch | EventBus (subscribes gesture:*, emits audio:*) | EXISTS |
+| **GatewayClient** | HTTP+SSE to voice gateway | VoiceLoopController (called directly) | EXISTS |
+| **GlassesRenderer** | Display layout, streaming, scroll | BridgeService (SDK calls), DisplayController | EXISTS |
+| **DisplayController** | Event-to-renderer wiring | EventBus (subscribes all), GlassesRenderer | EXISTS |
+| **VoiceLoopController** | Audio->gateway->bus orchestration | EventBus, GatewayClient, Settings | **NEW** |
+| **main.ts** | Bootstrap + dependency wiring | Creates all of the above | **REWRITE** |
 
-### Data Flow
+### VoiceLoopController Design
 
-**Voice Conversation Flow (primary path):**
+```typescript
+// src/voice-loop/voice-loop-controller.ts
+
+export interface VoiceLoopController {
+  destroy(): void;
+}
+
+export function createVoiceLoopController(opts: {
+  bus: EventBus<AppEventMap>;
+  gateway: GatewayClient;
+  settings: () => AppSettings;
+}): VoiceLoopController {
+  const { bus, gateway, settings } = opts;
+  const unsubs: Array<() => void> = [];
+
+  // 1. When recording stops, send audio to gateway
+  unsubs.push(
+    bus.on('audio:recording-stop', ({ sessionId, blob }) => {
+      const s = settings();
+      gateway.sendVoiceTurn(s, {
+        sessionId,
+        audio: blob,
+        sttProvider: s.sttProvider,
+      });
+    }),
+  );
+
+  // 2. Forward gateway chunks to the event bus
+  unsubs.push(
+    gateway.onChunk((chunk) => {
+      bus.emit('gateway:chunk', chunk);
+    }),
+  );
+
+  // 3. Forward gateway status to the event bus
+  unsubs.push(
+    gateway.onStatusChange((status) => {
+      bus.emit('gateway:status', { status });
+    }),
+  );
+
+  function destroy(): void {
+    for (const unsub of unsubs) unsub();
+    unsubs.length = 0;
+    gateway.destroy();
+  }
+
+  return { destroy };
+}
+```
+
+**Why a separate module instead of inline in main.ts:** Testability. The voice loop controller can be unit-tested by injecting a mock bus, mock gateway, and mock settings -- same pattern as every other v1.0 module. Inlining this logic in main.ts would make it untestable.
+
+### Audio Frame Subscription (Tech Debt Fix)
+
+There is a known gap: `bridge:audio-frame` events are emitted by even-bridge.ts but nothing subscribes to route them to `audioCapture.onFrame()`. This subscription belongs in main.ts wiring:
+
+```typescript
+bus.on('bridge:audio-frame', ({ pcm }) => {
+  audioCapture.onFrame(pcm);
+});
+```
+
+This is a one-liner but is critical for glasses-mode PCM recording (non-dev-mode).
+
+## Data Flow: Complete Voice Turn
 
 ```
-1. User taps temple/ring on G2 glasses
-2. EvenBridge receives TOUCH_EVENT/CLICK_EVENT via onEvenHubEvent
-3. GestureEngine FSM transitions: IDLE -> RECORDING
-4. AppState updates mode to "recording"
-5. GlassesRenderer shows REC icon + timer in status container
-6. EvenBridge calls bridge.audioControl(true) to start glasses mic
-7. AudioCapture receives audioEvent.audioPcm (16kHz, PCM S16LE, 10ms frames)
-8. AudioCapture buffers frames, sends chunks to GatewayClient
-9. User taps again -> GestureEngine: RECORDING -> SENT
-10. bridge.audioControl(false) stops mic
-11. GatewayClient POSTs buffered audio to gateway
-12. AppState updates mode to "thinking"
-13. GlassesRenderer shows THINKING throbber
-14. Gateway responds with SSE stream of agent tokens
-15. GatewayClient feeds tokens into ChatStore incrementally
-16. ChatStore appends to current assistant message
-17. GlassesRenderer calls bridge.textContainerUpgrade() every 150-300ms
-    with latest text (up to 2000 chars per update)
-18. When stream completes, AppState -> IDLE
-19. GlassesRenderer shows final response, user can scroll history
+User taps glasses touchpad
+       |
+       v
+even-bridge.ts detects OsEventTypeList.CLICK_EVENT
+       |
+       v
+bus.emit('gesture:tap', { timestamp })
+       |
+       v
+gesture-handler.ts: gestureTransition('idle', 'tap')
+  -> state = 'recording', action = START_RECORDING
+  -> audioCapture.startRecording(sessionId)
+  -> bridge.startAudio()
+  -> bus.emit('audio:recording-start', { sessionId })
+       |
+       v
+display-controller.ts hears 'audio:recording-start'
+  -> renderer.setIconState('recording')
+  -> icon shows blinking dot
+       |
+       v
+[PCM frames flow: bridge -> bus:'bridge:audio-frame' -> audioCapture.onFrame()]
+       |
+       v
+User taps again
+       |
+       v
+gesture-handler.ts: gestureTransition('recording', 'tap')
+  -> state = 'sent', action = STOP_RECORDING
+  -> bridge.stopAudio()
+  -> audioCapture.stopRecording() -> Promise<Blob>
+  -> bus.emit('audio:recording-stop', { sessionId, blob })
+       |
+       v
+display-controller.ts hears 'audio:recording-stop'
+  -> renderer.setIconState('sent')
+       |
+       v
+voice-loop-controller.ts hears 'audio:recording-stop'
+  -> gateway.sendVoiceTurn(settings, { sessionId, audio: blob, sttProvider })
+       |
+       v
+gateway-client.ts POSTs FormData to gateway /voice/turn
+  -> reads SSE stream from response body
+  -> emits chunks via onChunk callbacks
+       |
+       v
+voice-loop-controller.ts forwards chunk to bus
+  -> bus.emit('gateway:chunk', chunk)
+       |
+       v
+display-controller.ts hears 'gateway:chunk'
+  chunk.type === 'transcript':
+    -> renderer.addUserMessage(text)
+    -> renderer.setIconState('sent')
+  chunk.type === 'response_start':
+    -> renderer.startStreaming()
+    -> renderer.setIconState('thinking')
+  chunk.type === 'response_delta':
+    -> renderer.appendStreamChunk(text)
+  chunk.type === 'response_end':
+    -> renderer.endStreaming()
+    -> renderer.setIconState('idle')
+       |
+       v
+glasses-renderer.ts pushes text to glasses display
+  -> bridge.textContainerUpgrade(containerID, content)
 ```
 
-**Settings Flow:**
+## Initialization Dependency Graph for main.ts
+
+The initialization order is constrained by several dependency and registration-order requirements.
+
+### Dependency Constraints
+
 ```
-1. User navigates to Settings in HubUI (companion screen)
-2. HubUI reads current values from SettingsStore
-3. User edits gateway URL, session key, STT provider, gesture mapping
-4. SettingsStore validates and persists to localStorage
-5. GatewayClient reads gateway URL from SettingsStore on next request
-6. Secret fields (API keys) displayed with masking (*****)
-7. Export: SettingsStore.export() emits JSON without secret fields
-8. Import: SettingsStore.import(json) merges, user re-enters secrets
+EventBus         -- no deps, create first
+Settings         -- no deps, load from localStorage
+AudioCapture     -- needs devMode flag only
+BridgeService    -- needs EventBus (to emit gesture/audio events)
+GatewayClient    -- no deps at creation time
+GestureHandler   -- needs EventBus, BridgeService, AudioCapture, activeSessionId
+GlassesRenderer  -- needs BridgeService, EventBus
+DisplayController-- needs EventBus, GlassesRenderer, GestureHandler (MUST be after GestureHandler)
+VoiceLoopController -- needs EventBus, GatewayClient, Settings
 ```
 
-**Glasses History Scroll Flow:**
+### Registration Order Constraint
+
+The event bus dispatches synchronously in registration order. The display-controller.ts file documents this explicitly:
+
+> "The display controller's hint-update handlers must be registered AFTER the gesture handler is created."
+
+This means: GestureHandler subscribes to gesture events FIRST, then DisplayController subscribes SECOND. When a gesture event fires, the gesture handler processes the state transition first, then the display controller reads the post-transition hint text.
+
+### Correct Initialization Sequence
+
+```typescript
+// src/glasses-main.ts (glasses runtime entry point)
+
+export async function boot(): Promise<void> {
+  // -- Layer 0: Foundation (no deps) ---------------------
+  const bus = createEventBus<AppEventMap>();
+  const settings = loadSettings();
+  const devMode = !('__EVEN_BRIDGE__' in window)
+    || new URLSearchParams(location.search).has('dev');
+
+  // -- Layer 1: Hardware boundary ------------------------
+  const bridge = devMode
+    ? createBridgeMock(bus)
+    : createEvenBridgeService(bus);
+  await bridge.init();
+  // After init: page container exists, gesture/audio events flowing
+
+  // -- Layer 2: Audio capture ----------------------------
+  const audioCapture = createAudioCapture(devMode);
+
+  // Wire PCM frames from bridge to audio capture (tech debt fix)
+  bus.on('bridge:audio-frame', ({ pcm }) => {
+    audioCapture.onFrame(pcm);
+  });
+
+  // -- Layer 3: Gesture handling (subscribes to bus FIRST) --
+  const gestureHandler = createGestureHandler({
+    bus,
+    bridge,
+    audioCapture,
+    activeSessionId: () => 'gideon', // or from settings
+  });
+
+  // -- Layer 4: Display pipeline (subscribes AFTER gesture) --
+  const renderer = createGlassesRenderer({ bridge, bus });
+  const displayController = createDisplayController({
+    bus,
+    renderer,
+    gestureHandler,
+  });
+  await displayController.init();
+  // After init: 3-container layout rebuilt, icon animator running
+
+  // -- Layer 5: Gateway + voice loop ---------------------
+  const gateway = createGatewayClient();
+  const voiceLoop = createVoiceLoopController({
+    bus,
+    gateway,
+    settings: () => settings,
+  });
+
+  // Start gateway health monitoring
+  if (settings.gatewayUrl) {
+    gateway.startHeartbeat(settings.gatewayUrl);
+  }
+
+  // -- Cleanup on page unload ----------------------------
+  window.addEventListener('beforeunload', () => {
+    voiceLoop.destroy();
+    displayController.destroy();
+    gestureHandler.destroy();
+    gateway.destroy();
+    bridge.destroy();
+    bus.clear();
+  });
+}
 ```
-1. User scrolls ring up/down on glasses
-2. EvenBridge receives SCROLL_UP_EVENT or SCROLL_DOWN_EVENT
-   (NOTE: these are BOUNDARY events from text overflow, not raw gestures)
-3. If text container has isEventCapture:1, firmware handles internal scroll
-4. At boundaries, SCROLL_TOP_EVENT/SCROLL_BOTTOM_EVENT fire
-5. GlassesRenderer can then page to previous/next message blocks
-6. ChatStore provides message window based on current scroll offset
+
+### Layer Rationale
+
+| Layer | What | Why This Order |
+|-------|------|----------------|
+| 0 | Bus, settings | Zero dependencies. Everything else needs these. |
+| 1 | Bridge | Must call `init()` before any SDK operations. Creates startup page container. Starts emitting gesture/audio events to bus. |
+| 2 | AudioCapture + PCM wiring | Must exist before GestureHandler calls `audioCapture.startRecording()`. PCM bus subscription must exist before bridge emits frames. |
+| 3 | GestureHandler | Subscribes to gesture events on bus. Must subscribe BEFORE DisplayController so FSM transitions happen first. |
+| 4 | DisplayController + Renderer | Subscribes to gesture events AFTER GestureHandler. Calls `renderer.init()` which does `rebuildPageContainer` (overrides the startup 1-container layout with the 3-container chat layout). |
+| 5 | Gateway + VoiceLoop | Only needed after the full input/display pipeline is running. VoiceLoopController subscribes to `audio:recording-stop` which comes from gesture handler. |
+
+### Dev Mode Detection
+
+The bridge mock should be used when running outside the Even App WebView. Detection strategy:
+
+```typescript
+// The SDK injects EvenAppBridge into the WebView context.
+// Simple detection:
+const devMode = !('__EVEN_BRIDGE__' in window);
+// Or use URL parameter for explicit override: ?dev=1
 ```
+
+**Recommendation:** Use URL parameter `?dev=1` for explicit dev mode, with fallback to SDK detection. This is the approach used by the pong-even-g2 community app.
 
 ## Patterns to Follow
 
-### Pattern 1: Bridge-First Event Bus
-**What:** All glasses communication flows through a single EvenBridge module that initializes the SDK bridge and dispatches typed events to subscribers. No other module calls `bridge.*` directly.
-**When:** Always -- the bridge is the single gateway to hardware.
-**Why:** The `EvenAppBridge` must be awaited (`waitForEvenAppBridge()`), has strict lifecycle requirements (page container must exist before audio control), and coalesces events. Centralizing prevents race conditions and lifecycle bugs.
-**Example:**
+### Pattern 1: Factory + Interface Separation
+**What:** Every service is created via `createXxx(opts)` and returns a plain interface object. No classes.
+**When:** All new modules (VoiceLoopController, any future additions).
+**Why:** Consistent with v1.0 patterns. Enables trivial mocking in tests.
+
 ```typescript
-// src/bridge/even-bridge.ts
-import { waitForEvenAppBridge, EvenAppBridge } from '@evenrealities/even_hub_sdk';
+export interface VoiceLoopController {
+  destroy(): void;
+}
 
-type BridgeEvent =
-  | { type: 'audio'; pcm: Uint8Array }
-  | { type: 'input'; event: OsEventTypeList }
-  | { type: 'system'; event: SysEvent }
-  | { type: 'text-scroll'; boundary: 'top' | 'bottom' };
-
-type BridgeListener = (event: BridgeEvent) => void;
-
-class EvenBridgeService {
-  private bridge: EvenAppBridge | null = null;
-  private listeners: Set<BridgeListener> = new Set();
-
-  async init(): Promise<void> {
-    this.bridge = await waitForEvenAppBridge();
-    this.bridge.onEvenHubEvent((evt) => {
-      if (evt.audioEvent?.audioPcm) {
-        this.emit({ type: 'audio', pcm: evt.audioEvent.audioPcm });
-      }
-      if (evt.listEvent || evt.textEvent) {
-        // Map SDK events to typed BridgeEvents
-        this.mapInputEvent(evt);
-      }
-      if (evt.sysEvent) {
-        this.emit({ type: 'system', event: evt.sysEvent });
-      }
-    });
-  }
-
-  subscribe(listener: BridgeListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  private emit(event: BridgeEvent): void {
-    this.listeners.forEach(fn => fn(event));
-  }
-
-  // Expose controlled SDK actions
-  async startAudio(): Promise<void> { this.bridge?.audioControl(true); }
-  async stopAudio(): Promise<void> { this.bridge?.audioControl(false); }
-  async createPage(containers: ContainerProperty[]): Promise<number> { /* ... */ }
-  async updateText(id: number, name: string, content: string, offset: number, length: number): Promise<boolean> { /* ... */ }
+export function createVoiceLoopController(opts: {
+  bus: EventBus<AppEventMap>;
+  gateway: GatewayClient;
+  settings: () => AppSettings;
+}): VoiceLoopController {
+  // ... implementation
+  return { destroy };
 }
 ```
 
-### Pattern 2: Gesture Finite State Machine
-**What:** A pure-function state machine that maps raw input events to app actions. No side effects in the FSM itself -- it returns the next state and an optional action.
-**When:** All gesture handling on the glasses HUD.
-**Why:** Only 4-6 input types exist (TOUCH, CLICK, SCROLL_UP, SCROLL_DOWN, LONG_PRESS, plus scroll boundary events). A clean FSM prevents gesture conflicts (e.g., tap during recording vs. tap during idle mean different things). Testable without SDK.
-**Example:**
-```typescript
-// src/gestures/gesture-fsm.ts
-type GestureState = 'idle' | 'recording' | 'sent' | 'thinking' | 'menu' | 'scrolling';
-type InputEvent = 'tap' | 'double_tap' | 'scroll_up' | 'scroll_down' | 'long_press';
-type Action =
-  | { type: 'START_RECORDING' }
-  | { type: 'STOP_RECORDING' }
-  | { type: 'SCROLL_HISTORY'; direction: 'up' | 'down' }
-  | { type: 'TOGGLE_MENU' }
-  | { type: 'DISMISS' }
-  | null;
+### Pattern 2: Bus Subscription Cleanup via unsubs Array
+**What:** Every module that subscribes to the bus collects `() => void` unsubscribe functions in an array, then iterates on `destroy()`.
+**When:** Any module that calls `bus.on()`.
+**Why:** Prevents memory leaks and dangling subscriptions. Already used in gesture-handler.ts and display-controller.ts.
 
-interface Transition {
-  nextState: GestureState;
-  action: Action;
-}
+### Pattern 3: Settings as Getter Function
+**What:** Pass `settings: () => AppSettings` instead of `settings: AppSettings` to modules that need current settings at call time.
+**When:** VoiceLoopController needs current gatewayUrl/sttProvider when sending a voice turn, not the values from boot time.
+**Why:** Settings can change via the companion hub. A getter ensures fresh values.
 
-const transitions: Record<GestureState, Partial<Record<InputEvent, Transition>>> = {
-  idle: {
-    tap: { nextState: 'recording', action: { type: 'START_RECORDING' } },
-    double_tap: { nextState: 'menu', action: { type: 'TOGGLE_MENU' } },
-    scroll_up: { nextState: 'scrolling', action: { type: 'SCROLL_HISTORY', direction: 'up' } },
-    scroll_down: { nextState: 'scrolling', action: { type: 'SCROLL_HISTORY', direction: 'down' } },
-  },
-  recording: {
-    tap: { nextState: 'sent', action: { type: 'STOP_RECORDING' } },
-    // Other inputs ignored during recording
-  },
-  thinking: {
-    // Most inputs ignored while waiting for response
-    double_tap: { nextState: 'menu', action: { type: 'TOGGLE_MENU' } },
-  },
-  // ... etc
-};
-
-export function transition(state: GestureState, input: InputEvent): Transition {
-  return transitions[state]?.[input] ?? { nextState: state, action: null };
-}
-```
-
-### Pattern 3: Throttled Streaming Text Push
-**What:** Buffer incoming SSE tokens client-side, then push accumulated text to the glasses display on a fixed cadence (150-300ms) using `textContainerUpgrade()` rather than per-token.
-**When:** Every streaming AI response.
-**Why:** The glasses display update over BLE is slow. Per-token updates (which can arrive every 20-50ms from an LLM) would overwhelm the BLE pipe and cause dropped frames. The SDK's `textContainerUpgrade` supports partial updates with offset/length, but BLE latency means batching is essential. The Pong game example confirms: frame push must complete before next push.
-**Example:**
-```typescript
-// src/chat/stream-throttle.ts
-class StreamThrottle {
-  private buffer = '';
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private lastPushedLength = 0;
-
-  constructor(
-    private pushFn: (text: string, offset: number, length: number) => Promise<boolean>,
-    private intervalMs = 200,
-  ) {}
-
-  start(): void {
-    this.timer = setInterval(() => this.flush(), this.intervalMs);
-  }
-
-  append(token: string): void {
-    this.buffer += token;
-  }
-
-  private async flush(): Promise<void> {
-    if (this.buffer.length === this.lastPushedLength) return;
-    const newContent = this.buffer;
-    // Replace entire content (offset 0, length = previous length)
-    await this.pushFn(newContent, 0, this.lastPushedLength);
-    this.lastPushedLength = newContent.length;
-  }
-
-  async stop(): Promise<void> {
-    if (this.timer) clearInterval(this.timer);
-    await this.flush(); // Final push
-  }
-}
-```
-
-### Pattern 4: Container Layout Manager
-**What:** A declarative abstraction over the 4-container limit that manages layout presets (chat mode, menu mode, status-only mode) and handles page rebuilds.
-**When:** Switching between HUD views (chat, menu, status).
-**Why:** The Even Hub SDK limits to 4 containers per page. Switching layouts requires `rebuildPageContainer()` which tears down and recreates everything. A layout manager encapsulates this complexity and prevents container ID conflicts.
-**Example:**
-```typescript
-// src/glasses/layouts.ts
-interface Layout {
-  name: string;
-  containers: ContainerConfig[];
-  eventCaptureId: number;
-}
-
-const CHAT_LAYOUT: Layout = {
-  name: 'chat',
-  containers: [
-    { id: 1, name: 'status', x: 0, y: 0, w: 576, h: 32, type: 'text' },
-    { id: 2, name: 'chat',   x: 0, y: 32, w: 576, h: 224, type: 'text', isEventCapture: true },
-    { id: 3, name: 'hint',   x: 0, y: 256, w: 576, h: 32, type: 'text' },
-    // 4th container reserved for state icon (image)
-  ],
-  eventCaptureId: 2,
-};
-
-const MENU_LAYOUT: Layout = {
-  name: 'menu',
-  containers: [
-    { id: 1, name: 'title', x: 0, y: 0, w: 576, h: 40, type: 'text' },
-    { id: 2, name: 'options', x: 0, y: 40, w: 576, h: 248, type: 'text', isEventCapture: true },
-  ],
-  eventCaptureId: 2,
-};
-```
-
-### Pattern 5: Type-Safe Settings Store with Secret Separation
-**What:** Split settings into `public` (exportable) and `secret` (never exported) partitions. Use a typed wrapper around localStorage with JSON serialization, validation on read, and masking on display.
-**When:** All settings persistence.
-**Why:** The app handles gateway URLs, session keys, and potentially API keys. Frontend localStorage is not secure, but we can prevent accidental leakage by never including secrets in export JSON and masking them in the UI. The gateway handles real secret management.
-**Example:**
-```typescript
-// src/settings/settings-store.ts
-interface PublicSettings {
-  gatewayUrl: string;
-  sttProvider: 'whisperx' | 'openai' | 'custom';
-  sessionName: string;
-  gestureMapping: Record<string, string>;
-}
-
-interface SecretSettings {
-  sessionKey: string;
-}
-
-type AllSettings = PublicSettings & SecretSettings;
-
-const DEFAULTS: AllSettings = {
-  gatewayUrl: 'http://localhost:3000',
-  sttProvider: 'whisperx',
-  sessionName: 'default',
-  gestureMapping: {},
-  sessionKey: '',
-};
-
-class SettingsStore {
-  private cache: AllSettings | null = null;
-
-  get(): AllSettings {
-    if (!this.cache) {
-      const raw = localStorage.getItem('openclaw-settings');
-      this.cache = raw ? { ...DEFAULTS, ...JSON.parse(raw) } : { ...DEFAULTS };
-    }
-    return this.cache;
-  }
-
-  set<K extends keyof AllSettings>(key: K, value: AllSettings[K]): void {
-    const settings = this.get();
-    settings[key] = value;
-    localStorage.setItem('openclaw-settings', JSON.stringify(settings));
-    this.cache = settings;
-  }
-
-  exportPublic(): PublicSettings {
-    const { sessionKey, ...pub } = this.get();
-    return pub;
-  }
-
-  importPublic(json: PublicSettings): void {
-    const current = this.get();
-    Object.assign(current, json);
-    // Preserve existing secrets
-    localStorage.setItem('openclaw-settings', JSON.stringify(current));
-    this.cache = current;
-  }
-}
-```
+### Pattern 4: Bridge Rebuild for Layout Changes
+**What:** `rebuildPageContainer()` for layout changes, `textContainerUpgrade()` for content updates.
+**When:** The pong-even-g2 community app confirms this: "During gameplay, only textContainerUpgrade is called -- no page rebuilds until the game ends."
+**Why:** Page rebuilds are expensive. The chat layout (3 containers: status/chat/hint) should be set once at init and updated via textContainerUpgrade thereafter.
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Direct Bridge Calls from UI Components
-**What:** Calling `bridge.textContainerUpgrade()` or `bridge.audioControl()` directly from UI event handlers or rendering code.
-**Why bad:** The bridge has strict lifecycle requirements (page must exist before audio), concurrency constraints (await frame push before next), and event coalescing. Scattered direct calls cause race conditions, dropped frames, and hard-to-debug state desync between glasses display and app state.
-**Instead:** Route ALL bridge calls through `EvenBridgeService`. Components dispatch intentions; the bridge service manages ordering and lifecycle.
+### Anti-Pattern 1: Gateway Chunks Directly on the Bus
+**What:** Having gatewayClient directly emit to the event bus.
+**Why bad:** GatewayClient has its own internal event system (onChunk/onStatusChange) that is intentionally decoupled from AppEventMap. Coupling them would break the gateway client's independence and testability.
+**Instead:** VoiceLoopController bridges the two systems. Gateway client remains bus-agnostic.
 
-### Anti-Pattern 2: Per-Token Glasses Display Updates
-**What:** Pushing every streamed token to the glasses display immediately as it arrives from SSE.
-**Why bad:** LLM tokens arrive at 20-50ms intervals. The glasses BLE pipe has significant latency. The SDK's `textContainerUpgrade` must complete before the next call. Per-token updates will queue up, causing massive lag (seconds behind the actual response) and potential BLE buffer overflow.
-**Instead:** Buffer tokens client-side, push to display on a 150-300ms throttle cadence using `StreamThrottle`.
+### Anti-Pattern 2: Inline Wiring Logic in main.ts
+**What:** Putting the audio->gateway->bus forwarding logic directly in main.ts.
+**Why bad:** Untestable. main.ts should only do dependency creation and wiring, not contain business logic.
+**Instead:** Extract to VoiceLoopController module. main.ts only creates instances and passes them together.
 
-### Anti-Pattern 3: Using More Than 4 Containers or Dynamic Container Creation
-**What:** Trying to create containers dynamically per chat message, or exceeding the 4-container limit.
-**Why bad:** The Even Hub SDK hard-limits to 4 containers per page. Exceeding this returns error code 2. Each container switch requires `rebuildPageContainer()` which tears down everything and causes a visible flicker on the glasses.
-**Instead:** Use fixed layout presets (chat layout, menu layout, status layout). Text containers hold multi-message content as plain text. Use the container layout manager pattern.
+### Anti-Pattern 3: Multiple Page Rebuilds During Init
+**What:** Both `bridge.init()` (creates startup page) and `renderer.init()` (rebuilds to 3-container chat layout) do page container operations.
+**Why this is fine:** The startup page from `bridge.init()` is immediately replaced by `renderer.init()`. This is the correct pattern -- the startup page is required by the SDK before any other operations work, and the chat layout replaces it once the renderer is ready. Do NOT try to skip the startup page.
 
-### Anti-Pattern 4: Storing Secrets in localStorage Without Awareness
-**What:** Treating localStorage as a secure store for API keys or session secrets.
-**Why bad:** localStorage is accessible to any script on the origin. The app may be loaded in a WebView context where other scripts could access it. XSS would expose everything.
-**Instead:** Store only non-critical preferences in localStorage. Session keys are semi-sensitive (use masking, exclude from export). Real secrets (OpenClaw API keys, STT credentials) must stay in the gateway backend, never in the frontend.
+### Anti-Pattern 4: Synchronous Settings Snapshot
+**What:** Passing `settings` object directly instead of `() => settings` getter.
+**Why bad:** Settings change at runtime (user edits in companion hub). A snapshot taken at boot would have stale gatewayUrl/apiKey.
+**Instead:** Always pass a getter that returns current settings.
 
-### Anti-Pattern 5: Full Chat History in a Single Text Container
-**What:** Concatenating all messages into one string and pushing to the glasses display.
-**Why bad:** Text containers have content limits (2000 chars for `textContainerUpgrade`, 1000 chars for `createStartUpPageContainer`). A full conversation easily exceeds this. The glasses font is non-monospaced with ~400-500 chars filling a full-screen container.
-**Instead:** Maintain full chat history in `ChatStore` in memory. Compute a "viewport window" of recent messages that fits within the character limit. Use manual pagination for older messages, triggered by scroll boundary events.
+## EvenHub Submission: Build Architecture
 
-## Even Hub SDK Container Model (Critical Reference)
+### Single-File Output
 
-This section documents the verified SDK architecture that all glasses-side rendering must conform to.
+EvenHub apps run inside the Even App's WebView. The simplest distribution is a self-contained `dist/index.html` with all JS/CSS inlined. Use `vite-plugin-singlefile` (v2.3.0).
 
-### Display Hardware
-- 576x288 pixels per eye, dual micro-LED (green)
-- 4-bit greyscale (16 shades of green)
-- Single baked-in LVGL font, non-monospaced, no size control
-- ~400-500 chars fills a full-screen text container
+**Vite config change:**
 
-### Container Rules
-- Maximum 4 containers per page
-- Exactly 1 must have `isEventCapture: 1`
-- Absolute pixel positioning only (no CSS, no flexbox)
-- Container types: Text, List, Image
-- Image containers: 20-200px wide, 20-100px tall
-- Text containers: left-aligned, top-aligned, no formatting
-- Borders: 0-5 width, 0-16 color, 0-10 radius, 0-32 padding
+```typescript
+import { defineConfig } from 'vite';
+import { viteSingleFile } from 'vite-plugin-singlefile';
+import { resolve } from 'path';
 
-### Content Limits
-| Operation | Max Chars |
-|-----------|-----------|
-| `createStartUpPageContainer` | 1,000 |
-| `textContainerUpgrade` | 2,000 |
-| `rebuildPageContainer` | 1,000 |
+export default defineConfig({
+  root: '.',
+  plugins: [viteSingleFile()],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
+  build: {
+    outDir: 'dist',
+    // Single input for EvenHub submission
+    rollupOptions: {
+      input: resolve(__dirname, 'index.html'),
+    },
+  },
+  server: {
+    port: 3200,
+    open: true,
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    include: ['src/**/*.test.ts'],
+  },
+});
+```
 
-### Input Events
-| Event | Source | Notes |
-|-------|--------|-------|
-| `TOUCH_EVENT` | Temple touch | Single tap |
-| `CLICK_EVENT` | Ring click | Ring press |
-| `SCROLL_UP_EVENT` | Ring scroll | Scroll gesture |
-| `SCROLL_DOWN_EVENT` | Ring scroll | Scroll gesture |
-| `LONG_PRESS_EVENT` | Long hold | Extended press |
-| `SCROLL_TOP_EVENT` | Text overflow | Boundary reached at top |
-| `SCROLL_BOTTOM_EVENT` | Text overflow | Boundary reached at bottom |
+**Key changes from current config:**
+1. Add `viteSingleFile()` plugin
+2. Remove multi-entry (`simulator` input) from build -- preview-glasses.html is dev-only
+3. Install: `npm install -D vite-plugin-singlefile`
 
-### Audio
-- `bridge.audioControl(true/false)` starts/stops glasses mic
-- PCM arrives via `onEvenHubEvent` as `audioEvent.audioPcm` (Uint8Array)
-- Format: 16kHz, PCM S16LE, mono, 10ms frames (40 bytes/frame)
-- Page container must exist before calling `audioControl`
+### Dual Entry Points: Glasses Runtime vs Companion Hub
 
-### Page Lifecycle
-1. `createStartUpPageContainer(containers)` -- initial page
-2. `textContainerUpgrade(upgrade)` -- partial text update (offset/length)
-3. `rebuildPageContainer(containers)` -- replace all containers
-4. `updateImageRawData(data)` -- update image container
-5. `shutDownPageContainer()` -- tear down display
+The current `main.ts` is the companion hub (settings, health, logs). The glasses runtime is a DIFFERENT code path. These serve different purposes:
+
+| Entry Point | Runs In | Purpose |
+|-------------|---------|---------|
+| Companion hub code | Browser / mobile | Configure settings, view health, manage sessions |
+| Glasses runtime code | Even App WebView | Voice loop, display pipeline, gesture handling |
+
+**Recommendation:** Detect environment at runtime. If running inside Even App WebView, boot the glasses runtime. If in a regular browser, show the companion hub. This keeps a single index.html for EvenHub submission.
+
+```typescript
+// src/main.ts
+async function main() {
+  const isEvenApp = '__EVEN_BRIDGE__' in window
+    || new URLSearchParams(location.search).has('even');
+
+  if (isEvenApp) {
+    const { boot } = await import('./glasses-main');
+    await boot();
+  } else {
+    const { initHub } = await import('./hub-main');
+    initHub();
+  }
+}
+main();
+```
+
+**Why this approach:** One index.html, two code paths. vite-plugin-singlefile will inline both code paths (they are small -- total app is ~5,500 LOC). This avoids maintaining two separate HTML files and simplifies EvenHub submission. The dynamic import means tree-shaking separates the code paths at the chunk level, but singlefile inlines everything anyway.
+
+### App Metadata
+
+EvenHub submission requires metadata. Based on community apps and SDK documentation, this includes:
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| name | "OpenClaw Chat" | Short, descriptive |
+| description | "Voice chat with AI through your Even G2" | One-liner |
+| icon | 512x512 PNG | App store icon |
+| permissions | `audio`, `network` | Microphone access, gateway API calls |
+| version | "1.1.0" | Semantic versioning |
+
+**LOW confidence** on exact metadata schema -- EvenHub submission portal specifics are not publicly documented. Validate with Even Realities pilot program team.
+
+### Orphaned Event Types Cleanup
+
+The AppEventMap contains 4 event types that are defined but never emitted or consumed:
+
+```typescript
+'display:state-change': { state: IconState };
+'display:viewport-update': { text: string };
+'display:hide': Record<string, never>;
+'display:wake': Record<string, never>;
+```
+
+These were likely planned during v1.0 but superseded by direct method calls in the display controller. Remove them to keep the event map clean. This is safe because:
+- No module emits these events (verified by searching the entire codebase)
+- No module subscribes to these events
+- The display controller uses direct renderer method calls instead
+
+## Component Wiring Diagram
+
+```
+main.ts creates:
+  |
+  +-- bus = createEventBus<AppEventMap>()
+  |
+  +-- settings = loadSettings()
+  |
+  +-- bridge = createBridgeMock(bus) OR createEvenBridgeService(bus)
+  |     |
+  |     +-- await bridge.init()  --> SDK startup page created
+  |
+  +-- audioCapture = createAudioCapture(devMode)
+  |     |
+  |     +-- bus.on('bridge:audio-frame') --> audioCapture.onFrame()
+  |
+  +-- gestureHandler = createGestureHandler({ bus, bridge, audioCapture, ... })
+  |     |
+  |     +-- subscribes: gesture:tap, gesture:double-tap, gesture:scroll-*
+  |     +-- emits: audio:recording-start, audio:recording-stop, gesture:menu-toggle
+  |
+  +-- renderer = createGlassesRenderer({ bridge, bus })
+  |
+  +-- displayController = createDisplayController({ bus, renderer, gestureHandler })
+  |     |
+  |     +-- await displayController.init()  --> 3-container layout, icon animator
+  |     +-- subscribes: gateway:chunk, gesture:*, audio:*, gesture:menu-toggle
+  |
+  +-- gateway = createGatewayClient()
+  |
+  +-- voiceLoop = createVoiceLoopController({ bus, gateway, settings: () => settings })
+        |
+        +-- subscribes: audio:recording-stop
+        +-- bridges: gateway.onChunk() --> bus.emit('gateway:chunk')
+        +-- bridges: gateway.onStatusChange() --> bus.emit('gateway:status')
+```
+
+## New Files Required
+
+| File | Type | Purpose | Complexity |
+|------|------|---------|------------|
+| `src/voice-loop/voice-loop-controller.ts` | NEW | Audio->gateway->bus bridge | Low (thin glue, ~40 lines) |
+| `src/glasses-main.ts` | NEW | Glasses runtime bootstrap (init sequence above) | Medium (~60 lines) |
+| `src/hub-main.ts` | RENAME/EXTRACT | Current main.ts companion hub logic | Low (move existing code) |
+| `src/main.ts` | REWRITE | Environment detection + dynamic import | Low (~15 lines) |
+| `src/__tests__/voice-loop-controller.test.ts` | NEW | Voice loop unit tests | Low |
+
+## Modified Files
+
+| File | Change | Reason |
+|------|--------|--------|
+| `src/types.ts` | Remove 4 orphaned event types from AppEventMap | Tech debt cleanup |
+| `vite.config.ts` | Add viteSingleFile plugin, single entry point for build | EvenHub packaging |
+| `package.json` | Add vite-plugin-singlefile dev dependency | Build tooling |
+
+## FSM State Transition Gap: sent -> thinking
+
+The gesture FSM has a `sent` state (after recording stops, before gateway responds) and a `thinking` state (while streaming response arrives). Currently, the transition from `sent` to `thinking` is NOT in the FSM transition table -- the FSM comment says "auto-transitions to 'thinking' externally via event bus."
+
+This means the display controller handles the visual transition (setting icon to 'thinking' on `response_start`), but the gesture FSM state stays at `sent`. This is acceptable for v1.1 because:
+- The `sent` state ignores all inputs (correct behavior while waiting)
+- The display controller independently manages the icon state
+- The gesture handler does not need to know about `thinking` for input handling
+
+However, if future features need the gesture handler to behave differently during `thinking` vs `sent`, the FSM will need an external state-set mechanism. Flag for future consideration only.
 
 ## Scalability Considerations
 
-| Concern | Single User (target) | 10+ Sessions | Notes |
-|---------|---------------------|--------------|-------|
-| Chat history size | In-memory array, trim at 500 msgs | Same -- frontend only | Backend stores canonical history |
-| Audio buffer | ~160 bytes/sec PCM, buffer 30s max | N/A -- single glasses | Gateway handles concurrent sessions |
-| Display updates | 150-300ms throttle, single BLE pipe | N/A | Hardware constraint, not scalable |
-| Settings storage | localStorage, ~10KB | Same | One set of settings per device |
-| Session switching | Swap active session ID, reload history from gateway | List grows linearly | Gateway paginates session list |
-
-## Suggested Build Order (Dependency Chain)
-
-Build order follows strict dependency chains. Each layer requires the one below it.
-
-```
-Layer 0 (Foundation):  Types + SettingsStore + AppState
-                       No external dependencies. Pure data structures.
-
-Layer 1 (Bridge):      EvenBridge
-                       Requires: Types
-                       Blocks: Everything glasses-related
-
-Layer 2 (Input/Output): GestureEngine + AudioCapture + GlassesRenderer + IconRegistry
-                        Requires: EvenBridge, AppState
-                        Can be built in parallel within this layer
-
-Layer 3 (Data):         ChatStore + GatewayClient
-                        Requires: SettingsStore (for gateway URL)
-                        GatewayClient needs ChatStore for streaming writes
-
-Layer 4 (Orchestration): SessionManager + StreamThrottle
-                         Requires: GatewayClient, ChatStore, GlassesRenderer
-                         Wires streaming responses to display
-
-Layer 5 (UI):           HubUI (companion screens)
-                        Requires: All stores + AppState for display
-                        Can develop companion UI independently from glasses
-
-Layer 6 (Integration):  Full voice conversation loop wiring
-                        Connects: GestureEngine -> AudioCapture -> GatewayClient
-                                  -> ChatStore -> StreamThrottle -> GlassesRenderer
-```
-
-**Rationale:** The EvenBridge is the critical bottleneck. Nothing glasses-related works without it. However, the companion HubUI and SettingsStore can be built independently. The GestureEngine FSM is pure functions and fully testable without the SDK. The StreamThrottle is the most novel component and should be prototyped early with the simulator.
+| Concern | At v1.1 (now) | At v2.0 (future) |
+|---------|---------------|-------------------|
+| Conversation length | Viewport windowing handles it (1800-char SDK limit) | Same -- viewport already windows |
+| Multiple sessions | Settings store has activeSession | Could add session-specific conversation history |
+| Bundle size | Single-file inlining is fine (app is <50KB) | May need code splitting if app grows significantly |
+| Audio format | PCM (glasses) / WebM (browser fallback) | Gateway handles transcoding -- frontend does not care |
+| Reconnection | Gateway client has exponential backoff (5 retries) | Could add offline queue for messages |
 
 ## Sources
 
-- [Even G2 SDK technical notes (nickustinov)](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md) -- MEDIUM-HIGH confidence, community-maintained but detailed and consistent with official demo apps
-- [Even Hub Developer Portal](https://evenhub.evenrealities.com/) -- HIGH confidence, official
-- [EvenDemoApp (official)](https://github.com/even-realities/EvenDemoApp) -- HIGH confidence, official reference
-- [EH-InNovel (official)](https://github.com/even-realities/EH-InNovel) -- HIGH confidence, official Even Hub web app demo
-- [Pong for Even G2](https://github.com/nickustinov/pong-even-g2) -- MEDIUM confidence, community app demonstrating real rendering patterns
-- [Even G2 BLE Protocol (reverse-engineered)](https://github.com/i-soxi/even-g2-protocol) -- MEDIUM confidence, community reverse engineering
-- [MDN MediaRecorder API](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder) -- HIGH confidence, standard web API reference
-- [MDN Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events) -- HIGH confidence, standard web API reference
-- [VoiceStreamAI (audio streaming architecture)](https://github.com/alesaccoia/VoiceStreamAI) -- MEDIUM confidence, well-documented pattern reference
-- [Even G2 smart glasses product page](https://www.evenrealities.com/smart-glasses) -- HIGH confidence, official hardware specs
+- [Even G2 SDK Notes (nickustinov)](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md) -- HIGH confidence, comprehensive SDK documentation verified against codebase
+- [Pong for Even G2](https://github.com/nickustinov/pong-even-g2) -- HIGH confidence, working community app showing SDK patterns and initialization
+- [vite-plugin-singlefile](https://github.com/richardtallent/vite-plugin-singlefile) -- HIGH confidence, v2.3.0, well-maintained
+- [EvenHub Developer Portal](https://evenhub.evenrealities.com/) -- LOW confidence on submission specifics (pilot program, limited public docs)
+- [Even Realities EvenDemoApp](https://github.com/even-realities/EvenDemoApp) -- MEDIUM confidence, official but focused on G1 hardware
+- [Even Realities launch announcement](https://www.webpronews.com/even-realities-launches-even-hub-for-g2-smart-glasses-app-developers/) -- MEDIUM confidence, describes developer program
+- Direct codebase analysis of all 38 source files -- HIGH confidence

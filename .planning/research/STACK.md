@@ -1,233 +1,238 @@
-# Technology Stack
+# Stack Research: v1.1 Integration Additions
 
-**Project:** Even G2 OpenClaw Chat App
-**Researched:** 2026-02-27
-**Overall confidence:** HIGH (verified against sibling repo, official SDK, and current package versions)
+**Project:** Even G2 OpenClaw Chat App -- v1.1 Integration Milestone
+**Domain:** EvenHub smart glasses app -- runtime wiring + submission packaging
+**Researched:** 2026-02-28
+**Confidence:** HIGH
 
-## Recommended Stack
+## Scope
 
-### Core Build Tooling
+This research covers ONLY the stack additions needed for v1.1:
+1. Single-file build packaging (vite-plugin-singlefile)
+2. EvenHub submission tooling (@evenrealities/evenhub-cli)
+3. EvenHub app metadata format (app.json)
+4. Runtime wiring considerations (no new deps -- existing modules)
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| Vite | ^7.2.4 | Build tool, dev server, bundler | Already used in the sibling `even-g2-apps` repo at this exact version. Vite 7 uses Rolldown (Rust-based bundler), supports vanilla-ts template out of the box, and the EvenHub CLI (`evenhub pack`) expects a Vite-produced `dist/` directory. No reason to deviate. | HIGH |
-| TypeScript | ~5.9.3 | Type-safe application code | Already used in sibling repo. TypeScript 6.0 is beta-only (released 2026-02-11); stay on 5.9.x for stability. Strict mode is a project requirement. | HIGH |
-| vite-plugin-singlefile | ^2.3.0 | Inline JS/CSS into single index.html | EvenHub submission requires a self-contained `dist/index.html`. Version 2.3.0 explicitly supports Vite 7 (`^5.4.11 \|\| ^6.0.0 \|\| ^7.0.0` peer dep). | HIGH |
+The existing stack (Vite 6, TypeScript 5.7, Vitest 3, @evenrealities/even_hub_sdk 0.0.7, jsdom, eventsource-parser) is validated and NOT re-researched.
 
-### Even G2 Platform SDK
+## Critical Finding: vite-plugin-singlefile Is Optional
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| @evenrealities/even_hub_sdk | ^0.0.6 | Glasses bridge API (display, events, audio) | The official SDK. Provides `waitForEvenAppBridge()`, `EvenAppBridge`, container model (`TextContainerProperty`, `ListContainerProperty`, `ImageContainerProperty`), `textContainerUpgrade()`, `onEvenHubEvent()` callback, and `OsEventTypeList` enum. Already used in sibling repo. This is the only way to communicate with G2 glasses. | HIGH |
-| @evenrealities/evenhub-cli | ^0.1.5 | App packaging and submission | Official CLI for `evenhub pack` which takes an `app.json` and `dist/` directory to produce the submission artifact. Already used in sibling repo. | HIGH |
+The PROJECT.md specifies "self-contained dist/index.html via vite-plugin-singlefile" but investigation of 35+ Even G2 sample apps reveals that NONE use vite-plugin-singlefile. The standard EvenHub submission workflow is:
 
-### Streaming & SSE
+1. `vite build` produces a standard multi-file `dist/` directory
+2. `evenhub pack app.json dist/` bundles the entire directory into a `.ehpk` archive
+3. The `.ehpk` file is the submission artifact
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| eventsource-parser | ^3.0.6 | Parse SSE stream from gateway backend | 16M+ weekly downloads. Zero dependencies. Provides both callback-based `createParser()` and `EventSourceParserStream` TransformStream for piping through `fetch()` responses. The gateway will stream AI responses as SSE; this parser works with any fetch-based transport without requiring the native `EventSource` API (which cannot set custom headers). TypeScript-first. | HIGH |
+**Recommendation:** Still add vite-plugin-singlefile because the PROJECT.md explicitly requires it, and a self-contained index.html has real advantages for this project: it simplifies the WebView loading (single file = no relative path resolution issues), eliminates asset path bugs, and works offline when cached. But understand it is a project design choice, not an EvenHub platform requirement.
 
-### Testing
+## New Dependencies
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| Vitest | ^4.0.18 | Unit and integration testing | Project requirement specifies Vitest. Current stable is 4.x with stable browser mode. Reuses Vite config, zero-config TypeScript support, native ESM. 17M weekly downloads. | HIGH |
-
-### State Management (Gesture Machine)
+### Build Tooling
 
 | Technology | Version | Purpose | Why | Confidence |
 |------------|---------|---------|-----|------------|
-| Custom FSM (no library) | N/A | Gesture state machine (4 inputs) | The gesture input model has exactly 4 inputs (tap, double-tap, scroll-up, scroll-down) and ~6 states (idle, recording, sent, thinking, menu, scrolling). This is a trivial FSM -- under 100 lines of TypeScript. XState adds 16+ KB gzipped for a problem that does not need actors, parallel states, or statecharts. Write a typed `switch`/`Record` machine. | HIGH |
+| vite-plugin-singlefile | ^2.3.0 | Inline all JS/CSS into dist/index.html | Produces a single self-contained HTML file. v2.3.0 supports Vite `^5.4.11 \|\| ^6.0.0 \|\| ^7.0.0` -- our Vite 6.1 is fully covered. Peer dep on `rollup ^4.44.1` is satisfied by Vite 6's bundled Rollup 4. Adds zero runtime cost (build-time only). 480K+ weekly npm downloads. MIT licensed. | HIGH |
+| @evenrealities/evenhub-cli | ^0.1.5 | `evenhub pack` command for .ehpk submission | Official Even Realities CLI. Used by the sibling even-g2-apps repo at this exact version. Provides `evenhub pack <json> <project>` which takes app.json + dist/ directory and produces the .ehpk submission artifact. Also provides `evenhub init` for scaffolding app.json and `evenhub login` for account auth. Peer dep: TypeScript ^5. | HIGH |
 
-### Persistence
+### Runtime Dependencies
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| localStorage (browser native) | N/A | Settings persistence, session data | Project explicitly calls for localStorage-based persistence with secure masking for keys. No IndexedDB needed -- settings are small JSON objects. Wrap in a typed `SettingsStore` module. | HIGH |
+No new runtime dependencies are needed. The voice loop wiring connects existing modules:
+- `createEventBus()` (events.ts) -- already exists
+- `createEvenBridgeService()` (bridge/even-bridge.ts) -- already exists
+- `createAudioCapture()` (audio/audio-capture.ts) -- already exists
+- `createGatewayClient()` (api/gateway-client.ts) -- already exists
+- `createGestureHandler()` (gestures/gesture-handler.ts) -- already exists
+- `createGlassesRenderer()` (display/glasses-renderer.ts) -- already exists
+- `createDisplayController()` (display/display-controller.ts) -- already exists
 
-## Supporting Libraries (zero additional runtime dependencies recommended)
+The entire voice loop (tap -> record -> gateway -> stream -> glasses display) is assembled by wiring these existing factory functions together in main.ts with the shared event bus.
 
-| Library | Purpose | Recommendation |
-|---------|---------|----------------|
-| Web Audio API (native) | Audio capture from glasses microphone via EvenHub SDK audio events | The SDK delivers PCM audio via `bridge.onEvenHubEvent` audioEvent. No MediaRecorder needed -- the glasses handle capture, the web app receives PCM chunks. |
-| ReadableStream (native) | Streaming fetch response processing | Native browser API for consuming SSE stream from gateway. Pipe through `TextDecoderStream` then `EventSourceParserStream`. |
-| CSS Custom Properties (native) | Design tokens | Already using `even-g2-apps/shared/styles/tokens.css` for the Even design system. Import and extend, do not duplicate. |
-| Canvas 2D API (native) | Glasses display image rendering | Already used in sibling repo for pixel rendering. The G2 display is 576x288 4-bit greyscale rendered via `updateImageRawData()`. |
+## Vite Config Integration
 
-## What NOT to Use
+### Current vite.config.ts
 
-| Technology | Why Not |
-|------------|---------|
-| React / Preact / Svelte / any framework | The sibling `even-g2-apps` uses vanilla-ts with Vite. EvenHub apps are thin web apps -- no virtual DOM needed. The G2 display uses a firmware container model, not DOM rendering. A framework adds bundle size, complexity, and indirection for zero benefit. |
-| XState | 16+ KB gzipped for a 4-input / 6-state FSM. Overkill. The gesture machine is trivially implementable in pure TypeScript with exhaustive type checking. |
-| Zustand / Jotai / any state library | App state is minimal: current chat messages, current gesture state, settings object. A simple module-scoped store with typed getters/setters suffices. |
-| Tailwind CSS | The Even design system uses its own CSS custom properties and component classes. Adding Tailwind would conflict with the established token system and add build complexity. |
-| Socket.IO / ws | The backend gateway streams SSE (server-to-client). Audio input goes via HTTP POST. No bidirectional WebSocket channel is needed for this architecture. |
-| IndexedDB / Dexie | Chat history and settings are small. localStorage handles the persistence requirements. If chat history grows beyond limits, truncate old entries -- the glasses display is 576x288 and shows at most a few visible bubbles anyway. |
-| TypeScript 6.0 beta | Still in beta as of 2026-02-27. The sibling repo uses 5.9.3. Stay aligned for shared code compatibility. |
-| Web Speech API (SpeechRecognition) | Chrome-only, unreliable, and the architecture delegates STT to the backend gateway. The glasses microphone feeds PCM to the gateway which handles transcription. |
+The existing config has multi-page input (index.html + preview-glasses.html) and a test block. The singlefile plugin requires specific changes.
 
-## Alternatives Considered
-
-| Category | Recommended | Alternative | Why Recommended Wins |
-|----------|-------------|-------------|---------------------|
-| Build tool | Vite 7 | esbuild standalone, Webpack | Vite is already used in sibling repo, EvenHub CLI expects Vite output, HMR is instant, vanilla-ts template is first-class |
-| SSE parsing | eventsource-parser | Native EventSource, @microsoft/fetch-event-source | Native EventSource cannot set custom headers (needed for auth). @microsoft/fetch-event-source is unmaintained since 2023. eventsource-parser is actively maintained with 16M+ downloads |
-| State machine | Custom TypeScript FSM | XState 5, Robot | 4 inputs, 6 states, no parallel/hierarchical needs. Custom FSM is <100 LOC, zero bundle cost, fully typed |
-| Testing | Vitest 4 | Jest 30 | Vitest reuses Vite config, native ESM/TS support, project requirement, sibling repo alignment |
-| Bundling strategy | vite-plugin-singlefile | manual inline, vite-plugin-inline | vite-plugin-singlefile is well-maintained, explicit Vite 7 support in v2.3.0, simple config |
-
-## Project Structure (Vite vanilla-ts)
-
-```
-even-g2-openclaw-chat-app/
-  index.html                  # Vite entry point (companion hub UI)
-  preview-glasses.html        # Simulator (existing, kept as-is or migrated)
-  app.json                    # EvenHub submission manifest
-  vite.config.ts              # Vite config with @shared alias, singlefile plugin
-  tsconfig.json               # TypeScript strict, bundler mode
-  src/
-    main.ts                   # App bootstrap, bridge init
-    bridge/
-      even-bridge.ts          # EvenHub SDK wrapper, event dispatch
-      audio-capture.ts        # Audio event handler, PCM chunk forwarding
-    chat/
-      chat-store.ts           # Chat message model, history management
-      bubble-renderer.ts      # Bubble layout for companion view
-      viewport.ts             # Virtualized viewport (glasses display)
-      stream-handler.ts       # SSE stream consumer, incremental text
-    gestures/
-      gesture-machine.ts      # 4-input FSM (tap, double-tap, scroll-up, scroll-down)
-      gesture-types.ts        # State/event type definitions
-    glasses/
-      glasses-ui.ts           # G2 container management (text, status, layout)
-      display-renderer.ts     # 576x288 content composition
-    api/
-      gateway-client.ts       # Backend API client (voice submit, SSE stream)
-      types.ts                # API request/response types
-    settings/
-      settings-store.ts       # localStorage wrapper with validation
-      settings-types.ts       # Settings schema types
-    ui/
-      pages/                  # Home, Health, Features, Settings, Logs
-      components/             # Shared UI components
-      icons/                  # SVG icon registry, animation frames
-    types/
-      index.ts                # Shared frontend types
-  test/
-    chat/                     # Chat model and renderer tests
-    gestures/                 # FSM tests
-    api/                      # API client tests
-    settings/                 # Settings store tests
-```
-
-## Installation
-
-```bash
-# Initialize Vite vanilla-ts project
-npm create vite@latest even-g2-openclaw-chat-app -- --template vanilla-ts
-cd even-g2-openclaw-chat-app
-
-# Core dependencies
-npm install @evenrealities/even_hub_sdk@^0.0.6 eventsource-parser@^3.0.6
-
-# Dev dependencies
-npm install -D vite@^7.2.4 typescript@~5.9.3 vitest@^4.0.18 vite-plugin-singlefile@^2.3.0 @evenrealities/evenhub-cli@^0.1.5 @types/node@^22.13.4
-```
-
-## Key Configuration
-
-### tsconfig.json (match sibling repo)
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "useDefineForClassFields": true,
-    "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "moduleDetection": "force",
-    "noEmit": true,
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
-  },
-  "include": ["src"]
-}
-```
-
-### vite.config.ts
+### Required Changes
 
 ```typescript
-import { defineConfig } from 'vite'
-import { viteSingleFile } from 'vite-plugin-singlefile'
+import { defineConfig } from 'vite';
+import { resolve } from 'path';
+import { viteSingleFile } from 'vite-plugin-singlefile';
 
 export default defineConfig({
-  plugins: [viteSingleFile()],
+  root: '.',
+  plugins: [viteSingleFile()],        // <-- ADD
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
   build: {
     outDir: 'dist',
-    emptyOutDir: true,
+    // CHANGE: Single entry for EvenHub submission.
+    // The simulator (preview-glasses.html) is a dev tool, not part of
+    // the submission package. Build it separately if needed.
+    rollupOptions: {
+      input: resolve(__dirname, 'index.html'),
+    },
   },
-})
+  server: {
+    port: 3200,
+    open: true,
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    include: ['src/**/*.test.ts'],
+  },
+});
 ```
 
-### package.json scripts
+### Key Integration Points
+
+1. **Single entry point**: The EvenHub submission needs one index.html. The multi-page config (index.html + preview-glasses.html) must change to single-entry for the production build. The simulator is a dev tool.
+
+2. **Plugin defaults are correct**: `useRecommendedBuildConfig: true` (default) sets `cssCodeSplit: false`, `assetsInlineLimit: Infinity`, and disables code-splitting -- all correct for a single-file output.
+
+3. **removeViteModuleLoader**: Leave at default (`false`). The Vite module loader is tiny and removing it can cause issues with dynamic imports if any are used.
+
+4. **No CSS/asset concerns**: The project uses inline styles in index.html (no separate CSS files) and no image assets. The singlefile plugin will inline the single JS bundle.
+
+## app.json Metadata Format
+
+The EvenHub app.json format is reverse-engineered from 8+ sample apps in the local codebase. Fields observed:
+
+### Required Fields
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `package_id` | string | Reverse-domain unique identifier | `"com.openclaw.even-g2-chat"` |
+| `name` | string | Display name in EvenHub store | `"OpenClaw Chat"` |
+| `version` | string | Semver version | `"1.1.0"` |
+| `description` | string | App description | `"Voice chat with OpenClaw AI..."` |
+| `author` | string | Developer name or email | `"Your Name"` |
+| `entrypoint` | string | Main HTML file in dist/ | `"index.html"` |
+
+### Optional Fields
+
+| Field | Type | Description | When to Use |
+|-------|------|-------------|-------------|
+| `edition` | string | Edition code (YYYYMM format) | Versioning metadata |
+| `min_app_version` | string | Minimum Even App version required | If using newer SDK features |
+| `tagline` | string | Short marketing tagline | EvenHub listing |
+| `permissions.network` | string[] | Allowed network domains | Apps that make HTTP requests |
+| `permissions.fs` | string[] | Allowed filesystem paths | Apps with local assets |
+
+### Recommended app.json for This Project
 
 ```json
 {
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "pack": "evenhub pack app.json dist"
+  "package_id": "com.openclaw.even-g2-chat",
+  "edition": "202602",
+  "name": "OpenClaw Chat",
+  "version": "1.1.0",
+  "min_app_version": "0.1.0",
+  "tagline": "Voice chat with AI through your G2 glasses.",
+  "description": "Speak through your Even G2 glasses, get streaming AI responses displayed as compact bubble chat on the heads-up display. Powered by OpenClaw.",
+  "author": "OpenClaw",
+  "entrypoint": "index.html",
+  "permissions": {
+    "network": ["*"]
   }
 }
 ```
 
-## G2 Display Constraints (Stack Implications)
+**Note on `permissions.network`**: This app sends audio to a user-configurable gateway URL (not a fixed domain), so the network permission must be broad. Use `["*"]` or list the expected gateway domains. If EvenHub requires explicit domains, the gateway URL from settings would need to match.
 
-The G2 display model is NOT DOM-based. Understanding this is critical for stack decisions:
+## Installation
 
-- **576x288 pixels per eye**, 4-bit greyscale (16 shades of green), micro-LED
-- **Max 4 containers per page** (text, list, image), absolutely positioned with pixel coordinates
-- **No CSS, no flexbox, no DOM** on the glasses -- containers are firmware-rendered
-- **Text containers**: left-aligned only, no font size control, single fixed-width font, max 2000 chars via `textContainerUpgrade()`
-- **Update path**: `createStartUpPageContainer()` for initial layout, `textContainerUpgrade()` for streaming text updates, `rebuildPageContainer()` for layout changes
-- **Events**: `bridge.onEvenHubEvent()` delivers tap, scroll boundary (top/bottom), system events, audio PCM, and list selection events
+```bash
+# New dev dependency (build-time only)
+npm install -D vite-plugin-singlefile@^2.3.0
 
-This means the "glasses view" is managed entirely through SDK calls, not DOM manipulation. The companion web UI (index.html) is a standard web app for settings/diagnostics. These are two separate rendering targets from the same codebase.
+# New dependency (submission CLI)
+npm install @evenrealities/evenhub-cli@^0.1.5
+```
 
-## Audio Pipeline (No Additional Libraries)
+### Package.json Script Additions
 
-The audio pipeline does NOT use the Web Audio API or MediaRecorder directly:
+```json
+{
+  "scripts": {
+    "pack": "evenhub pack app.json dist",
+    "build:submit": "tsc && vite build && evenhub pack app.json dist"
+  }
+}
+```
 
-1. G2 glasses capture audio via built-in microphone
-2. EvenHub SDK delivers PCM audio chunks via `bridge.onEvenHubEvent()` audioEvent
-3. Frontend accumulates PCM chunks and POSTs to backend gateway
-4. Gateway handles STT (WhisperX/OpenAI) and returns transcription
-5. Gateway forwards transcription to OpenClaw agent
-6. Agent response streams back as SSE, parsed by `eventsource-parser`
+## What NOT to Add
 
-For browser-only dev/testing (no glasses connected), use `navigator.mediaDevices.getUserMedia()` as a fallback audio source with `MediaRecorder` to capture webm/opus. This is native browser API -- no library needed.
+| Avoid | Why | What to Do Instead |
+|-------|-----|-------------------|
+| Framework (React, Svelte, etc.) | Project is vanilla TS with direct DOM manipulation. 440-line main.ts is manageable. Adding a framework for runtime wiring would be overengineering. | Wire factories manually in main.ts init() |
+| State management library (XState, Zustand) | Gesture FSM is 50 lines. App state is a plain object. Event bus handles all pub/sub. | Keep createAppState() + event bus pattern |
+| Vite version upgrade to 7.x | Current Vite 6.1 is stable. vite-plugin-singlefile supports it. Upgrading Vite is unnecessary churn for this milestone. | Stay on Vite ^6.1.0 |
+| TypeScript upgrade to 5.9/6.0 | Current ^5.7.0 works. No features needed from newer versions. | Stay on ^5.7.0 |
+| eventsource-parser (explicit install) | The project's gateway-client.ts has a hand-rolled SSE parser (parseSSELines). The eventsource-parser package is listed in PROJECT.md context but is NOT in package.json dependencies. Do NOT add it -- the existing parser works and has tests. | Keep the existing parseSSELines() |
+| vite-plugin-singlefile-compression | Adds gzip/brotli compression to the single file. Unnecessary -- the .ehpk format handles packaging and the WebView loads locally. | Use standard vite-plugin-singlefile |
+| Additional test frameworks | Vitest 3 with jsdom handles all testing needs. The new wiring code is integration-level (connect factories, verify events flow). | Write integration tests with Vitest |
+
+## Alternatives Considered
+
+| Recommended | Alternative | Why Not |
+|-------------|-------------|---------|
+| vite-plugin-singlefile ^2.3.0 | Manual Rollup config with `inlineDynamicImports` | Plugin is battle-tested, handles edge cases (base64 encoding, CSS inlining), and has 480K+ weekly downloads. Manual config is error-prone. |
+| vite-plugin-singlefile ^2.3.0 | Skip single-file, use standard Vite build | Standard build works fine with `evenhub pack`. But PROJECT.md explicitly requires self-contained index.html, and it has genuine benefits for WebView reliability. |
+| @evenrealities/evenhub-cli ^0.1.5 | Manual .ehpk creation | The .ehpk format uses a WASM-based packer (ehpk_pack_bg.wasm). No public spec. Must use official CLI. |
+| evenhub-cli as dependency | evenhub-cli as global install | Keeping it as a project dependency ensures reproducible builds. Anyone cloning the repo gets the right version via `npm install`. |
+
+## Version Compatibility Matrix
+
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| vite-plugin-singlefile@^2.3.0 | vite@^6.1.0 | Peer dep: `vite ^5.4.11 \|\| ^6.0.0 \|\| ^7.0.0`. Our Vite 6.1 is in range. |
+| vite-plugin-singlefile@^2.3.0 | rollup@^4.x | Peer dep: `rollup ^4.44.1`. Vite 6 bundles Rollup 4. Satisfied. |
+| @evenrealities/evenhub-cli@^0.1.5 | typescript@^5.x | Peer dep: `typescript ^5`. Our TS ^5.7.0 is in range. |
+| @evenrealities/even_hub_sdk@^0.0.7 | vite-plugin-singlefile | SDK is ESM with `"sideEffects": false`. Tree-shaking and inlining work correctly. |
+
+## Runtime Wiring Architecture (No New Deps)
+
+The voice loop wiring in main.ts follows a specific initialization order dictated by module dependencies:
+
+```
+1. createEventBus<AppEventMap>()           -- shared bus, no deps
+2. createAudioCapture(devMode)             -- standalone, no bus dep
+3. createEvenBridgeService(bus)            -- needs bus
+4. createGatewayClient()                   -- standalone
+5. createGestureHandler({bus, bridge, audioCapture, activeSessionId})
+                                           -- needs bus, bridge, audioCapture
+6. createGlassesRenderer({bridge, bus})    -- needs bridge, bus
+7. createDisplayController({bus, renderer, gestureHandler})
+                                           -- needs bus, renderer, gestureHandler
+                                           -- MUST be created AFTER gestureHandler
+                                              (event registration order matters)
+```
+
+The critical wiring gap (from PROJECT.md active requirements):
+- `bridge:audio-frame` -> `audioCapture.onFrame()` bus subscription is NOT yet wired
+- `audio:recording-stop` -> `gateway.sendVoiceTurn()` is NOT yet wired
+- `gateway:chunk` -> event bus forwarding is NOT yet wired
+
+These are pure event bus subscriptions in main.ts, requiring zero new libraries.
 
 ## Sources
 
-- Even G2 Notes (community documentation): https://github.com/nickustinov/even-g2-notes/blob/main/G2.md (MEDIUM confidence -- community-maintained, not official)
-- Even Hub Developer Portal: https://evenhub.evenrealities.com/ (HIGH confidence -- official)
-- Even Realities GitHub / EvenDemoApp: https://github.com/even-realities/EvenDemoApp (HIGH confidence -- official reference app)
-- Sibling repo `even-g2-apps` at `/home/forge/bibele.kingdom.lv/samples/even-g2-apps/` (HIGH confidence -- first-party, working code with matching SDK versions)
-- Vite 7.0 release: https://vite.dev/blog/announcing-vite7 (HIGH confidence -- official)
-- Vitest 4.0 release: https://vitest.dev/blog/vitest-4 (HIGH confidence -- official)
-- eventsource-parser: https://github.com/rexxars/eventsource-parser (HIGH confidence -- npm 16M+ weekly downloads, TypeScript-first)
-- vite-plugin-singlefile: https://github.com/richardtallent/vite-plugin-singlefile (HIGH confidence -- explicit Vite 7 peer dep in v2.3.0)
-- TypeScript 6.0 Beta announcement: https://devblogs.microsoft.com/typescript/announcing-typescript-6-0-beta/ (HIGH confidence -- official, confirms beta-only status)
+- [vite-plugin-singlefile GitHub](https://github.com/richardtallent/vite-plugin-singlefile) -- README, CHANGELOG, package.json verified
+- [vite-plugin-singlefile Vite 6 compatibility issue #104](https://github.com/richardtallent/vite-plugin-singlefile/issues/104) -- resolved in v2.1.0
+- [vite-plugin-singlefile CHANGELOG](https://github.com/richardtallent/vite-plugin-singlefile/blob/main/CHANGELOG.md) -- v2.3.0 confirmed latest
+- @evenrealities/even_hub_sdk README.md -- read from installed node_modules (v0.0.7)
+- @evenrealities/evenhub-cli package.json -- read from sibling repo node_modules (v0.1.5)
+- `evenhub pack --help` -- verified CLI interface locally
+- 8 app.json files across local Even G2 sample projects -- metadata format reverse-engineered
+- [EvenHub Developer Portal](https://evenhub.evenrealities.com/) -- platform overview
+- Sibling repo even-g2-apps/package.json -- reference implementation of build + pack workflow
+
+---
+*Stack research for: v1.1 Integration milestone (runtime wiring + EvenHub submission)*
+*Researched: 2026-02-28*

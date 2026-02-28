@@ -1,235 +1,275 @@
-# Feature Research
+# Feature Landscape: v1.1 Integration
 
-**Domain:** Smart glasses voice/chat companion app (Even G2 + OpenClaw AI agent)
-**Researched:** 2026-02-27
-**Confidence:** MEDIUM -- EvenHub SDK is early-access with limited public docs; feature expectations derived from competitor analysis + Even's own G1/G2 patterns + general AI chat UX patterns
+**Domain:** Smart glasses voice/chat companion app (Even G2 + OpenClaw AI agent) -- integration milestone
+**Researched:** 2026-02-28
+**Scope:** NEW features only -- end-to-end voice loop wiring, runtime initialization, EvenHub submission
+**Confidence:** HIGH for voice loop (wiring existing tested modules), MEDIUM for EvenHub submission (early-access program with limited public docs)
 
-## Feature Landscape
+---
 
-### Table Stakes (Users Expect These)
+## Context: What Already Exists
 
-Features users assume exist. Missing these = product feels incomplete or broken.
+v1.0 shipped 27 requirements across 5 phases (5,484 LOC, 240 tests). Every module below exists as a tested library component. The gap is that `main.ts` does not instantiate any of them -- they have never run together end-to-end.
 
-#### Voice Interaction Core
+| Module | Status | File |
+|--------|--------|------|
+| Gesture FSM (5 states x 4 inputs) | Complete, 77 tests | `src/gestures/gesture-fsm.ts` |
+| Gesture handler (bus wiring + debounce) | Complete | `src/gestures/gesture-handler.ts` |
+| EvenBridge SDK wrapper | Complete | `src/bridge/even-bridge.ts` |
+| Dev-mode bridge mock (keyboard shortcuts) | Complete | `src/bridge/bridge-mock.ts` |
+| Audio capture (PCM + MediaRecorder) | Complete | `src/audio/audio-capture.ts` |
+| Gateway API client (SSE + reconnect) | Complete | `src/api/gateway-client.ts` |
+| Icon animator (4-state HUD) | Complete | `src/display/icon-animator.ts` |
+| Glasses renderer (3-container layout) | Complete | `src/display/glasses-renderer.ts` |
+| Display controller (bus-to-renderer glue) | Complete | `src/display/display-controller.ts` |
+| Viewport (virtualized windowing) | Complete | `src/display/viewport.ts` |
+| Event bus (typed, synchronous) | Complete | `src/events.ts` |
+| Settings store + companion hub UI | Complete | `src/main.ts` (hub only) |
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Tap-to-record voice capture | The fundamental input method; Even G2 has no keyboard, voice is the primary interaction. Users of Meta glasses, RayNeo, etc. all have single-gesture voice activation. | MEDIUM | Must handle tap=start, tap-again=stop via gesture state machine. Even SDK provides mic access. Audio in LC3 format per BLE protocol. |
-| State icon HUD (recording/sent/thinking/idle) | Every voice assistant shows processing state. Without it, users cannot tell if the glasses heard them. Even's own AI shows state indicators on the G2. | LOW | 4 states with icon animation at 3-6 fps. The 576x288 canvas has room for a status bar at top. Map to Even SDK container system. |
-| Streaming chat bubble display | Token-by-token streaming is the 2025/2026 baseline UX for AI chat (established by ChatGPT). Dumping full text at once feels broken. Even's SDK supports `textContainerUpgrade` for partial text updates. | HIGH | Must use incremental updates within 150-300ms cadence. Max 2000 chars per upgrade. Virtualized viewport essential for 576x288 canvas. SSE from gateway. |
-| User/assistant bubble separation | Standard chat UX: user right, assistant left. Even demo app shows this pattern. Every chat interface from WhatsApp to ChatGPT does this. | LOW | Right-aligned user transcript, left-aligned AI response. On 576x288 monochrome green, differentiation via alignment + prefix glyph. |
-| Scrollable conversation history | Users expect to scroll back through recent exchanges. Even SDK fires `SCROLL_TOP_EVENT` / `SCROLL_BOTTOM_EVENT` boundary events for scroll gesture handling. | MEDIUM | Virtualized viewport: keep full history in memory, render only visible window. Scroll up/down gestures map to history navigation. |
+---
 
-#### Companion Hub (Mobile/Desktop)
+## Table Stakes
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Glasses connection status | Every smart glasses companion app (Meta AI, Vuzix Companion, Even Realities app) shows connect/disconnect state and battery level prominently. | LOW | Already stubbed in existing shell. Wire to Even SDK `getDeviceInfo()` and `observeDeviceStatus()`. |
-| Settings panel (gateway URL, STT provider, session key) | Users must configure where their backend lives. This is a frontend-only app connecting to a separate gateway -- there is no zero-config path. | MEDIUM | Form with validation, localStorage persistence. Secure masking for keys. No secrets actually stored (keys are session metadata, not API credentials). |
-| Session selection/switching | OpenClaw supports multiple agent sessions (personas). Users need to pick which session they are talking to. This is core to the product's value proposition (multiple AI agents via one glasses UX). | MEDIUM | Session list with active marker. Confirm-and-switch UX. State toast on change. Gateway API call to list/switch sessions. |
-| Health/diagnostics view | Smart glasses apps universally include connection health and troubleshooting. Even's own app shows sync status. When voice goes through BLE->iPhone->HTTPS->gateway->STT->OpenClaw, users need visibility into what broke. | MEDIUM | Service check indicators (gateway online, STT ready, session active). Latest turn diagnostics. Correlation ID display for debugging. |
+Features the v1.1 milestone MUST deliver. Without these the app does not function and cannot ship.
 
-#### Platform Requirements
+### 1. End-to-End Voice Loop Wiring
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| 4-gesture input mapping | Hardware constraint, not optional. Even G2 only provides: tap, double-tap, scroll-up, scroll-down. All UX must map to exactly these 4 inputs. | MEDIUM | State machine: tap=record/stop, double-tap=menu/wake, scroll=history. Must be consistent and discoverable via hint bar on glasses display. |
-| Mobile-safe responsive layout | Companion hub runs in mobile browser / EvenHub WebView. No zoom, safe-area handling, no clipped content. Users expect native-feeling web apps. | LOW | Already partially implemented. Needs polish for safe-area insets and no horizontal scroll. |
-| EvenHub submission package | Gatekeeping requirement: no submission artifact = no distribution on Even's marketplace. Must produce `dist/index.html` with app metadata. | LOW | Build pipeline producing single HTML entry point. App name, icon, description, permissions (audio/events). |
+| Feature | Why Required | Complexity | Dependencies |
+|---------|-------------|------------|--------------|
+| `audio:recording-stop` -> gateway dispatch | Without this subscriber, recorded audio goes nowhere. The gesture handler emits `audio:recording-stop` with a Blob, but nothing calls `gatewayClient.sendVoiceTurn()`. This is the single most critical missing wire. | LOW | `gesture-handler.ts` (emitter), `gateway-client.ts` (receiver), `settings.ts` (gateway URL + session config) |
+| `gatewayClient.onChunk()` -> `bus.emit('gateway:chunk')` | Gateway client has its own internal event system (`onChunk` callbacks). The display controller listens on the event bus for `gateway:chunk`. Without this bridge, SSE streaming data never reaches the glasses display. | LOW | `gateway-client.ts` (source), `events.ts` (bus), `display-controller.ts` (consumer) |
+| `bridge:audio-frame` -> `audioCapture.onFrame()` | In glasses mode, PCM frames arrive on the event bus via `bridge:audio-frame`. No subscriber feeds them to `audioCapture.onFrame()`. Without this, glasses-mode recording captures zero audio. Dev-mode MediaRecorder is unaffected. | LOW | `even-bridge.ts` (emitter), `audio-capture.ts` (receiver) |
+| `gateway:status` -> companion hub health UI | Gateway client emits status changes via `onStatusChange()`. The companion hub health display and log system need to reflect connection state. Without this, the health page stays static. | LOW | `gateway-client.ts` (source), `main.ts` hub UI (consumer) |
 
-### Differentiators (Competitive Advantage)
+**Confidence:** HIGH -- These are documented in the v1.0 milestone audit (INT-01, FLOW-05, cross-phase tech debt). The code on both sides already exists and is tested. This is purely subscription wiring.
 
-Features that set this app apart from Even's built-in AI assistant and other EvenHub apps.
+### 2. Runtime Initialization (`main.ts` Assembly)
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| OpenClaw multi-agent sessions | Even's built-in AI is a single assistant. This app lets users talk to different OpenClaw agent personas (e.g., "Gideon" coding assistant, "Atlas" research agent) and switch between them. No other EvenHub app does this. | LOW (frontend) | The complexity lives in the gateway. Frontend just renders session list and sends switch commands. This is the core differentiator. |
-| Settings export/import JSON | Power users and developers want to back up/share their configuration. No other glasses companion app offers this. Especially valuable in a dev-oriented early-access ecosystem. | LOW | JSON serialization of settings minus secrets. Import with validation. Simple but appreciated by the EvenHub developer audience. |
-| Glasses-side simulator with state handoff | Developers can preview exactly what the 576x288 green monochrome display looks like without having actual glasses. State can be passed via query params from the companion hub. No other EvenHub app includes an integrated simulator. | MEDIUM | Already have `preview-glasses.html`. Need state handoff (current chat state, icons, etc.) via query params or postMessage. Extremely valuable for the early-access developer community. |
-| Configurable gesture mapping | Let users remap what tap/double-tap/scroll do. Even's built-in apps have fixed gesture assignments. Users who primarily browse history vs. primarily record could optimize their mapping. | MEDIUM | Settings UI for gesture->action mapping. Default mapping works out of box, customization is a power-user differentiator. |
-| Logs view with filtering and correlation IDs | Deep diagnostic visibility with info/warn/error filtering and correlation IDs linking a single voice turn from audio capture through STT to OpenClaw response. Developer-grade transparency. | MEDIUM | Ring buffer of log entries with filter buttons. Copy diagnostics action for pasting into issue reports. Invaluable for the early-access EvenHub developer audience. |
-| Hide/Wake UI modes | Glasses display can go dark when not in use, wake on double-tap. Saves visual clutter and battery. Even's built-in apps don't expose this level of control to third-party apps. | LOW | State toggle: hidden (blank canvas) vs. active (show chat/status). Double-tap to wake is natural -- matches phone lock/unlock mental model. |
+| Feature | Why Required | Complexity | Dependencies |
+|---------|-------------|------------|--------------|
+| Module instantiation sequence | The app currently boots into the companion hub only. `main.ts` must create the event bus, bridge (real or mock), audio capture, gesture handler, glasses renderer, display controller, and gateway client in the correct order. | MEDIUM | All modules, initialization order matters (see below) |
+| Dev-mode detection and bridge selection | Must detect whether running inside the Even App WebView (real bridge available) or in a regular browser (use mock bridge). The SDK injects `window.flutter_inappwebview` when running inside the Even App. | LOW | `even-bridge.ts`, `bridge-mock.ts` |
+| Initialization order enforcement | Bus must exist before bridge init. Bridge must init before gesture handler (so events flow). Gesture handler must register before display controller (ordering constraint for hint text). Display controller calls `renderer.init()` which calls `bridge.rebuildPageContainer()`. Gateway client can init independently. | MEDIUM | All modules -- ordering documented in `display-controller.ts` source comments |
+| Graceful degradation on init failure | Bridge init can fail (SDK not loaded, glasses not connected). Gateway health check can fail (server down). The app must handle partial initialization -- companion hub should work even if glasses are not connected. | MEDIUM | Error handling across all module init paths |
+| Cleanup / destroy on app exit | `FOREGROUND_EXIT_EVENT` and `ABNORMAL_EXIT_EVENT` from the SDK signal app lifecycle changes. Must call `destroy()` on all services to release resources (audio streams, intervals, event listeners). | LOW | All module `destroy()` methods, SDK lifecycle events |
 
-### Anti-Features (Commonly Requested, Often Problematic)
+**Confidence:** HIGH -- The factory pattern used by all modules makes instantiation straightforward. The ordering constraint is already documented in source code comments. The main risk is error handling during partial init.
 
-Features that seem good but should NOT be built.
+### 3. EvenHub Submission Package
 
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| Direct OpenClaw API calls from browser | "Why add a gateway? Just call OpenClaw directly." | Exposes API keys in public frontend code. EvenHub apps are web apps loaded in WebView -- any secrets are extractable. Even's SDK docs emphasize the iPhone-as-proxy model, not direct cloud calls from the glasses app. | Use the `openclaw-even-g2-voice-gateway` backend. Frontend sends audio/text to gateway, gateway handles all credentialed calls. |
-| STT/TTS processing in the frontend | "Run Whisper in the browser for lower latency." | WebAssembly Whisper is ~500MB, too heavy for a WebView-hosted app. Battery drain on phone. Unreliable on mobile Safari/Chrome. EvenHub apps should be lightweight. | Gateway handles STT. Audio goes BLE->iPhone->gateway->STT provider. Frontend just sends and receives. |
-| Rich text/markdown rendering on glasses | "Format AI responses with bold, headers, lists." | The G2 display is 576x288 monochrome with a single fixed font, no style options. The SDK container system has no rich text support. Attempting to parse markdown and render it would produce visual garbage. | Plain text with `\n` line breaks. Use prefix characters (`>`, `-`, `*`) for minimal visual structure if needed. Formatting belongs in the companion hub, not on glasses. |
-| Multi-user / collaborative features | "Let multiple people share a glasses session." | Even G2 is a personal wearable. Single BLE connection to one phone. The entire hardware model is single-user. Adding collaboration would require architectural complexity with zero hardware support. | Single-user sessions. If someone else wants to interact, they use their own glasses+app. |
-| Real-time camera/video features | "Use the glasses camera for visual AI." | Even G2 has NO camera. This is a deliberate privacy-first design decision by Even Realities. There is no camera hardware to access. | Focus on voice+text modality. This is a voice chat app, not a visual AI app. |
-| Offline AI / local model inference | "Work without internet." | OpenClaw agents require server-side execution. STT requires cloud providers. The gateway architecture assumes connectivity. Offline mode would require a completely different architecture and would not use OpenClaw at all. | Show clear "offline" status indicator. Cache recent conversation history for read-only review. Reconnect automatically when connectivity returns. |
-| Full conversation transcript export | "Export entire chat history as a file." | Privacy concern -- voice transcripts may contain sensitive information. Also, localStorage has size limits (~5MB) that make storing extensive history risky. WebView storage can be cleared by the OS. | Show scrollable in-app history for current and recent sessions. Let users copy individual turns. Full export belongs in the gateway, not the frontend. |
-| Custom fonts / themes on glasses display | "Let users pick font size or color themes." | G2 has one fixed font, 4-bit greyscale (16 shades of green), no font size options in the SDK. Container system does not support font customization. | Consistent rendering everyone gets. Companion hub can have light/dark theme since it's standard web. Glasses rendering is hardware-determined. |
+| Feature | Why Required | Complexity | Dependencies |
+|---------|-------------|------------|--------------|
+| `app.json` manifest file | Required by the EvenHub platform. Defines `package_id`, `name`, `version`, `entrypoint`, `permissions`, `tagline`, `description`, `author`, `edition`, `min_app_version`. Without this, the `evenhub pack` CLI cannot produce a package. | LOW | None -- static metadata file |
+| Single-file build via `vite-plugin-singlefile` | EvenHub apps load via the Even App's WebView. A self-contained `dist/index.html` with all JS/CSS inlined eliminates external dependency loading issues in the WebView environment. The `.ehpk` format packages this. | LOW | `vite.config.ts` modification, `vite-plugin-singlefile` npm dependency |
+| `.ehpk` packaging via `evenhub pack` | The `.ehpk` file is the submission artifact for the EvenHub portal. Created by running `evenhub pack app.json dist`. This bundles the built HTML with the manifest metadata. | LOW | `app.json`, built `dist/` directory, `evenhub` CLI tool |
+| Build script updates | Add `pack` and `qr` npm scripts: `"pack": "npm run build && evenhub pack app.json dist"` and `"qr": "evenhub qr --http --port 3200"` for dev workflow. | LOW | `package.json` |
 
-## Feature Dependencies
+**Confidence:** MEDIUM -- The `app.json` format is documented in community notes but the EvenHub portal for actual submission is not yet operational (early-access). The `.ehpk` packaging format and `evenhub` CLI are referenced in community docs but official documentation is limited. The self-contained HTML approach via `vite-plugin-singlefile` is well-established.
+
+---
+
+## Differentiators
+
+Features not strictly required for the voice loop but that add meaningful value during v1.1.
+
+| Feature | Value Proposition | Complexity | Dependencies | Recommendation |
+|---------|-------------------|------------|--------------|----------------|
+| CLICK_EVENT quirk handling | The SDK normalizes `CLICK_EVENT` (value 0) to `undefined`. Current bridge code checks `eventType === OsEventTypeList.CLICK_EVENT` which may fail on real hardware. Fixing this prevents tap-to-record from silently breaking on actual glasses. | LOW | `even-bridge.ts` event mapping | BUILD -- silent failure on real hardware is unacceptable |
+| Companion hub gateway integration | Wire the companion hub's "Connect/Disconnect" buttons to actually call `gatewayClient.checkHealth()` and reflect real gateway status in the health page. Currently these are mock stubs. | LOW | `gateway-client.ts`, `main.ts` hub code | BUILD -- makes the companion hub functional instead of decorative |
+| Startup page container -> chat layout transition | The bridge's `init()` creates a single-container startup layout. The renderer's `init()` rebuilds to a 3-container chat layout. This transition should be seamless. Need to verify there is no flicker or race condition between bridge init and renderer init. | LOW | `even-bridge.ts`, `glasses-renderer.ts` | BUILD -- verify the transition path works correctly |
+| QR code dev workflow | Add `evenhub qr` integration for rapid on-device testing. Generates a QR code that the Even App scans to load the dev server URL on glasses. | LOW | `evenhub` CLI, `package.json` script | BUILD -- essential for testing on real hardware |
+| Error toast for voice loop failures | When `gateway:chunk` delivers a `type: 'error'` event, show a user-visible error on the glasses display (brief text in status container) and log to companion hub. Currently errors are emitted but not surfaced to the user. | LOW | `display-controller.ts`, `glasses-renderer.ts` | BUILD -- users need to know when something fails |
+
+**Confidence:** HIGH for CLICK_EVENT quirk (documented in community SDK notes). MEDIUM for others (straightforward wiring of existing modules).
+
+---
+
+## Anti-Features
+
+Features that seem relevant to v1.1 but should NOT be built in this milestone.
+
+| Anti-Feature | Why It Seems Relevant | Why Avoid | What to Do Instead |
+|--------------|----------------------|-----------|-------------------|
+| Persistent conversation history | "If we are wiring the voice loop, shouldn't we save conversations?" | localStorage has 5MB limits, WebView storage can be cleared by the OS, and privacy implications of storing voice transcripts locally. This is a gateway-side concern. | Keep in-memory conversation state during a session. Clear on app restart. Gateway owns persistence. |
+| Microphone permission prompt UX | "What if the user denies microphone access?" | Dev-mode MediaRecorder already handles `getUserMedia` rejection gracefully (the Promise rejects). Glasses-mode PCM comes from the SDK with no browser permission needed. Over-engineering permission UX adds complexity for a rare edge case. | Let the browser's native permission prompt handle it. Log a warning if denied. The app degrades to "no recording" state naturally via the FSM. |
+| Multi-page companion hub routing | "The hub has 4 pages -- should we add URL routing?" | The companion hub is a single HTML page with show/hide navigation. Adding a router (hash or history) introduces state management complexity and potential issues in the EvenHub WebView for zero user benefit -- the bottom nav works. | Keep the existing show/hide page pattern. It works, has zero dependencies, and does not interfere with EvenHub's WebView URL loading. |
+| Custom error recovery strategies | "What if the gateway is down? Should we queue voice turns?" | Offline queueing adds significant complexity (IndexedDB, retry queues, conflict resolution). The gateway client already has exponential backoff reconnection (5 attempts). The app's core value requires real-time connectivity. | Rely on existing auto-reconnect. Show clear status indicators when disconnected. Let the user retry manually by recording again. |
+| R1 ring gesture integration | "The R1 ring is an Even G2 accessory -- should we support it?" | The R1 ring has its own SDK surface. Ring events may map differently than temple gestures. Adding ring support changes the gesture input model and requires testing with hardware most users may not own. | Defer to v1.2+. The 4-gesture temple touch model is sufficient for v1.1. Ring support can be added as a separate input driver later. |
+| Automated integration tests for the voice loop | "We have 240 unit tests -- shouldn't we add E2E tests?" | True E2E testing requires either real glasses hardware or a faithful SDK simulator. The dev-mode mock is sufficient for verifying wiring. Adding Playwright/Cypress for WebView testing would be fragile and time-consuming to set up for minimal confidence gain. | Manually verify the voice loop flow (tap -> record -> gateway -> stream -> display) using the dev-mode mock with keyboard shortcuts. Add integration tests in a future milestone when the SDK simulator matures. |
+
+---
+
+## Feature Dependencies (v1.1 Scope)
 
 ```
-[Audio Capture + Gesture State Machine]
+[Event Bus] (exists)
     |
-    +--requires--> [4-Gesture Input Mapping]
+    +-- [Bridge Service] (exists, needs init in main.ts)
+    |       |
+    |       +-- Dev detection: window.flutter_inappwebview?
+    |       |       YES -> createEvenBridgeService(bus)
+    |       |       NO  -> createBridgeMock(bus)
+    |       |
+    |       +-- bridge:audio-frame -> audioCapture.onFrame()  [NEW WIRE]
     |
-    +--requires--> [Backend API Client]
-    |                   |
-    |                   +--requires--> [Settings (gateway URL)]
+    +-- [Audio Capture] (exists, needs init in main.ts)
+    |       |
+    |       +-- audio:recording-stop -> gatewayClient.sendVoiceTurn()  [NEW WIRE]
     |
-    +--enables--> [State Icon HUD]
+    +-- [Gesture Handler] (exists, needs init in main.ts)
+    |       |
+    |       +-- MUST init BEFORE display controller (ordering constraint)
     |
-    +--enables--> [Streaming Chat Bubble Display]
-                       |
-                       +--requires--> [Virtualized Viewport]
-                       |
-                       +--requires--> [Backend API Client (SSE streaming)]
-                       |
-                       +--enables--> [Scrollable Conversation History]
+    +-- [Display Controller] (exists, needs init in main.ts)
+    |       |
+    |       +-- MUST init AFTER gesture handler
+    |       +-- Calls renderer.init() internally
+    |
+    +-- [Gateway Client] (exists, needs init in main.ts)
+    |       |
+    |       +-- gatewayClient.onChunk() -> bus.emit('gateway:chunk')  [NEW WIRE]
+    |       +-- gatewayClient.onStatusChange() -> bus.emit('gateway:status')  [NEW WIRE]
+    |       +-- startHeartbeat(settings.gatewayUrl)
+    |
+    +-- [Companion Hub] (exists in main.ts, needs gateway integration)
+            |
+            +-- Wire health display to real gateway status
+            +-- Wire connect/disconnect to bridge lifecycle
 
-[Settings Panel]
-    |
-    +--enables--> [Session Selection/Switching]
-    |
-    +--enables--> [Settings Export/Import]
-    |
-    +--enables--> [Configurable Gesture Mapping]
-
-[Health/Diagnostics View]
-    |
-    +--requires--> [Backend API Client]
-    |
-    +--enhances--> [Logs View with Filtering]
-
-[Glasses-side Simulator]
-    |
-    +--enhances--> [Streaming Chat Bubble Display]
-    |
-    +--enhances--> [State Icon HUD]
-
-[Glasses Connection Status]
-    |
-    +--requires--> [Even SDK Bridge (getDeviceInfo, observeDeviceStatus)]
-
-[Hide/Wake UI Modes]
-    |
-    +--enhances--> [State Icon HUD]
-    |
-    +--requires--> [4-Gesture Input Mapping (double-tap)]
+[app.json] -----> [vite-plugin-singlefile] -----> [evenhub pack] -----> .ehpk
+ (metadata)         (build config)                  (CLI tool)          (submission)
 ```
 
-### Dependency Notes
+### Initialization Order (Critical)
 
-- **Streaming Chat requires Backend API Client:** No chat without a connection to the gateway for SSE streaming responses.
-- **Backend API Client requires Settings:** Gateway URL must be configured before any API calls work. Settings is the bootstrap dependency.
-- **Session Switching requires Settings:** Session list comes from the gateway, which requires configured connection.
-- **Gesture State Machine is foundational:** Without gesture handling, there is no input on the glasses. This must be built first or in parallel with voice capture.
-- **Simulator enhances but doesn't block:** The simulator is a dev tool that mirrors the glasses display. It can be built independently and connected later via state handoff.
-- **Logs View enhances Diagnostics:** Logs are a superset of the health view. Health shows current status; logs show history. Build health first, add log history after.
+The modules must be created and initialized in this sequence:
 
-## MVP Definition
+```
+1. createEventBus<AppEventMap>()           -- foundation, no deps
+2. loadSettings()                          -- read persisted config
+3. createAudioCapture(devMode)             -- needs devMode flag
+4. createGatewayClient()                   -- independent, no deps
+5. createBridgeService(bus) OR createBridgeMock(bus)  -- needs bus
+6. bridge.init()                           -- await; creates page container
+7. createGestureHandler({bus, bridge, audioCapture, activeSessionId})  -- needs all above
+8. createGlassesRenderer({bridge, bus})    -- needs bridge, bus
+9. createDisplayController({bus, renderer, gestureHandler})  -- needs all above
+10. displayController.init()               -- await; rebuilds page to 3-container chat layout
+11. Wire: bus.on('bridge:audio-frame') -> audioCapture.onFrame()
+12. Wire: bus.on('audio:recording-stop') -> gatewayClient.sendVoiceTurn()
+13. Wire: gatewayClient.onChunk() -> bus.emit('gateway:chunk')
+14. Wire: gatewayClient.onStatusChange() -> bus.emit('gateway:status')
+15. gatewayClient.startHeartbeat(settings.gatewayUrl)
+16. Init companion hub UI (existing code)
+```
 
-### Launch With (v1) -- EvenHub Submission Minimum
+Steps 7-10 MUST be in this order (gesture handler before display controller). Steps 11-14 can be in any order but must be after step 10. Step 15 can happen anytime after step 4.
 
-The absolute minimum to submit a working app to EvenHub that delivers on the core value proposition: "voice conversations with AI through Even G2 glasses."
+---
 
-- [ ] **4-gesture input state machine** -- Without this, the app cannot receive any user input on glasses
-- [ ] **Tap-to-record voice capture** -- Core interaction: user speaks, audio is captured
-- [ ] **State icon HUD (recording/sent/thinking/idle)** -- Users must see what the glasses are doing
-- [ ] **Backend API client with SSE streaming** -- Connects to gateway, receives streaming responses
-- [ ] **Streaming chat bubble display** -- Shows AI responses token-by-token on 576x288 canvas
-- [ ] **Virtualized viewport with scroll** -- Enables reading responses that exceed one screen
-- [ ] **Settings panel (gateway URL + session key)** -- Bootstrap configuration to connect to backend
-- [ ] **Glasses connection status** -- Must show if glasses are connected (basic EvenHub app expectation)
-- [ ] **EvenHub submission package** -- dist/index.html with metadata for marketplace listing
+## Tech Debt Cleanup (v1.1 Scope)
 
-### Add After Validation (v1.x)
+Items explicitly tagged as tech debt in the v1.0 audit that should be resolved during integration.
 
-Features to add once core voice-chat loop is working and the app is accepted into EvenHub.
+| Item | Severity | Action | Complexity |
+|------|----------|--------|------------|
+| 4 orphaned event types in `AppEventMap` | INFO | Remove `display:state-change`, `display:viewport-update`, `display:hide`, `display:wake` from the type definition. These were planned during Phase 3 design but the actual implementation uses direct audio/gateway/gesture events instead. | LOW |
+| `bridge:audio-frame` subscription gap | Non-critical | Add `bus.on('bridge:audio-frame', ({pcm}) => audioCapture.onFrame(pcm))` during runtime init. | LOW |
+| Runtime wiring gaps (all E2E flows) | Structural | The entire `main.ts` assembly (this milestone's primary deliverable). | MEDIUM |
 
-- [ ] **Session selection/switching** -- Trigger: users want to talk to different OpenClaw agents
-- [ ] **Health/diagnostics view** -- Trigger: users report issues and need troubleshooting visibility
-- [ ] **Logs view with filtering** -- Trigger: developers in early-access need debug tools
-- [ ] **Settings persistence improvements** -- Trigger: users lose settings (WebView storage cleared)
-- [ ] **Hide/Wake UI modes** -- Trigger: users complain about always-on display clutter
-- [ ] **Simulator state handoff** -- Trigger: developers want to test without physical glasses
+---
 
-### Future Consideration (v2+)
+## EvenHub `app.json` Manifest Specification
 
-Features to defer until product-market fit is established within the EvenHub ecosystem.
+Based on community documentation (MEDIUM confidence -- not official docs, but the only available reference).
 
-- [ ] **Configurable gesture mapping** -- Why defer: default mapping works; customization adds settings complexity
-- [ ] **Settings export/import JSON** -- Why defer: small audience benefit until there are many users
-- [ ] **Conversation history persistence across sessions** -- Why defer: localStorage limits, privacy implications, gateway should own this
-- [ ] **Multi-language UI** -- Why defer: EvenHub is early-access, English-first audience
-- [ ] **R1 ring input integration** -- Why defer: Even's R1 ring is a separate accessory with its own SDK surface; add when ring adoption grows
+```json
+{
+  "package_id": "com.openclaw.even-g2-chat",
+  "edition": "202603",
+  "name": "OpenClaw Chat",
+  "version": "1.1.0",
+  "min_app_version": "1.0.0",
+  "tagline": "Voice conversations with AI through your Even G2 glasses",
+  "description": "Chat with OpenClaw AI agents using voice. Tap to record, see streaming responses as bubble chat on your glasses display. Supports multiple agent sessions, full conversation history, and a companion hub for settings and diagnostics.",
+  "author": "OpenClaw",
+  "entrypoint": "index.html",
+  "permissions": {
+    "network": ["*"],
+    "fs": []
+  }
+}
+```
 
-## Feature Prioritization Matrix
+**Field notes:**
+- `package_id`: Reverse-domain, lowercase alphanumeric only, no hyphens within segments
+- `edition`: Release date code (YYYYMM format)
+- `entrypoint`: Must be `index.html` -- the single-file build output
+- `permissions.network`: `["*"]` because the gateway URL is user-configurable (not known at build time)
+- `permissions.fs`: Empty -- no filesystem access needed (settings use localStorage)
 
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| 4-gesture input state machine | HIGH | MEDIUM | P1 |
-| Tap-to-record voice capture | HIGH | MEDIUM | P1 |
-| State icon HUD | HIGH | LOW | P1 |
-| Backend API client (SSE) | HIGH | MEDIUM | P1 |
-| Streaming chat bubble display | HIGH | HIGH | P1 |
-| Virtualized viewport + scroll | HIGH | HIGH | P1 |
-| Settings panel (gateway URL, session) | HIGH | MEDIUM | P1 |
-| Glasses connection status | MEDIUM | LOW | P1 |
-| EvenHub submission package | HIGH | LOW | P1 |
-| Session selection/switching | HIGH | MEDIUM | P2 |
-| Health/diagnostics view | MEDIUM | MEDIUM | P2 |
-| Logs view with filtering | MEDIUM | MEDIUM | P2 |
-| Hide/Wake UI modes | MEDIUM | LOW | P2 |
-| Simulator state handoff | MEDIUM | MEDIUM | P2 |
-| Settings export/import | LOW | LOW | P3 |
-| Configurable gesture mapping | LOW | MEDIUM | P3 |
-| R1 ring integration | LOW | HIGH | P3 |
+---
 
-**Priority key:**
-- P1: Must have for EvenHub submission (core voice-chat loop)
-- P2: Should have, add after submission acceptance
-- P3: Nice to have, future consideration
+## `vite-plugin-singlefile` Configuration
 
-## Competitor Feature Analysis
+```typescript
+// vite.config.ts additions
+import { viteSingleFile } from 'vite-plugin-singlefile';
 
-| Feature | Even Built-in AI | Meta AI Glasses | Vuzix Companion | Our Approach |
-|---------|-----------------|-----------------|-----------------|--------------|
-| Voice activation | Touch + hold on touchbar | "Hey Meta" wake word | Hardware button | Tap gesture (simpler, no wake word needed) |
-| AI response display | Floating text on glasses | Audio-only (no display on Ray-Ban) | Text on Blade display | Streaming bubble chat on 576x288 green display |
-| Multi-agent / session switching | Single assistant only | Single Meta AI | Single assistant | Multiple OpenClaw agent sessions -- core differentiator |
-| Conversation history | Limited, in Even app | History tab in Meta AI app | Not available | Scrollable virtualized viewport on glasses + companion hub |
-| Settings/config | Within Even app | Meta AI app settings | Vuzix Companion app | Dedicated settings panel with gateway/STT/session config |
-| Diagnostics | Not exposed | Not exposed | Basic connection info | Full health view + filterable logs + correlation IDs |
-| Developer tools | Even Hub simulator (separate) | None | None | Integrated simulator with state handoff from companion |
-| Gesture customization | Fixed gestures | Fixed "Hey Meta" | Fixed hardware buttons | Configurable gesture mapping (future P3) |
-| Offline capability | Limited caching | Some offline features | Offline pairing | No offline AI (by design); read-only cached history |
-| Privacy model | No camera, no speaker | Has camera + speaker (privacy concerns) | Has camera | No camera, no speaker, no secrets in frontend -- strongest privacy posture |
+export default defineConfig({
+  plugins: [viteSingleFile()],
+  build: {
+    // vite-plugin-singlefile sets recommended defaults:
+    // - assetsInlineLimit: Infinity
+    // - cssCodeSplit: false
+    // - rollupOptions.output.inlineDynamicImports: true
+    outDir: 'dist',
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        // NOTE: simulator page may need separate handling or exclusion
+      },
+    },
+  },
+});
+```
 
-## EvenHub-Specific Considerations
+**Key consideration:** The current vite config has two entry points (`index.html` and `preview-glasses.html`). The `vite-plugin-singlefile` plugin inlines assets into a single HTML file. For EvenHub submission, only `index.html` needs to be self-contained. The simulator page is a dev tool and does not need to be in the `.ehpk` package.
 
-The EvenHub ecosystem is early-access (as of early 2026). This shapes feature priorities:
+---
 
-1. **Developer-first audience**: Early EvenHub users are developers. Diagnostic tools, simulator, and logs are more valuable now than they would be for a mass-market app.
-2. **SDK is immature**: `@evenrealities/even_hub_sdk` is at v0.0.x. Expect breaking changes. Keep the SDK integration layer thin and isolated.
-3. **Container system constraints**: Max 4 containers per page. Absolute pixel positioning. No CSS/flexbox on glasses. The companion hub can be rich; the glasses UI must be spartan.
-4. **iPhone-as-proxy model**: All communication flows through the iPhone's WebView. This adds latency (HTTPS -> iPhone -> BLE -> Glasses). Design for 200-500ms round-trip minimum for display updates.
-5. **Small app catalog**: Being among the first AI voice chat apps on EvenHub gives first-mover advantage. Shipping fast matters more than feature completeness.
+## MVP Recommendation (v1.1 Scope)
+
+### Must Ship
+
+1. **Runtime initialization in `main.ts`** -- The voice loop cannot work without module assembly
+2. **Four event bus wires** (audio-frame -> onFrame, recording-stop -> sendVoiceTurn, onChunk -> gateway:chunk, onStatusChange -> gateway:status) -- These connect the data flow
+3. **CLICK_EVENT quirk fix** -- Without this, tap-to-record may silently fail on real glasses
+4. **`app.json` manifest** -- Cannot submit without it
+5. **`vite-plugin-singlefile` build** -- Self-contained HTML for EvenHub packaging
+6. **`evenhub pack` script** -- Produces the `.ehpk` submission artifact
+7. **Orphaned event type cleanup** -- Dead code removal, trivial
+
+### Defer to v1.2+
+
+- **R1 ring input integration** -- Separate hardware, separate SDK surface
+- **Persistent conversation history** -- Gateway-side concern
+- **Custom error recovery / offline queueing** -- Over-engineering for v1.1
+- **Automated E2E tests** -- SDK simulator not mature enough
+- **Multi-language UI** -- EvenHub is English-first early-access
+
+---
 
 ## Sources
 
-- [Even Hub Developer Portal](https://evenhub.evenrealities.com/) -- SDK overview, developer program info (MEDIUM confidence)
-- [Even Realities GitHub - EvenDemoApp](https://github.com/even-realities/EvenDemoApp) -- BLE protocol, display specs (G1: 576x136), gesture events, audio format (HIGH confidence)
-- [Even Realities GitHub - EH-InNovel](https://github.com/even-realities/EH-InNovel) -- EvenHub web app architecture, SDK API surface (`@evenrealities/even_hub_sdk` v0.0.6) (HIGH confidence)
-- [nickustinov/even-g2-notes](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md) -- G2 display specs (576x288, 4-bit greyscale), container system (max 4), text limits (1000/2000 chars), SDK APIs (HIGH confidence)
-- [i-soxi/even-g2-protocol](https://github.com/i-soxi/even-g2-protocol) -- BLE protocol reverse engineering, dual-channel architecture (MEDIUM confidence)
-- [patterns.dev AI UI Patterns](https://www.patterns.dev/react/ai-ui-patterns/) -- Streaming output, typing indicators, error handling, chat bubble UX (HIGH confidence)
-- [IBM Community - SSE for Real-Time Chat](https://community.ibm.com/community/user/blogs/anjana-m-r/2025/10/03/server-sent-events-the-perfect-match-for-real-time) -- SSE as standard for LLM streaming (HIGH confidence)
-- [Even Realities Smart Glasses Overview](https://www.evenrealities.com/smart-glasses) -- G2 capabilities, no camera, no speaker (HIGH confidence)
-- [smartglassessupport.com](https://smartglassessupport.com/smart-glasses-companion-apps/) -- Companion app feature expectations across brands (MEDIUM confidence)
-- [Meta AI Glasses companion app](https://www.meta.com/blog/ray-ban-meta-ai-glasses-new-companion-app/) -- History tab, settings, voice history patterns (MEDIUM confidence)
-- [Vuzix Companion App](https://play.google.com/store/apps/details?id=com.vuzix.companion&hl=en_US) -- Connection management, device settings patterns (LOW confidence)
-- [Android Authority - EvenHub developer program](https://www.androidauthority.com/even-realities-hub-smart-glasses-developers-3629083/) -- Early-access program details (MEDIUM confidence)
+- [Even Hub Developer Portal](https://evenhub.evenrealities.com/) -- SDK overview, pilot program info (MEDIUM confidence)
+- [nickustinov/even-g2-notes G2.md](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md) -- app.json format, .ehpk packaging, CLICK_EVENT quirk, container limits, audio PCM specs, SDK lifecycle events (HIGH confidence -- most comprehensive community reference)
+- [Even Realities GitHub](https://github.com/even-realities) -- Official org with SDK and demo repos (MEDIUM confidence)
+- [vite-plugin-singlefile npm](https://www.npmjs.com/package/vite-plugin-singlefile) -- Plugin docs, configuration options (HIGH confidence)
+- [vite-plugin-singlefile GitHub](https://github.com/richardtallent/vite-plugin-singlefile) -- Source, README, options reference (HIGH confidence)
+- [WebProNews - Even Hub Launch](https://www.webpronews.com/even-realities-launches-even-hub-for-g2-smart-glasses-app-developers/) -- Developer program context (MEDIUM confidence)
+- v1.0 Milestone Audit (`.planning/milestones/v1.0-MILESTONE-AUDIT.md`) -- Tech debt inventory, integration gaps, wiring requirements (HIGH confidence -- internal source)
 
 ---
-*Feature research for: Even G2 OpenClaw voice/chat companion app*
-*Researched: 2026-02-27*
+*Feature research for: Even G2 OpenClaw Chat App v1.1 Integration*
+*Researched: 2026-02-28*
