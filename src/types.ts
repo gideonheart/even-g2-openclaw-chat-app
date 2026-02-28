@@ -106,4 +106,10 @@ export interface AppEventMap {
   'log': { level: LogLevel; msg: string; cid?: string };
   'persistence:warning': { message: string };
   'persistence:restored': { conversationId: string; messageCount: number };
+
+  // Session management events (local bus coordination)
+  'session:created': { id: string; name: string };
+  'session:renamed': { id: string; name: string };
+  'session:deleted': { id: string };
+  'session:switched': { id: string; previousId: string };
 }

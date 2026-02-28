@@ -5,7 +5,7 @@
 
 import type { ConversationStore, MessageRecord } from './types';
 
-const ACTIVE_CONVERSATION_KEY = 'openclaw-active-conversation';
+export const ACTIVE_CONVERSATION_KEY = 'openclaw-active-conversation';
 
 export interface RestoreResult {
   conversationId: string;
@@ -86,7 +86,7 @@ export async function restoreOrCreateConversation(opts: {
 
 // ── localStorage helpers for active conversation pointer ──
 
-function readActiveConversationId(): string | null {
+export function readActiveConversationId(): string | null {
   try {
     return localStorage.getItem(ACTIVE_CONVERSATION_KEY);
   } catch {
@@ -94,7 +94,7 @@ function readActiveConversationId(): string | null {
   }
 }
 
-function writeActiveConversationId(id: string): void {
+export function writeActiveConversationId(id: string): void {
   try {
     localStorage.setItem(ACTIVE_CONVERSATION_KEY, id);
   } catch {
