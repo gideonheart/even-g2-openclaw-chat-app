@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** - Phases 1-5 (shipped 2026-02-28)
-- 🚧 **v1.1 Integration** - Phases 6-8 (in progress)
+- ✅ **v1.1 Integration** - Phases 6-8 (shipped 2026-02-28)
 
 ## Phases
 
@@ -24,7 +24,7 @@
 
 - [x] **Phase 6: Runtime Wiring** - Wire all modules into a working voice loop via main.ts assembly (2/2 plans)
 - [ ] **Phase 7: Error Handling & Lifecycle** - Resilient voice loop with error recovery and graceful shutdown
-- [ ] **Phase 8: EvenHub Submission** - App manifest, production build, and .ehpk submission artifact
+- [x] **Phase 8: EvenHub Submission** - App manifest, production build, and .ehpk submission artifact (1/1 plan)
 
 ## Phase Details
 
@@ -69,7 +69,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 08-01-PLAN.md -- app.json metadata, Vite prod build config (simulator exclusion + relative paths), evenhub-cli install, pack script, .ehpk artifact
+- [x] 08-01-PLAN.md -- app.json metadata, Vite prod build config (simulator exclusion + relative paths), evenhub-cli install, pack script, .ehpk artifact
 
 ## Progress
 
@@ -84,4 +84,4 @@ Plans:
 | 5. Companion Hub UI | v1.0 | 3/3 | Complete | 2026-02-28 |
 | 6. Runtime Wiring | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 7. Error Handling & Lifecycle | v1.1 | 0/2 | Not started | - |
-| 8. EvenHub Submission | v1.1 | 0/1 | Not started | - |
+| 8. EvenHub Submission | v1.1 | 1/1 | Complete | 2026-02-28 |

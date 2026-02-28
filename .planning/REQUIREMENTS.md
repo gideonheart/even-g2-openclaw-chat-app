@@ -25,10 +25,10 @@ Requirements for v1.1 Integration milestone. Wires existing v1.0 library modules
 
 ### EvenHub Submission
 
-- [ ] **SUB-01**: app.json metadata file defines package identity, version, description, permissions, and entrypoint
-- [ ] **SUB-02**: Production build produces self-contained output suitable for EvenHub packaging
-- [ ] **SUB-03**: npm script runs `evenhub pack` to produce .ehpk submission artifact
-- [ ] **SUB-04**: Simulator (preview-glasses.html) is excluded from production build but available in dev mode
+- [x] **SUB-01**: app.json metadata file defines package identity, version, description, permissions, and entrypoint
+- [x] **SUB-02**: Production build produces self-contained output suitable for EvenHub packaging
+- [x] **SUB-03**: npm script runs `evenhub pack` to produce .ehpk submission artifact
+- [x] **SUB-04**: Simulator (preview-glasses.html) is excluded from production build but available in dev mode
 
 ## Future Requirements
 
@@ -79,10 +79,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ERR-02 | Phase 7 | Complete |
 | ERR-03 | Phase 7 | Complete |
 | ERR-04 | Phase 6 | Complete |
-| SUB-01 | Phase 8 | Pending |
-| SUB-02 | Phase 8 | Pending |
-| SUB-03 | Phase 8 | Pending |
-| SUB-04 | Phase 8 | Pending |
+| SUB-01 | Phase 8 | Complete |
+| SUB-02 | Phase 8 | Complete |
+| SUB-03 | Phase 8 | Complete |
+| SUB-04 | Phase 8 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 14 total
