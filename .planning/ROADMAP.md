@@ -37,11 +37,11 @@
   2. App detects whether it is running inside Even App WebView or a browser and boots the correct code path (glasses runtime vs companion hub)
   3. All modules initialize in correct dependency order -- gesture handler subscribes before display controller, audio frame subscription exists before first tap, bridge init completes before any module calls bridge methods
   4. Orphaned event types (display:state-change, viewport-update, hide, wake) are removed from AppEventMap and no code references them
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md -- Module-level fixes (orphaned events, CLICK_EVENT quirk, keyboard shortcut) + VoiceLoopController
+- [ ] 06-02-PLAN.md -- Runtime router, glasses boot sequence, display turn lifecycle
 
 ### Phase 7: Error Handling & Lifecycle
 **Goal**: Voice loop recovers gracefully from errors -- gateway failures return the user to idle state, timeouts provide feedback, and app shutdown cleans up resources
@@ -81,6 +81,6 @@ Plans:
 | 3. Glasses Display & Streaming | v1.0 | 3/3 | Complete | 2026-02-28 |
 | 4. Gateway API Client | v1.0 | 1/1 | Complete | 2026-02-28 |
 | 5. Companion Hub UI | v1.0 | 3/3 | Complete | 2026-02-28 |
-| 6. Runtime Wiring | v1.1 | 0/? | Not started | - |
+| 6. Runtime Wiring | v1.1 | 0/2 | In progress | - |
 | 7. Error Handling & Lifecycle | v1.1 | 0/? | Not started | - |
 | 8. EvenHub Submission | v1.1 | 0/? | Not started | - |
