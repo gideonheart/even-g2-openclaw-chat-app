@@ -83,3 +83,19 @@ export interface VoiceTurnChunk {
   error?: string;
   turnId?: string;
 }
+
+// ── Event bus types ───────────────────────────────────────
+
+export interface AppEventMap {
+  'bridge:connected': { deviceName: string };
+  'bridge:disconnected': { reason: string };
+  'gesture:tap': { timestamp: number };
+  'gesture:double-tap': { timestamp: number };
+  'gesture:scroll-up': { timestamp: number };
+  'gesture:scroll-down': { timestamp: number };
+  'audio:recording-start': { sessionId: string };
+  'audio:recording-stop': { sessionId: string; blob: Blob };
+  'gateway:status': { status: ConnectionStatus };
+  'gateway:chunk': VoiceTurnChunk;
+  'log': { level: LogLevel; msg: string; cid?: string };
+}
