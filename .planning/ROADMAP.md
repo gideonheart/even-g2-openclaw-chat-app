@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Settings** - Types, settings store with secret partitioning, TS strict mode, Vitest setup
 - [x] **Phase 2: Even Bridge & Input Pipeline** - SDK wrapper, gesture FSM with tap/double-tap debounce, audio capture
-- [ ] **Phase 3: Glasses Display & Streaming** - Icon HUD, bubble chat renderer, virtualized viewport, stream throttle, UI modes
+- [x] **Phase 3: Glasses Display & Streaming** - Icon HUD, bubble chat renderer, virtualized viewport, stream throttle, UI modes
 - [x] **Phase 4: Gateway API Client** - HTTP client, SSE streaming via fetch + eventsource-parser, health monitoring, reconnection
 - [x] **Phase 5: Companion Hub UI** - Home, health, logs, sessions, simulator, shell navigation, mobile polish
 - [ ] **Phase 6: Voice Loop Integration & Submission** - End-to-end wiring, EvenHub submission package with app metadata
@@ -64,12 +64,12 @@ Plans:
   3. User can scroll up through conversation history and scroll down / jump to latest using gestures, with only the visible viewport window rendered on glasses (virtualized)
   4. No single SDK text update exceeds 2000 characters
   5. Double-tap hides the glasses display (blank canvas); another double-tap wakes it back
-**Plans**: 3 plans
+**Plans**: Complete
 
 Plans:
 - [x] 03-01-PLAN.md — Viewport state management and icon animator pure functions (TDD)
-- [ ] 03-02-PLAN.md — GlassesRenderer service with bridge display integration, streaming, scroll, hide/wake
-- [ ] 03-03-PLAN.md — Display controller wiring bus events to renderer for end-to-end display pipeline
+- [x] 03-02-PLAN.md — GlassesRenderer service with bridge display integration, streaming, scroll, hide/wake
+- [x] 03-03-PLAN.md — Display controller wiring bus events to renderer for end-to-end display pipeline
 
 ### Phase 4: Gateway API Client
 **Goal**: The app can communicate with the backend gateway to send audio and receive streaming AI responses over SSE, with resilient connectivity
