@@ -186,8 +186,8 @@
             <span class="tag" id="gBattery">-- %</span>
           </div>
           <div style="margin-top: var(--space-item); display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            <button class="btn btn--highlight" onclick="connectGlasses()">Connect</button>
-            <button class="btn btn--ghost" onclick="disconnectGlasses()">Disconnect</button>
+            <button class="btn btn--highlight" data-action="connect">Connect</button>
+            <button class="btn btn--ghost" data-action="disconnect">Disconnect</button>
           </div>
         </div>
       </div>
@@ -196,29 +196,29 @@
       <div class="page-section">
         <div class="section-title">Quick actions</div>
         <div class="card card-list">
-          <div class="list-item" onclick="showSessions()">
+          <div class="list-item" data-action="sessions">
             <div class="list-item__content">
               <div class="list-item__title">OpenClaw session</div>
               <div class="list-item__subtitle">Switch live agent session</div>
             </div>
             <div class="list-item__meta mono" id="activeSessionDisplay">gideon</div>
-            <span class="list-item__chevron">›</span>
+            <span class="list-item__chevron">&#8250;</span>
           </div>
-          <div class="list-item" onclick="show('settings'); openSettingsField('sttProvider')">
+          <div class="list-item" data-action="stt">
             <div class="list-item__content">
               <div class="list-item__title">STT provider</div>
               <div class="list-item__subtitle">Speech-to-text engine</div>
             </div>
             <div class="list-item__meta" id="sttDisplay">WhisperX</div>
-            <span class="list-item__chevron">›</span>
+            <span class="list-item__chevron">&#8250;</span>
           </div>
-          <div class="list-item" onclick="launchSimulator()">
+          <div class="list-item" data-action="simulator">
             <div class="list-item__content">
               <div class="list-item__title">Simulator preview</div>
               <div class="list-item__subtitle">Check glasses rendering</div>
             </div>
             <div class="list-item__meta"><span class="dev-badge">dev</span></div>
-            <span class="list-item__chevron">›</span>
+            <span class="list-item__chevron">&#8250;</span>
           </div>
         </div>
       </div>
@@ -231,7 +231,7 @@
       <div class="page-section">
         <div class="section-title">Glasses features</div>
         <div class="note-card">
-          <div class="note-card__title">G2 ↔ OpenClaw voice bridge</div>
+          <div class="note-card__title">G2 &#x2194; OpenClaw voice bridge</div>
           <div class="note-card__subtitle">Manage voice interactions with minimal friction.</div>
         </div>
       </div>
@@ -263,7 +263,7 @@
             <span class="list-item__leading u-text-title-xs u-tc-2nd">04</span>
             <div class="list-item__content">
               <div class="list-item__title">Glasses simulator</div>
-              <div class="list-item__subtitle">Preview 576×288 green monochrome HUD</div>
+              <div class="list-item__subtitle">Preview 576&#xD7;288 green monochrome HUD</div>
             </div>
             <div class="list-item__meta"><span class="dev-badge">dev</span></div>
           </div>
@@ -271,7 +271,7 @@
       </div>
 
       <div class="page-section">
-        <button class="btn btn--highlight btn--wide" style="width:100%;" onclick="launchSimulator()">Open simulator</button>
+        <button class="btn btn--highlight btn--wide" style="width:100%;" data-action="simulator">Open simulator</button>
       </div>
     </section>
 
@@ -319,13 +319,13 @@
       <div class="page-section">
         <div class="kv" style="margin-bottom: 8px;">
           <div class="section-title" style="margin-bottom: 0;">Logs</div>
-          <button class="btn btn--tight btn--ghost" onclick="copyDiagnostics()">Copy all</button>
+          <button class="btn btn--tight btn--ghost" data-action="copy-diagnostics">Copy all</button>
         </div>
         <div class="log-filters">
-          <button class="log-filter active" data-level="all" onclick="filterLogs('all', this)">All</button>
-          <button class="log-filter" data-level="info" onclick="filterLogs('info', this)">Info</button>
-          <button class="log-filter" data-level="warn" onclick="filterLogs('warn', this)">Warn</button>
-          <button class="log-filter" data-level="error" onclick="filterLogs('error', this)">Error</button>
+          <button class="log-filter active" data-level="all">All</button>
+          <button class="log-filter" data-level="info">Info</button>
+          <button class="log-filter" data-level="warn">Warn</button>
+          <button class="log-filter" data-level="error">Error</button>
         </div>
         <div class="card" style="padding: 0; overflow: hidden;">
           <div class="log-list" id="logList">
@@ -344,19 +344,19 @@
         <div class="page-section">
           <div class="section-title">Connection</div>
           <div class="card card-list">
-            <div class="list-item" onclick="openSettingsField('gatewayUrl')">
+            <div class="list-item" data-setting="gatewayUrl">
               <div class="list-item__content">
                 <div class="list-item__title">Gateway URL</div>
                 <div class="list-item__subtitle mono" id="settGatewayDisplay">Not set</div>
               </div>
-              <span class="list-item__chevron">›</span>
+              <span class="list-item__chevron">&#8250;</span>
             </div>
-            <div class="list-item" onclick="openSettingsField('sessionKey')">
+            <div class="list-item" data-setting="sessionKey">
               <div class="list-item__content">
                 <div class="list-item__title">Session key</div>
                 <div class="list-item__subtitle" id="settKeyDisplay">Not set</div>
               </div>
-              <span class="list-item__chevron">›</span>
+              <span class="list-item__chevron">&#8250;</span>
             </div>
           </div>
         </div>
@@ -364,19 +364,19 @@
         <div class="page-section">
           <div class="section-title">Voice</div>
           <div class="card card-list">
-            <div class="list-item" onclick="openSettingsField('sttProvider')">
+            <div class="list-item" data-setting="sttProvider">
               <div class="list-item__content">
                 <div class="list-item__title">STT provider</div>
                 <div class="list-item__subtitle" id="settSttDisplay">WhisperX</div>
               </div>
-              <span class="list-item__chevron">›</span>
+              <span class="list-item__chevron">&#8250;</span>
             </div>
-            <div class="list-item" onclick="openSettingsField('apiKey')">
+            <div class="list-item" data-setting="apiKey">
               <div class="list-item__content">
                 <div class="list-item__title">Provider API key</div>
                 <div class="list-item__subtitle" id="settApiKeyDisplay">Not set</div>
               </div>
-              <span class="list-item__chevron">›</span>
+              <span class="list-item__chevron">&#8250;</span>
             </div>
           </div>
         </div>
@@ -385,9 +385,9 @@
           <div class="section-title">Data</div>
           <div class="card">
             <div class="btn-row" style="margin-top: 0;">
-              <button class="btn btn--ghost" onclick="exportSettings()">Export settings</button>
-              <button class="btn btn--ghost" onclick="document.getElementById('importFile').click()">Import settings</button>
-              <input type="file" id="importFile" accept=".json" style="display:none" onchange="importSettings(event)" />
+              <button class="btn btn--ghost" data-action="export-settings">Export settings</button>
+              <button class="btn btn--ghost" data-action="import-settings">Import settings</button>
+              <input type="file" id="importFile" accept=".json" style="display:none" />
             </div>
           </div>
         </div>
@@ -396,7 +396,7 @@
       <!-- Settings edit form (shown when editing a field) -->
       <div id="settingsEdit" class="settings-form">
         <div class="page-section">
-          <button class="btn btn--ghost btn--tight" onclick="closeSettingsEdit()">‹ Back</button>
+          <button class="btn btn--ghost btn--tight" data-action="close-settings-edit">&#8249; Back</button>
         </div>
         <div class="page-section">
           <div class="card">
@@ -451,7 +451,7 @@
         <!-- Rendered by JS -->
       </div>
       <div class="modal__footer">
-        <button class="btn btn--ghost" onclick="closeSessionModal()">Cancel</button>
+        <button class="btn btn--ghost" data-action="close-session-modal">Cancel</button>
       </div>
     </div>
   </div>
@@ -464,472 +464,12 @@
       </div>
       <div class="modal__body" id="confirmBody"></div>
       <div class="modal__footer">
-        <button class="btn btn--ghost" onclick="closeConfirm()">Cancel</button>
-        <button class="btn btn--highlight" id="confirmOk" onclick="confirmAction()">Confirm</button>
+        <button class="btn btn--ghost" data-action="close-confirm">Cancel</button>
+        <button class="btn btn--highlight" id="confirmOk">Confirm</button>
       </div>
     </div>
   </div>
 
-  <script>
-    /* ================================================================
-       EVEN OPENCLAW — Companion Hub Application
-       ================================================================
-       Assumptions & decisions (sensible defaults):
-       - Settings stored in localStorage under key "even-openclaw-settings"
-       - Secret fields (sessionKey, apiKey) masked; excluded from export by default
-       - 3 demo sessions for session-switching UX (gideon, atlas, helper)
-       - Logs stored in-memory (ring buffer, max 200 entries)
-       - Simulator launched with state query params
-       - Validation: gateway URL must start with http(s)://, required fields non-empty
-       ================================================================ */
-
-    // ── State ──────────────────────────────────────────
-    const STORAGE_KEY = 'even-openclaw-settings';
-    const DEFAULT_SETTINGS = {
-      gatewayUrl: '',
-      sessionKey: '',
-      sttProvider: 'whisperx',
-      apiKey: '',
-    };
-
-    let settings = loadSettings();
-    let glassesConnected = false;
-    let activeSession = 'gideon';
-    let currentLogFilter = 'all';
-    let pendingConfirm = null;
-
-    const SESSIONS = [
-      { id: 'gideon', name: 'Gideon', desc: 'Coding assistant' },
-      { id: 'atlas', name: 'Atlas', desc: 'Research agent' },
-      { id: 'helper', name: 'Helper', desc: 'General assistant' },
-    ];
-
-    // ── Log system (in-memory ring buffer) ─────────────
-    const MAX_LOGS = 200;
-    const logs = [];
-    let logIdCounter = 0;
-
-    function addLog(level, msg, cid) {
-      logs.unshift({
-        id: ++logIdCounter,
-        level,
-        msg,
-        cid: cid || null,
-        time: new Date(),
-      });
-      if (logs.length > MAX_LOGS) logs.pop();
-      renderLogs();
-    }
-
-    // Seed some demo logs
-    addLog('info', 'App initialized', null);
-    addLog('info', 'Settings loaded from localStorage', null);
-    addLog('warn', 'Gateway URL not configured', null);
-
-    // ── Settings persistence ───────────────────────────
-    function loadSettings() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
-      } catch (e) { console.warn('Failed to load settings', e); }
-      return { ...DEFAULT_SETTINGS };
-    }
-
-    function saveSettings() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-        refreshSettingsDisplay();
-        refreshHealthDisplay();
-        addLog('info', 'Settings saved');
-      } catch (e) {
-        addLog('error', 'Failed to save settings: ' + e.message);
-      }
-    }
-
-    function exportSettings() {
-      const exported = { ...settings };
-      // Exclude secrets by default
-      delete exported.sessionKey;
-      delete exported.apiKey;
-      const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'even-openclaw-settings.json';
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('Settings exported (secrets excluded)');
-      addLog('info', 'Settings exported');
-    }
-
-    function importSettings(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const imported = JSON.parse(e.target.result);
-          // Validate structure
-          if (typeof imported !== 'object') throw new Error('Invalid format');
-          // Merge (don't overwrite secrets unless explicitly in file)
-          if (imported.gatewayUrl !== undefined) settings.gatewayUrl = imported.gatewayUrl;
-          if (imported.sttProvider !== undefined) settings.sttProvider = imported.sttProvider;
-          if (imported.sessionKey !== undefined) settings.sessionKey = imported.sessionKey;
-          if (imported.apiKey !== undefined) settings.apiKey = imported.apiKey;
-          saveSettings();
-          showToast('Settings imported');
-          addLog('info', 'Settings imported from file');
-        } catch (err) {
-          showToast('Import failed: invalid JSON');
-          addLog('error', 'Settings import failed: ' + err.message);
-        }
-      };
-      reader.readAsText(file);
-      event.target.value = ''; // Reset file input
-    }
-
-    // ── Settings form ──────────────────────────────────
-    const FIELD_CONFIG = {
-      gatewayUrl: {
-        label: 'Gateway URL',
-        type: 'url',
-        placeholder: 'https://your-gateway.example.com',
-        help: 'OpenClaw voice gateway endpoint',
-        validate: (v) => !v || /^https?:\/\/.+/.test(v) ? '' : 'Must be a valid http(s):// URL',
-        secret: false,
-      },
-      sessionKey: {
-        label: 'Session key',
-        type: 'password',
-        placeholder: 'Enter session key',
-        help: 'Identifies your OpenClaw session',
-        validate: () => '',
-        secret: true,
-      },
-      sttProvider: {
-        label: 'STT provider',
-        type: 'select',
-        options: [
-          { value: 'whisperx', label: 'WhisperX' },
-          { value: 'openai', label: 'OpenAI Whisper' },
-          { value: 'custom', label: 'Custom endpoint' },
-        ],
-        help: 'Speech-to-text engine for voice transcription',
-        validate: () => '',
-        secret: false,
-      },
-      apiKey: {
-        label: 'Provider API key',
-        type: 'password',
-        placeholder: 'Enter API key',
-        help: 'API key for the selected STT provider (optional)',
-        validate: () => '',
-        secret: true,
-      },
-    };
-
-    let currentEditField = null;
-
-    function openSettingsField(fieldId) {
-      // Ensure we're on settings page
-      show('settings');
-      currentEditField = fieldId;
-      const config = FIELD_CONFIG[fieldId];
-      if (!config) return;
-
-      document.getElementById('settingsList').classList.remove('active');
-      document.getElementById('settingsEdit').classList.add('active');
-
-      const container = document.getElementById('settingsFormContainer');
-      let html = `<div class="u-text-title-base" style="margin-bottom: 4px;">${config.label}</div>`;
-      html += `<div class="u-type-body-base u-tc-2nd" style="margin-bottom: var(--space-item);">${config.help}</div>`;
-
-      if (config.type === 'select') {
-        html += `<div class="field"><select class="input" id="fieldInput">`;
-        config.options.forEach(opt => {
-          const sel = settings[fieldId] === opt.value ? 'selected' : '';
-          html += `<option value="${opt.value}" ${sel}>${opt.label}</option>`;
-        });
-        html += `</select></div>`;
-      } else {
-        const inputType = config.secret ? 'password' : 'text';
-        const value = settings[fieldId] || '';
-        html += `<div class="field">`;
-        html += `<div class="field-row">`;
-        html += `<div class="field" style="flex:1;"><input class="input" type="${inputType}" id="fieldInput" value="${escHtml(value)}" placeholder="${config.placeholder}" autocomplete="off" /></div>`;
-        if (config.secret) {
-          html += `<button class="eye-btn" onclick="toggleFieldVisibility()" id="eyeBtn" type="button">👁</button>`;
-        }
-        html += `</div>`;
-        html += `<div class="field__error" id="fieldError"></div>`;
-        html += `</div>`;
-      }
-
-      html += `<div class="btn-row">`;
-      html += `<button class="btn btn--highlight" onclick="saveField()">Save</button>`;
-      html += `<button class="btn btn--ghost" onclick="closeSettingsEdit()">Cancel</button>`;
-      html += `</div>`;
-
-      container.innerHTML = html;
-
-      // Focus input
-      setTimeout(() => {
-        const input = document.getElementById('fieldInput');
-        if (input) input.focus();
-      }, 100);
-    }
-
-    function toggleFieldVisibility() {
-      const input = document.getElementById('fieldInput');
-      const btn = document.getElementById('eyeBtn');
-      if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = '🔒';
-      } else {
-        input.type = 'password';
-        btn.textContent = '👁';
-      }
-    }
-
-    function saveField() {
-      if (!currentEditField) return;
-      const config = FIELD_CONFIG[currentEditField];
-      const input = document.getElementById('fieldInput');
-      const value = input.value.trim();
-
-      // Validate
-      const error = config.validate(value);
-      if (error) {
-        const errEl = document.getElementById('fieldError');
-        if (errEl) errEl.textContent = error;
-        input.parentElement?.parentElement?.classList.add('field--error');
-        return;
-      }
-
-      settings[currentEditField] = value;
-      saveSettings();
-      closeSettingsEdit();
-      showToast(`${config.label} updated`);
-    }
-
-    function closeSettingsEdit() {
-      currentEditField = null;
-      document.getElementById('settingsList').classList.add('active');
-      document.getElementById('settingsEdit').classList.remove('active');
-    }
-
-    function refreshSettingsDisplay() {
-      // Settings page displays
-      document.getElementById('settGatewayDisplay').textContent =
-        settings.gatewayUrl ? truncate(settings.gatewayUrl, 30) : 'Not set';
-      document.getElementById('settKeyDisplay').textContent =
-        settings.sessionKey ? '••••••••' : 'Not set';
-      document.getElementById('settSttDisplay').textContent =
-        STT_LABELS[settings.sttProvider] || settings.sttProvider;
-      document.getElementById('settApiKeyDisplay').textContent =
-        settings.apiKey ? '••••••••' : 'Not set';
-
-      // Home page displays
-      document.getElementById('sttDisplay').textContent =
-        STT_LABELS[settings.sttProvider] || settings.sttProvider;
-    }
-
-    const STT_LABELS = { whisperx: 'WhisperX', openai: 'OpenAI Whisper', custom: 'Custom' };
-
-    // ── Session switching ──────────────────────────────
-    function showSessions() {
-      const body = document.getElementById('sessionModalBody');
-      let html = '<div style="display:grid; gap:6px; margin-top:8px;">';
-      SESSIONS.forEach(s => {
-        const isActive = s.id === activeSession;
-        html += `<div class="list-item session-item ${isActive ? 'is-active' : ''}" onclick="switchSession('${s.id}')">`;
-        html += `<div class="list-item__content">`;
-        html += `<div class="list-item__title">${s.name}</div>`;
-        html += `<div class="list-item__subtitle">${s.desc}</div>`;
-        html += `</div>`;
-        if (isActive) {
-          html += `<div class="session-active-badge"><span class="status-dot status-dot--ok"></span> Active</div>`;
-        }
-        html += `</div>`;
-      });
-      html += '</div>';
-      body.innerHTML = html;
-      document.getElementById('sessionModal').classList.add('active');
-    }
-
-    function switchSession(sessionId) {
-      if (sessionId === activeSession) {
-        closeSessionModal();
-        return;
-      }
-      const session = SESSIONS.find(s => s.id === sessionId);
-      pendingConfirm = () => {
-        activeSession = sessionId;
-        document.getElementById('activeSessionDisplay').textContent = session.name.toLowerCase();
-        closeSessionModal();
-        closeConfirm();
-        showToast(`Switched to ${session.name}`);
-        addLog('info', `Session switched to ${session.name}`, `sess-${Date.now()}`);
-        refreshHealthDisplay();
-      };
-      closeSessionModal();
-      document.getElementById('confirmTitle').textContent = 'Switch session?';
-      document.getElementById('confirmBody').textContent =
-        `Switch from current session to "${session.name}" (${session.desc})?`;
-      document.getElementById('confirmModal').classList.add('active');
-    }
-
-    function closeSessionModal() {
-      document.getElementById('sessionModal').classList.remove('active');
-    }
-
-    function confirmAction() {
-      if (pendingConfirm) pendingConfirm();
-      pendingConfirm = null;
-    }
-
-    function closeConfirm() {
-      document.getElementById('confirmModal').classList.remove('active');
-      pendingConfirm = null;
-    }
-
-    // ── Health display ─────────────────────────────────
-    function refreshHealthDisplay() {
-      const gwOk = !!settings.gatewayUrl;
-      const sttOk = !!settings.sttProvider;
-      const sessOk = !!activeSession;
-
-      setHealthDot('hGatewayDot', gwOk ? 'ok' : 'off');
-      document.getElementById('hGatewayStatus').textContent = gwOk ? truncate(settings.gatewayUrl, 35) : 'Not configured';
-
-      setHealthDot('hSttDot', sttOk ? 'ok' : 'off');
-      document.getElementById('hSttStatus').textContent = sttOk ? (STT_LABELS[settings.sttProvider] || settings.sttProvider) : 'Not configured';
-
-      setHealthDot('hSessionDot', sessOk ? 'ok' : 'off');
-      document.getElementById('hSessionStatus').textContent = sessOk ? activeSession : 'No session';
-    }
-
-    function setHealthDot(id, state) {
-      const el = document.getElementById(id);
-      el.className = `status-dot status-dot--${state}`;
-    }
-
-    // ── Logs rendering ─────────────────────────────────
-    function renderLogs() {
-      const list = document.getElementById('logList');
-      const filtered = currentLogFilter === 'all' ? logs : logs.filter(l => l.level === currentLogFilter);
-      if (filtered.length === 0) {
-        list.innerHTML = '<div class="u-type-body-base u-tc-2nd" style="padding: 16px; text-align: center;">No log entries.</div>';
-        return;
-      }
-      list.innerHTML = filtered.map(l => {
-        const time = l.time.toLocaleTimeString('en-US', { hour12: false });
-        return `<div class="log-entry">
-          <div class="log-entry__header">
-            <span class="log-entry__level log-entry__level--${l.level}">${l.level}</span>
-            <span class="log-entry__time">${time}</span>
-          </div>
-          <div class="log-entry__msg">${escHtml(l.msg)}</div>
-          ${l.cid ? `<div class="log-entry__cid">cid: ${escHtml(l.cid)}</div>` : ''}
-        </div>`;
-      }).join('');
-    }
-
-    function filterLogs(level, btn) {
-      currentLogFilter = level;
-      document.querySelectorAll('.log-filter').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderLogs();
-    }
-
-    function copyDiagnostics() {
-      const diag = {
-        timestamp: new Date().toISOString(),
-        settings: { gatewayUrl: settings.gatewayUrl, sttProvider: settings.sttProvider },
-        activeSession,
-        glassesConnected,
-        logs: logs.slice(0, 50).map(l => ({
-          level: l.level,
-          msg: l.msg,
-          time: l.time.toISOString(),
-          cid: l.cid,
-        })),
-      };
-      navigator.clipboard.writeText(JSON.stringify(diag, null, 2)).then(() => {
-        showToast('Diagnostics copied to clipboard');
-      }).catch(() => {
-        showToast('Failed to copy — check permissions');
-      });
-    }
-
-    // ── Glasses connection (mock) ──────────────────────
-    function connectGlasses() {
-      glassesConnected = true;
-      document.getElementById('gState').innerHTML =
-        '<span class="status-dot status-dot--ok"></span> Connected';
-      document.getElementById('gBattery').textContent = '87 %';
-      addLog('info', 'Glasses connected (mock)', 'conn-' + Date.now());
-      showToast('Glasses connected');
-    }
-
-    function disconnectGlasses() {
-      glassesConnected = false;
-      document.getElementById('gState').innerHTML =
-        '<span class="status-dot status-dot--off"></span> Disconnected';
-      document.getElementById('gBattery').textContent = '-- %';
-      addLog('info', 'Glasses disconnected');
-    }
-
-    // ── Simulator launch ───────────────────────────────
-    function launchSimulator() {
-      const params = new URLSearchParams({
-        session: activeSession,
-        connected: glassesConnected ? '1' : '0',
-      });
-      window.open(`./preview-glasses.html?${params.toString()}`, '_blank');
-      addLog('info', 'Simulator opened', null);
-    }
-
-    // ── Navigation ─────────────────────────────────────
-    const allTabs = [...document.querySelectorAll('#tabline .tab')];
-    const allNav = [...document.querySelectorAll('#bottomNav button')];
-    const allPages = ['home', 'features', 'health', 'settings'];
-
-    function show(page) {
-      // Close settings edit if open
-      if (page !== 'settings') closeSettingsEdit();
-
-      allPages.forEach(p => document.getElementById(p).classList.remove('active'));
-      document.getElementById(page).classList.add('active');
-      allNav.forEach(n => n.classList.toggle('active', n.dataset.page === page));
-      allTabs.forEach(t => t.classList.toggle('is-active', t.dataset.tab === page));
-
-      // Show/hide tabline for home/features only
-      document.getElementById('tabline').style.display =
-        (page === 'home' || page === 'features') ? 'flex' : 'none';
-    }
-
-    allTabs.forEach(t => t.onclick = () => show(t.dataset.tab));
-    allNav.forEach(n => n.onclick = () => show(n.dataset.page));
-
-    // ── Toast helper ───────────────────────────────────
-    let toastTimer = null;
-    function showToast(msg) {
-      const container = document.getElementById('toastContainer');
-      document.getElementById('toastText').textContent = msg;
-      container.classList.remove('hidden');
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => container.classList.add('hidden'), 2500);
-    }
-
-    // ── Utilities ──────────────────────────────────────
-    function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-    function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
-
-    // ── Init ───────────────────────────────────────────
-    refreshSettingsDisplay();
-    refreshHealthDisplay();
-    renderLogs();
-  </script>
+  <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
