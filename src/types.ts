@@ -84,6 +84,10 @@ export interface VoiceTurnChunk {
   turnId?: string;
 }
 
+// ── Display types ─────────────────────────────────────────
+
+export type IconState = 'idle' | 'recording' | 'sent' | 'thinking';
+
 // ── Event bus types ───────────────────────────────────────
 
 export interface AppEventMap {
@@ -100,4 +104,8 @@ export interface AppEventMap {
   'gateway:status': { status: ConnectionStatus };
   'gateway:chunk': VoiceTurnChunk;
   'log': { level: LogLevel; msg: string; cid?: string };
+  'display:state-change': { state: IconState };
+  'display:viewport-update': { text: string };
+  'display:hide': Record<string, never>;
+  'display:wake': Record<string, never>;
 }
