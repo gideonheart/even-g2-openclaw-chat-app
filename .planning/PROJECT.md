@@ -54,7 +54,17 @@ Users can have natural voice conversations with an AI assistant through their Ev
 
 ### Active
 
-(No active requirements — planning next milestone)
+## Current Milestone: v1.3 Resilience & Error UX
+
+**Goal:** Make the app bulletproof — no silent data loss, no stale state, visible error recovery — across all failure modes and real hardware.
+
+**Target features:**
+- IndexedDB write verification, orphan detection/cleanup, referential integrity checks on boot
+- Cross-context sync hardening: message loss detection, drift reconciliation, fallback behaviors
+- Real-hardware gap closure: BroadcastChannel in flutter_inappwebview, IndexedDB eviction, SDK quirks
+- Error resilience: mid-stream gateway failures, stuck FSM states, network drops, corrupted state recovery
+- Error UX: visible error states, recovery prompts, sync/storage health indicators
+- Test coverage: integration tests for failure scenarios, E2E resilience tests, CI pipeline
 
 ### Out of Scope
 
@@ -123,4 +133,4 @@ Three milestones shipped (v1.0 MVP → v1.1 Integration → v1.2 Conversation In
 | IDB cursor-based full-text search | searchMessages scans all messages with limit + snippet extraction | ✓ Good — v1.2 |
 
 ---
-*Last updated: 2026-02-28 after v1.2 milestone*
+*Last updated: 2026-02-28 after v1.3 milestone started*
