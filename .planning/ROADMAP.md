@@ -82,11 +82,11 @@ Plans:
   3. Destructive commands (delete, reset) show a confirmation step before executing
   4. Menu disappears automatically after 5 seconds of no interaction
   5. After executing a menu command, the glasses display returns to the conversation view with the correct state
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 11-01: TBD
-- [ ] 11-02: TBD
+- [ ] 11-01-PLAN.md — Pure command menu state module + FSM MENU_SELECT extension (TDD)
+- [ ] 11-02-PLAN.md — Menu controller, renderer overlay, gesture dispatch, and boot wiring
 
 ### Phase 12: Hub Conversation Features
 **Goal**: The companion hub becomes a full conversation interface -- users can watch live conversations, type messages, browse history, and search across all past conversations
