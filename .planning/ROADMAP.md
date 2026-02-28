@@ -48,11 +48,11 @@
   2. User speaks a message and sees it persist immediately -- no manual save action required
   3. New conversations auto-generate a name from the first user message and show creation timestamps
   4. All existing tests continue to pass (persistence layer does not break stateless modules)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 09-01: TBD
-- [ ] 09-02: TBD
+- [ ] 09-01-PLAN.md — IndexedDB wrapper + conversation store (TDD)
+- [ ] 09-02-PLAN.md — Auto-save wiring + boot restore
 
 ### Phase 10: Dynamic Sessions & Cross-Context Sync
 **Goal**: Users can manage multiple conversation sessions, and actions in one context (glasses or hub) are visible in the other in real time
@@ -118,7 +118,7 @@ Phases execute in numeric order: 9 → 10 → 11 → 12
 | 6. Runtime Wiring | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 7. Error Handling & Lifecycle | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 8. EvenHub Submission | v1.1 | 1/1 | Complete | 2026-02-28 |
-| 9. IndexedDB Persistence | v1.2 | 0/? | Not started | - |
+| 9. IndexedDB Persistence | v1.2 | 0/2 | Planned | - |
 | 10. Dynamic Sessions & Cross-Context Sync | v1.2 | 0/? | Not started | - |
 | 11. Glasses Command Menu | v1.2 | 0/? | Not started | - |
 | 12. Hub Conversation Features | v1.2 | 0/? | Not started | - |
