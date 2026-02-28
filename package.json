@@ -12,9 +12,12 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "jsdom": "^25.0.0",
     "typescript": "^5.7.0",
     "vite": "^6.1.0",
-    "vitest": "^3.0.0",
-    "jsdom": "^25.0.0"
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "^0.0.7"
   }
 }

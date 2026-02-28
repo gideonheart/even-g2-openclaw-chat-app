@@ -89,6 +89,7 @@ export interface VoiceTurnChunk {
 export interface AppEventMap {
   'bridge:connected': { deviceName: string };
   'bridge:disconnected': { reason: string };
+  'bridge:audio-frame': { pcm: Uint8Array; timestamp: number };
   'gesture:tap': { timestamp: number };
   'gesture:double-tap': { timestamp: number };
   'gesture:scroll-up': { timestamp: number };
