@@ -13,7 +13,7 @@ export function parseSSELines(raw: string): SSEEvent[] {
   const events: SSEEvent[] = [];
   let current: Partial<SSEEvent> = {};
 
-  for (const line of raw.split('\n')) {
+  for (const line of raw.split(/\r?\n/)) {
     if (line === '') {
       // Blank line = event boundary
       if (current.data !== undefined) {
@@ -250,13 +250,14 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       emitChunk({ type: 'error', error: message });
 
-      // Auto-reconnect logic
+      // Auto-reconnect with exponential backoff
       if (health.reconnectAttempts < opts.maxReconnectAttempts) {
         health.reconnectAttempts++;
         setStatus('connecting');
         const delay = opts.reconnectBaseDelayMs * Math.pow(2, health.reconnectAttempts - 1);
         await new Promise((r) => setTimeout(r, delay));
-        // Caller should retry — we just set the state
+        // Actually retry the request (recursive call)
+        return sendVoiceTurn(settings, request);
       } else {
         setStatus('error');
       }

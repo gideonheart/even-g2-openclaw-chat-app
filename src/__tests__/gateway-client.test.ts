@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseSSELines, createGatewayClient } from '../api/gateway-client';
+import type { AppSettings, VoiceTurnRequest, VoiceTurnChunk } from '../types';
 
 describe('gateway-client', () => {
   describe('parseSSELines', () => {
@@ -59,6 +60,13 @@ describe('gateway-client', () => {
       expect(events).toHaveLength(1);
       expect(events[0].data).toBe('partial');
     });
+
+    it('handles \\r\\n line endings', () => {
+      const raw = 'data: hello\r\n\r\n';
+      const events = parseSSELines(raw);
+      expect(events).toHaveLength(1);
+      expect(events[0].data).toBe('hello');
+    });
   });
 
   describe('createGatewayClient', () => {
@@ -101,6 +109,156 @@ describe('gateway-client', () => {
       client.onStatusChange((s) => statuses.push(s));
       client.destroy();
       expect(statuses).toContain('disconnected');
+    });
+  });
+
+  describe('sendVoiceTurn', () => {
+    const testSettings: AppSettings = {
+      gatewayUrl: 'https://gw.test',
+      sessionKey: 'key-123',
+      sttProvider: 'whisperx',
+      apiKey: 'ak-test',
+    };
+
+    const testRequest: VoiceTurnRequest = {
+      sessionId: 'sess-1',
+      audio: new Blob(['audio-data'], { type: 'audio/webm' }),
+      sttProvider: 'whisperx',
+    };
+
+    function createSSEStream(events: string[]): ReadableStream<Uint8Array> {
+      const encoder = new TextEncoder();
+      return new ReadableStream({
+        start(controller) {
+          for (const evt of events) {
+            controller.enqueue(encoder.encode(evt));
+          }
+          controller.close();
+        },
+      });
+    }
+
+    let originalFetch: typeof globalThis.fetch;
+
+    beforeEach(() => {
+      originalFetch = globalThis.fetch;
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it('successful voice turn streams SSE chunks to handler', async () => {
+      const sseData = [
+        'data: {"type":"response_start","turnId":"t1"}\n\n',
+        'data: {"type":"response_delta","text":"hi"}\n\n',
+        'data: {"type":"response_end"}\n\n',
+      ];
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        body: createSSEStream(sseData),
+      });
+
+      const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
+      const chunks: VoiceTurnChunk[] = [];
+      const statuses: string[] = [];
+      client.onChunk((c) => chunks.push(c));
+      client.onStatusChange((s) => statuses.push(s));
+
+      await client.sendVoiceTurn(testSettings, testRequest);
+
+      expect(chunks).toHaveLength(3);
+      expect(chunks[0].type).toBe('response_start');
+      expect(chunks[1].type).toBe('response_delta');
+      expect(chunks[1].text).toBe('hi');
+      expect(chunks[2].type).toBe('response_end');
+      expect(statuses).toContain('connected');
+      expect(client.getHealth().reconnectAttempts).toBe(0);
+    });
+
+    it('retries on network error and succeeds on second attempt', async () => {
+      const sseData = ['data: {"type":"response_end"}\n\n'];
+      let callCount = 0;
+
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.reject(new Error('Network failure'));
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          body: createSSEStream(sseData),
+        });
+      });
+
+      const client = createGatewayClient({
+        maxReconnectAttempts: 3,
+        reconnectBaseDelayMs: 1,
+      });
+      const statuses: string[] = [];
+      const chunks: VoiceTurnChunk[] = [];
+      client.onStatusChange((s) => statuses.push(s));
+      client.onChunk((c) => chunks.push(c));
+
+      await client.sendVoiceTurn(testSettings, testRequest);
+
+      // fetch called twice: first fails, second succeeds
+      expect(callCount).toBe(2);
+      // Status transitions: connecting (1st attempt) -> connecting (retry) -> connecting (2nd sendVoiceTurn call via abort()) -> connected
+      expect(statuses).toContain('connecting');
+      expect(statuses).toContain('connected');
+      // reconnectAttempts resets on success
+      expect(client.getHealth().reconnectAttempts).toBe(0);
+      // The error chunk from the failed attempt + successful response
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('gives up after maxReconnectAttempts and sets status to error', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network down'));
+
+      const client = createGatewayClient({
+        maxReconnectAttempts: 2,
+        reconnectBaseDelayMs: 1,
+      });
+      const statuses: string[] = [];
+      const chunks: VoiceTurnChunk[] = [];
+      client.onStatusChange((s) => statuses.push(s));
+      client.onChunk((c) => chunks.push(c));
+
+      await client.sendVoiceTurn(testSettings, testRequest);
+
+      // Should end in error state
+      expect(client.getHealth().status).toBe('error');
+      // Error chunks emitted for each attempt (initial + 2 retries = 3 total calls)
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks.length).toBeGreaterThanOrEqual(2);
+      // Last status should be error
+      expect(statuses[statuses.length - 1]).toBe('error');
+    });
+
+    it('does not retry on AbortError', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(
+        new DOMException('Aborted', 'AbortError'),
+      );
+
+      const client = createGatewayClient({
+        maxReconnectAttempts: 3,
+        reconnectBaseDelayMs: 1,
+      });
+      const chunks: VoiceTurnChunk[] = [];
+      client.onChunk((c) => chunks.push(c));
+
+      await client.sendVoiceTurn(testSettings, testRequest);
+
+      // No error chunk emitted, no retry
+      expect(chunks).toHaveLength(0);
+      expect(client.getHealth().reconnectAttempts).toBe(0);
     });
   });
 });
