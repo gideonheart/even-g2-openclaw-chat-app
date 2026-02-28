@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Planning next milestone (v1.1 Integration — Phase 6)
+**Current focus:** Milestone v1.1 Integration — defining requirements
 
 ## Current Position
 
-Phase: v1.0 MVP complete (Phases 1-5)
-Plan: All plans complete for v1.0
-Status: Milestone v1.0 shipped, Phase 6 not started
-Last activity: 2026-02-28 - Completed v1.0 milestone archival
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-28 — Milestone v1.1 started
 
 Progress: [#########.] 83% (5/6 phases)
 

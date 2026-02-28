@@ -4,6 +4,17 @@
 
 A public EvenHub frontend app for Even G2 smart glasses that provides voice/chat UX for interacting with an OpenClaw AI agent. Users speak through the glasses, audio is sent to a backend gateway (`openclaw-even-g2-voice-gateway`) for STT processing and OpenClaw agent responses, which stream back as bubble chat in a compact HUD rendered on the 576x288 glasses display. The app includes a companion mobile/desktop hub for settings, diagnostics, and session management. v1.0 shipped core libraries (gesture FSM, bridge wrapper, display pipeline, gateway client) and the complete companion hub UI.
 
+## Current Milestone: v1.1 Integration
+
+**Goal:** Wire all v1.0 library modules together into a working end-to-end voice loop and package for EvenHub submission.
+
+**Target features:**
+- End-to-end voice loop (tap → record → gateway → stream → glasses display)
+- Runtime main.ts initialization wiring all modules
+- EvenHub submission package (self-contained dist/index.html)
+- App metadata for EvenHub listing
+- Tech debt cleanup (audio frame subscription, orphaned event types)
+
 ## Core Value
 
 Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
@@ -90,4 +101,4 @@ All modules are tested library components. Runtime assembly (main.ts entry point
 | SDK class wrapping only in even-bridge.ts | All other modules use plain objects + event bus | ✓ Good — clean boundary |
 
 ---
-*Last updated: 2026-02-28 after v1.0 milestone*
+*Last updated: 2026-02-28 after v1.1 milestone start*
