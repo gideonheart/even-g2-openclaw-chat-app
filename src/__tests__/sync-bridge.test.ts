@@ -1,5 +1,5 @@
 import { createSyncBridge } from '../sync/sync-bridge';
-import type { SyncMessage, SyncBridge } from '../sync/sync-types';
+import type { SyncMessage } from '../sync/sync-types';
 
 // ── BroadcastChannel mock ──────────────────────────────────
 // jsdom does not provide BroadcastChannel, so we create a minimal
@@ -46,7 +46,7 @@ class MockBroadcastChannel {
 
 // ── Helper ─────────────────────────────────────────────────
 
-function makeMsg(type: SyncMessage['type'] = 'session:created'): SyncMessage {
+function makeMsg(_type: SyncMessage['type'] = 'session:created'): SyncMessage {
   return {
     type: 'session:created',
     origin: 'glasses',
