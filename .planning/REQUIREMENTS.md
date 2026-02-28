@@ -9,9 +9,9 @@ Requirements for v1.1 Integration milestone. Wires existing v1.0 library modules
 
 ### Voice Loop Wiring
 
-- [ ] **LOOP-01**: User can complete a full voice turn: tap → record → send → see streaming response on glasses
+- [ ] **LOOP-01**: User can complete a full voice turn: tap -> record -> send -> see streaming response on glasses
 - [ ] **LOOP-02**: Runtime main.ts detects Even App WebView vs browser and routes to correct boot path
-- [ ] **LOOP-03**: Glasses boot sequence initializes all modules in correct dependency order (bus → bridge → audio → gesture → display → voice loop)
+- [ ] **LOOP-03**: Glasses boot sequence initializes all modules in correct dependency order (bus -> bridge -> audio -> gesture -> display -> voice loop)
 - [ ] **LOOP-04**: VoiceLoopController bridges gateway client events to the app event bus
 - [ ] **LOOP-05**: bridge:audio-frame events are forwarded to audioCapture.onFrame() for glasses-mode PCM recording
 - [ ] **LOOP-06**: CLICK_EVENT SDK quirk is handled so tap gestures work on real glasses hardware
@@ -69,26 +69,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LOOP-01 | — | Pending |
-| LOOP-02 | — | Pending |
-| LOOP-03 | — | Pending |
-| LOOP-04 | — | Pending |
-| LOOP-05 | — | Pending |
-| LOOP-06 | — | Pending |
-| ERR-01 | — | Pending |
-| ERR-02 | — | Pending |
-| ERR-03 | — | Pending |
-| ERR-04 | — | Pending |
-| SUB-01 | — | Pending |
-| SUB-02 | — | Pending |
-| SUB-03 | — | Pending |
-| SUB-04 | — | Pending |
+| LOOP-01 | Phase 6 | Pending |
+| LOOP-02 | Phase 6 | Pending |
+| LOOP-03 | Phase 6 | Pending |
+| LOOP-04 | Phase 6 | Pending |
+| LOOP-05 | Phase 6 | Pending |
+| LOOP-06 | Phase 6 | Pending |
+| ERR-01 | Phase 7 | Pending |
+| ERR-02 | Phase 7 | Pending |
+| ERR-03 | Phase 7 | Pending |
+| ERR-04 | Phase 6 | Pending |
+| SUB-01 | Phase 8 | Pending |
+| SUB-02 | Phase 8 | Pending |
+| SUB-03 | Phase 8 | Pending |
+| SUB-04 | Phase 8 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 14 total
-- Mapped to phases: 0
-- Unmapped: 14 ⚠️
+- Mapped to phases: 14
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-28*
-*Last updated: 2026-02-28 after v1.1 milestone definition*
+*Last updated: 2026-02-28 after v1.1 roadmap creation*

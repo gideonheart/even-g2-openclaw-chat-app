@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Milestone v1.1 Integration — defining requirements
+**Current focus:** Phase 6 - Runtime Wiring (v1.1 Integration)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-28 — Milestone v1.1 started
+Phase: 6 of 8 (Runtime Wiring)
+Plan: 0 of ? in current phase (plans not yet defined)
+Status: Ready to plan
+Last activity: 2026-02-28 -- Roadmap created for v1.1 Integration milestone (Phases 6-8)
 
-Progress: [#########.] 83% (5/6 phases)
+Progress: [######....] 62% (5/8 phases complete)
 
 ## Performance Metrics
 
@@ -46,7 +46,8 @@ None.
 
 ### Blockers/Concerns
 
-- [Research]: EvenHub submission acceptance criteria have limited public documentation — validate before Phase 6
+- [Research]: EvenHub submission acceptance criteria have limited public documentation -- validate during Phase 8
+- [Research]: vite-plugin-singlefile may not be necessary -- sibling repo ships standard Vite output successfully with evenhub pack
 
 ### Quick Tasks Completed
 
@@ -58,5 +59,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed v1.0 milestone archival. Phase 6 (Voice Loop Integration & Submission) is next.
+Stopped at: Roadmap created for v1.1 Integration milestone. Phase 6 (Runtime Wiring) ready for planning.
 Resume file: None
