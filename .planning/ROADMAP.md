@@ -33,7 +33,7 @@
 **Milestone Goal:** Make conversations persistent, browsable, and accessible from both glasses and hub -- with dynamic sessions, a glasses command menu, and real-time two-way sync.
 
 - [ ] **Phase 9: IndexedDB Persistence** - Conversation and message storage with auto-save and boot recovery
-- [ ] **Phase 10: Dynamic Sessions & Cross-Context Sync** - Session CRUD, event bus bridge, and real-time hub-glasses relay
+- [x] **Phase 10: Dynamic Sessions & Cross-Context Sync** - Session CRUD, event bus bridge, and real-time hub-glasses relay (completed 2026-02-28)
 - [ ] **Phase 11: Glasses Command Menu** - Double-tap overlay with session commands, scroll navigation, and auto-close
 - [ ] **Phase 12: Hub Conversation Features** - Live view, text input, history browsing, and full-text search
 
@@ -120,6 +120,6 @@ Phases execute in numeric order: 9 → 10 → 11 → 12
 | 7. Error Handling & Lifecycle | v1.1 | 2/2 | Complete | 2026-02-28 |
 | 8. EvenHub Submission | v1.1 | 1/1 | Complete | 2026-02-28 |
 | 9. IndexedDB Persistence | v1.2 | 0/2 | Planned | - |
-| 10. Dynamic Sessions & Cross-Context Sync | 2/3 | In Progress|  | - |
+| 10. Dynamic Sessions & Cross-Context Sync | 3/3 | Complete   | 2026-02-28 | - |
 | 11. Glasses Command Menu | v1.2 | 0/? | Not started | - |
 | 12. Hub Conversation Features | v1.2 | 0/? | Not started | - |

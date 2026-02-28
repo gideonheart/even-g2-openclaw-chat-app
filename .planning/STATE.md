@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 10 of 12 (Dynamic Sessions & Cross-Context Sync)
-Plan: 2 of 3 in current phase
-Status: Plan 10-02 complete, ready for Plan 10-03
-Last activity: 2026-02-28 — Plan 10-02 complete (glasses sync bridge wiring)
+Plan: 3 of 3 in current phase
+Status: Phase 10 complete
+Last activity: 2026-02-28 — Plan 10-03 complete (dynamic sessions + hub sync wiring)
 
-Progress: [███████████████████░] 21/22 plans (v1.0-v1.1 complete, Phase 10 in progress)
+Progress: [████████████████████] 22/22 plans (v1.0-v1.1 complete, Phase 10 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 21 (Phases 1-9, Phase 10 plans 01-02)
+- Total plans completed: 22 (Phases 1-10 all complete)
 - Total tests: 325 (all passing)
-- Total LOC: ~7,400 TypeScript (58 files)
-- Total execution time: ~4.6 hours
+- Total LOC: ~7,600 TypeScript (58 files)
+- Total execution time: ~4.7 hours
 
 **By Phase:**
 
@@ -37,7 +37,7 @@ Progress: [███████████████████░] 21/22 p
 | 7 | 2 (error recovery + lifecycle cleanup) | ~15m | 8m |
 | 8 | 1 (evenhub submission) | ~3m | 3m |
 | 9 | 2 (data layer TDD + wiring) | ~10m | 5m |
-| 10 | 2/3 (session store + sync bridge + glasses wiring) | ~10m | 5m |
+| 10 | 3/3 (session store + sync bridge + glasses wiring + hub sessions) | ~16m | 5m |
 
 ## Accumulated Context
 
@@ -51,6 +51,9 @@ All decisions logged in PROJECT.md Key Decisions table (20 entries with outcomes
 - switchToSession uses renderer.destroy()+init() cycle to clear display (10-02)
 - SyncBridge initialized before Layer 1 hardware boundary for early sync readiness (10-02)
 - Session events added to AppEventMap for local bus coordination (10-02)
+- SessionManager wraps SessionStore + SyncBridge in single facade for all session ops (10-03)
+- Removed hardcoded SESSIONS array; sessions loaded dynamically from IndexedDB (10-03)
+- activeSession default '' (set from IndexedDB on boot), initHub() now async (10-03)
 
 ### Pending Todos
 
@@ -73,5 +76,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 10-02-PLAN.md (glasses sync bridge wiring). Ready for 10-03.
+Stopped at: Completed 10-03-PLAN.md (dynamic sessions + hub sync wiring). Phase 10 complete.
 Resume file: None
