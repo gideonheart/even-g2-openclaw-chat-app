@@ -821,7 +821,8 @@ function handleHubChunk(chunk: VoiceTurnChunk): void {
               });
             }
           }).catch(() => {
-            // Silent failure on persistence -- message is displayed locally
+            console.error('[hub] Failed to save assistant response');
+            showToast('Message may not be saved');
           });
         }
       } else {
@@ -861,11 +862,16 @@ async function handleTextSubmit(text: string): Promise<void> {
 
   // Save user message to IndexedDB
   if (hubConversationStore) {
-    await hubConversationStore.addMessage(activeId, {
-      role: 'user',
-      text,
-      timestamp: Date.now(),
-    });
+    try {
+      await hubConversationStore.addMessage(activeId, {
+        role: 'user',
+        text,
+        timestamp: Date.now(),
+      });
+    } catch {
+      console.error('[hub] Failed to save user message');
+      showToast('Message may not be saved');
+    }
   }
 
   // Sync user message to glasses
