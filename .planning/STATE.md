@@ -9,20 +9,20 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 11 of 13 (Glasses Command Menu)
-Plan: 2 of 2 in current phase
-Status: Plan 11-01 complete, executing 11-02
-Last activity: 2026-02-28 - Completed 11-01: CommandMenu pure state module + FSM extension
+Phase: 11 of 13 (Glasses Command Menu) -- COMPLETE
+Plan: 2 of 2 in current phase (all complete)
+Status: Phase 11 complete
+Last activity: 2026-02-28 - Completed 11-02: Menu controller wiring + boot integration
 
-Progress: [████████████████████] 24/25 plans (v1.0-v1.1 complete, Phase 10+13 complete, Phase 11 in progress)
+Progress: [█████████████████████] 25/25 plans (v1.0-v1.1 complete, all phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 24 (Phases 1-10 + Phase 13 gap closure + Phase 11-01 complete)
+- Total plans completed: 25 (Phases 1-11 + Phase 13 gap closure -- ALL COMPLETE)
 - Total tests: 352 (all passing)
-- Total LOC: ~7,600 TypeScript (58 files)
-- Total execution time: ~4.7 hours
+- Total LOC: ~7,900 TypeScript (59 files)
+- Total execution time: ~4.8 hours
 
 **By Phase:**
 
@@ -38,7 +38,7 @@ Progress: [████████████████████] 24/25 p
 | 8 | 1 (evenhub submission) | ~3m | 3m |
 | 9 | 2 (data layer TDD + wiring) | ~10m | 5m |
 | 10 | 3/3 (session store + sync bridge + glasses wiring + hub sessions) | ~16m | 5m |
-| 11 | 1/2 (command menu state + FSM extension) | ~4m | 4m |
+| 11 | 2/2 (command menu state + FSM extension, controller + boot wiring) | ~8m | 4m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
 
 ## Accumulated Context
@@ -63,6 +63,10 @@ All decisions logged in PROJECT.md Key Decisions table (20 entries with outcomes
 - MENU_SELECT action added to FSM; tap in menu stays in menu state, controller decides when to close (11-01)
 - Destructive menu items require confirmation sub-state before execution (11-01)
 - Scroll locked during confirmation to prevent accidental navigation (11-01)
+- Menu controller uses showMenuOverlay/restoreConversation, not hide/wake (avoids flicker) (11-02)
+- Scroll during confirmation cancels the confirmation dialog (11-02)
+- /rename auto-generates name from first user message, no keyboard needed (11-02)
+- /reset implemented as delete+create (cascade deletes messages) (11-02)
 
 ### Pending Todos
 
@@ -86,5 +90,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 11-01-PLAN.md (CommandMenu pure state module + FSM extension)
+Stopped at: Completed 11-02-PLAN.md (Menu controller wiring + boot integration) -- Phase 11 complete
 Resume file: None

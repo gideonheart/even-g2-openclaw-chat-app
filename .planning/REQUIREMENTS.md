@@ -27,7 +27,7 @@ Requirements for v1.2 Conversation Intelligence & Hub Interaction. Each maps to 
 - [x] **MENU-02**: Scroll up/down navigates menu items
 - [x] **MENU-03**: Tap executes selected command (/new, /reset, /switch, /rename, /delete)
 - [x] **MENU-04**: Destructive actions show confirmation before executing
-- [ ] **MENU-05**: Menu auto-closes after 5 seconds of inactivity
+- [x] **MENU-05**: Menu auto-closes after 5 seconds of inactivity
 
 ### Cross-Context Sync
 
@@ -92,7 +92,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MENU-02 | Phase 11 | Complete |
 | MENU-03 | Phase 11 | Complete |
 | MENU-04 | Phase 11 | Complete |
-| MENU-05 | Phase 11 | Pending |
+| MENU-05 | Phase 11 | Complete |
 | SYNC-01 | Phase 10 | Complete |
 | SYNC-02 | Phase 10 | Complete |
 | HUB-01 | Phase 12 | Pending |
