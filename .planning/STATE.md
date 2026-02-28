@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 3 of 6 (Glasses Display Pipeline)
-Plan: 1 of ? in current phase
-Status: Phase 2 complete, ready for Phase 3 planning
-Last activity: 2026-02-28 - Completed 02-03 gesture handler wiring (Phase 2 complete)
+Plan: 2 of 3 in current phase
+Status: Executing Phase 3 plans
+Last activity: 2026-02-28 - Completed 03-01 viewport state and icon animator (TDD)
 
-Progress: [######....] 60%
+Progress: [#######...] 70%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6 (Phase 1, Phase 4, Phase 5, Phase 2 Plans 1-3)
-- Average duration: ~18 min
-- Total execution time: ~1.75 hours
+- Total plans completed: 7 (Phase 1, Phase 4, Phase 5, Phase 2 Plans 1-3, Phase 3 Plan 1)
+- Average duration: ~16 min
+- Total execution time: ~1.82 hours
 
 **By Phase:**
 
@@ -38,6 +38,7 @@ Progress: [######....] 60%
 
 *Updated after each plan completion*
 | Phase 02 P03 | 3min | 2 tasks | 3 files |
+| Phase 03 P01 | 4min | 6 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -57,6 +58,9 @@ Recent decisions affecting current work:
 - [Phase 2-02]: Used vi.hoisted() for SDK mock in tests; BridgeMock identifies via deviceName 'BridgeMock'; AudioCapture onFrame() is fully synchronous for 100Hz PCM
 - [Phase 2-03]: 275ms tap debounce applies to tap only (not double-tap/scroll); STOP_RECORDING uses async blob retrieval; hint bar text is Phase 2 only (Phase 3 renders)
 - [Phase 02]: 275ms tap debounce applies only to tap inputs, not double-tap or scroll
+- [Phase 3-01]: Unicode text icons chosen over 4-bit greyscale image containers for v1 (eliminates pixel packing ambiguity)
+- [Phase 3-01]: MAX_VIEWPORT_CHARS = 1800 (200-char safety buffer under 2000-char SDK limit)
+- [Phase 3-01]: Display logic (viewport.ts, icon-animator.ts) is pure functions with zero SDK imports -- side effects injected via callbacks
 
 ### Pending Todos
 
@@ -78,5 +82,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 02-03-PLAN.md (gesture handler wiring). Phase 2 complete. Phase 3 (Glasses Display Pipeline) is next.
+Stopped at: Completed 03-01-PLAN.md (viewport state and icon animator TDD). Plan 02 (GlassesRenderer) is next.
 Resume file: None

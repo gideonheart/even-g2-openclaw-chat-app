@@ -16,21 +16,21 @@ Requirements for initial release (EvenHub submission). Each maps to roadmap phas
 
 ### State Icons HUD
 
-- [ ] **ICONS-01**: Glasses display shows idle icon when no conversation is active
-- [ ] **ICONS-02**: Glasses display shows blinking recording icon during voice capture
-- [ ] **ICONS-03**: Glasses display shows sent icon after recording stops
-- [ ] **ICONS-04**: Glasses display shows thinking throbber while awaiting OpenClaw response
-- [ ] **ICONS-05**: Icon animations render at 3-6 fps on the glasses display
+- [x] **ICONS-01**: Glasses display shows idle icon when no conversation is active
+- [x] **ICONS-02**: Glasses display shows blinking recording icon during voice capture
+- [x] **ICONS-03**: Glasses display shows sent icon after recording stops
+- [x] **ICONS-04**: Glasses display shows thinking throbber while awaiting OpenClaw response
+- [x] **ICONS-05**: Icon animations render at 3-6 fps on the glasses display
 
 ### Chat Display
 
-- [ ] **CHAT-01**: User transcript appears as right-aligned bubble on glasses display
-- [ ] **CHAT-02**: Assistant response appears as left-aligned bubble on glasses display
+- [x] **CHAT-01**: User transcript appears as right-aligned bubble on glasses display
+- [x] **CHAT-02**: Assistant response appears as left-aligned bubble on glasses display
 - [ ] **CHAT-03**: Assistant response streams incrementally with 150-300ms update cadence (not per-token)
-- [ ] **CHAT-04**: Chat viewport is virtualized: full history in memory, only visible window rendered on glasses
-- [ ] **CHAT-05**: User can scroll up through conversation history via scroll-up gesture
-- [ ] **CHAT-06**: User can scroll down / jump to latest via scroll-down gesture
-- [ ] **CHAT-07**: Text upgrades do not exceed 2000 characters per SDK call
+- [x] **CHAT-04**: Chat viewport is virtualized: full history in memory, only visible window rendered on glasses
+- [x] **CHAT-05**: User can scroll up through conversation history via scroll-up gesture
+- [x] **CHAT-06**: User can scroll down / jump to latest via scroll-down gesture
+- [x] **CHAT-07**: Text upgrades do not exceed 2000 characters per SDK call
 
 ### Gesture Input
 
@@ -180,18 +180,18 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VOICE-02 | Phase 2 | Complete |
 | VOICE-03 | Phase 2 | Complete |
 | VOICE-04 | Phase 2 | Complete |
-| ICONS-01 | Phase 3 | Pending |
-| ICONS-02 | Phase 3 | Pending |
-| ICONS-03 | Phase 3 | Pending |
-| ICONS-04 | Phase 3 | Pending |
-| ICONS-05 | Phase 3 | Pending |
-| CHAT-01 | Phase 3 | Pending |
-| CHAT-02 | Phase 3 | Pending |
+| ICONS-01 | Phase 3 | Complete |
+| ICONS-02 | Phase 3 | Complete |
+| ICONS-03 | Phase 3 | Complete |
+| ICONS-04 | Phase 3 | Complete |
+| ICONS-05 | Phase 3 | Complete |
+| CHAT-01 | Phase 3 | Complete |
+| CHAT-02 | Phase 3 | Complete |
 | CHAT-03 | Phase 3 | Pending |
-| CHAT-04 | Phase 3 | Pending |
-| CHAT-05 | Phase 3 | Pending |
-| CHAT-06 | Phase 3 | Pending |
-| CHAT-07 | Phase 3 | Pending |
+| CHAT-04 | Phase 3 | Complete |
+| CHAT-05 | Phase 3 | Complete |
+| CHAT-06 | Phase 3 | Complete |
+| CHAT-07 | Phase 3 | Complete |
 | UIMD-01 | Phase 3 | Pending |
 | UIMD-02 | Phase 3 | Pending |
 | API-01 | Phase 4 | Pending |
