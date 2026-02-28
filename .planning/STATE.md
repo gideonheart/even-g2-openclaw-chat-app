@@ -10,14 +10,14 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 16-sync-hardening
-Current Plan: 1 of 2
-Status: Plan 1 complete, Plan 2 remaining
-Last activity: 2026-02-28 - Completed 16-01 (SyncMonitor + DriftReconciler + countMessages TDD)
+Current Plan: 2 of 2
+Status: Phase 16 complete
+Last activity: 2026-02-28 - Completed 16-02 (SyncMonitor + DriftReconciler boot wiring)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 36 (Phases 1-15 + Phase 13 gap closure + Phase 16 plan 01)
+- Total plans completed: 37 (Phases 1-16 + Phase 13 gap closure)
 - Total tests: 433 (all passing)
 - Total LOC: ~10,800 TypeScript (66 files)
 - Total execution time: ~5.1 hours
@@ -41,7 +41,7 @@ Last activity: 2026-02-28 - Completed 16-01 (SyncMonitor + DriftReconciler + cou
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
 | 14 | 5/5 (event types + onclose + sentinel filtering + integrity checker TDD + storage health + boot wiring + reopenDB wiring + orphan grace period) | ~17m | 3.4m |
 | 15 | 2/2 (write verification + error escalation + partial save + hub error escalation + partial response preservation) | ~19m | 9.5m |
-| 16 | 1/2 (sync monitor + drift reconciler + countMessages TDD) | ~5m | 5m |
+| 16 | 2/2 (sync monitor + drift reconciler + countMessages TDD + boot wiring) | ~8m | 4m |
 
 ## Accumulated Context
 
@@ -108,6 +108,11 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - SyncMonitor isAlive() returns true when no heartbeat ever received (peer may not have started) (16-01)
 - 2-consecutive-mismatch rule prevents false positives during active streaming (16-01)
 - countMessages uses IDB index.count() for O(1) performance (16-01)
+- SyncMonitor created after syncBridge, destroyed before syncBridge in both contexts (16-02)
+- Glasses drift reconciliation re-renders via renderer.destroy()+init() cycle then replays IDB messages (16-02)
+- Hub drift reconciliation calls loadLiveConversation() to re-read from IDB (16-02)
+- Hub SyncMonitor created after SessionManager so getActiveConversationId can reference mgr (16-02)
+- Existing syncBridge.onMessage handlers and auto-save callers left unchanged -- SyncMonitor is independent observer (16-02)
 
 ### Pending Todos
 
@@ -133,5 +138,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 16-01-PLAN.md (SyncMonitor + DriftReconciler + countMessages TDD)
+Stopped at: Completed 16-02-PLAN.md (SyncMonitor + DriftReconciler boot wiring -- Phase 16 complete)
 Resume file: None
