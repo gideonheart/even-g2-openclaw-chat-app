@@ -152,6 +152,8 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     }
   }
 
+  const TURN_TIMEOUT_MS = 30_000;
+
   // ── Voice turn (audio upload + SSE stream) ─────────────────
 
   async function sendVoiceTurn(
@@ -167,6 +169,14 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     abort();
 
     abortController = new AbortController();
+
+    // Compose manual abort + timeout into a single signal.
+    // AbortSignal.any() is not available in all runtimes, so we wire
+    // a setTimeout that aborts the controller with a TimeoutError name.
+    const timeoutId = setTimeout(() => {
+      abortController!.abort(new DOMException('signal timed out', 'TimeoutError'));
+    }, TURN_TIMEOUT_MS);
+    const combinedSignal = abortController.signal;
     setStatus('connecting');
 
     const formData = new FormData();
@@ -181,7 +191,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
         headers: {
           ...(settings.sessionKey ? { 'X-Session-Key': settings.sessionKey } : {}),
         },
-        signal: abortController.signal,
+        signal: combinedSignal,
       });
 
       if (!resp.ok) {
@@ -242,9 +252,27 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
           }
         }
       }
+
+      clearTimeout(timeoutId);
     } catch (err: unknown) {
+      clearTimeout(timeoutId);
+
       if (err instanceof DOMException && err.name === 'AbortError') {
-        return; // Intentional cancellation
+        // Check if this abort was caused by our timeout timer
+        const reason = abortController?.signal?.reason;
+        if (reason instanceof DOMException && reason.name === 'TimeoutError') {
+          emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
+          setStatus('error');
+          return;
+        }
+        return; // Intentional cancellation (user-initiated abort)
+      }
+
+      // Timeout errors emit an error chunk but do NOT trigger retry/backoff
+      if (err instanceof DOMException && err.name === 'TimeoutError') {
+        emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
+        setStatus('error');
+        return;
       }
 
       const message = err instanceof Error ? err.message : 'Unknown error';

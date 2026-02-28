@@ -242,6 +242,33 @@ describe('gateway-client', () => {
       expect(statuses[statuses.length - 1]).toBe('error');
     });
 
+    it('does not retry on TimeoutError and emits timeout error chunk', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(
+        new DOMException('signal timed out', 'TimeoutError'),
+      );
+
+      const client = createGatewayClient({
+        maxReconnectAttempts: 3,
+        reconnectBaseDelayMs: 1,
+      });
+      const chunks: VoiceTurnChunk[] = [];
+      const statuses: string[] = [];
+      client.onChunk((c) => chunks.push(c));
+      client.onStatusChange((s) => statuses.push(s));
+
+      await client.sendVoiceTurn(testSettings, testRequest);
+
+      // Exactly one error chunk with timeout message
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0]).toEqual({ type: 'error', error: 'Request timed out. Tap to retry.' });
+      // No retry -- fetch called only once
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      // Status ends in error
+      expect(statuses[statuses.length - 1]).toBe('error');
+      // reconnectAttempts should not have been incremented
+      expect(client.getHealth().reconnectAttempts).toBe(0);
+    });
+
     it('does not retry on AbortError', async () => {
       globalThis.fetch = vi.fn().mockRejectedValue(
         new DOMException('Aborted', 'AbortError'),

@@ -186,6 +186,50 @@ describe('gestureTransition', () => {
     });
   });
 
+  // ── reset input (error recovery) ────────────────────────────
+
+  describe('reset input (error recovery)', () => {
+    it('idle + reset -> idle with null action', () => {
+      const result = gestureTransition('idle', 'reset');
+      expect(result).toEqual({
+        nextState: 'idle',
+        action: null,
+      });
+    });
+
+    it('recording + reset -> idle with STOP_RECORDING', () => {
+      const result = gestureTransition('recording', 'reset');
+      expect(result).toEqual({
+        nextState: 'idle',
+        action: { type: 'STOP_RECORDING' },
+      });
+    });
+
+    it('sent + reset -> idle with null action', () => {
+      const result = gestureTransition('sent', 'reset');
+      expect(result).toEqual({
+        nextState: 'idle',
+        action: null,
+      });
+    });
+
+    it('thinking + reset -> idle with null action', () => {
+      const result = gestureTransition('thinking', 'reset');
+      expect(result).toEqual({
+        nextState: 'idle',
+        action: null,
+      });
+    });
+
+    it('menu + reset -> idle with null action', () => {
+      const result = gestureTransition('menu', 'reset');
+      expect(result).toEqual({
+        nextState: 'idle',
+        action: null,
+      });
+    });
+  });
+
   // ── fallback behavior ───────────────────────────────────────
 
   describe('unknown/fallback behavior', () => {

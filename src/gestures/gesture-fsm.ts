@@ -4,7 +4,7 @@
 
 export type GestureState = 'idle' | 'recording' | 'sent' | 'thinking' | 'menu';
 
-export type GestureInput = 'tap' | 'double-tap' | 'scroll-up' | 'scroll-down';
+export type GestureInput = 'tap' | 'double-tap' | 'scroll-up' | 'scroll-down' | 'reset';
 
 export type GestureAction =
   | { type: 'START_RECORDING' }
@@ -29,17 +29,21 @@ const TRANSITIONS: Record<GestureState, Partial<Record<GestureInput, GestureTran
     'double-tap':  { nextState: 'menu',      action: { type: 'TOGGLE_MENU' } },
     'scroll-up':   { nextState: 'idle',      action: { type: 'SCROLL_UP' } },
     'scroll-down': { nextState: 'idle',      action: { type: 'SCROLL_DOWN' } },
+    'reset':       { nextState: 'idle',      action: null },
   },
   recording: {
-    'tap': { nextState: 'sent', action: { type: 'STOP_RECORDING' } },
+    'tap':   { nextState: 'sent',  action: { type: 'STOP_RECORDING' } },
+    'reset': { nextState: 'idle',  action: { type: 'STOP_RECORDING' } },
     // double-tap, scroll-up, scroll-down ignored during recording
   },
   sent: {
-    // All inputs ignored while audio is being processed
+    'reset': { nextState: 'idle', action: null },
+    // All other inputs ignored while audio is being processed
     // (auto-transitions to 'thinking' externally via event bus)
   },
   thinking: {
     'double-tap': { nextState: 'menu', action: { type: 'TOGGLE_MENU' } },
+    'reset':      { nextState: 'idle', action: null },
     // tap, scroll-up, scroll-down ignored during thinking
   },
   menu: {
@@ -47,6 +51,7 @@ const TRANSITIONS: Record<GestureState, Partial<Record<GestureInput, GestureTran
     'tap':         { nextState: 'idle', action: null },  // dismiss menu
     'scroll-up':   { nextState: 'menu', action: { type: 'SCROLL_UP' } },
     'scroll-down': { nextState: 'menu', action: { type: 'SCROLL_DOWN' } },
+    'reset':       { nextState: 'idle', action: null },
   },
 };
 

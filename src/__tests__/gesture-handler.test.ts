@@ -183,6 +183,51 @@ describe('createGestureHandler', () => {
     });
   });
 
+  // ── Error recovery (gateway:chunk reset) ───────────────────
+
+  describe('error recovery', () => {
+    it('gateway:chunk error resets FSM from sent to idle', () => {
+      const handler = createHandler();
+      // idle -> recording -> sent
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      bus.emit('gesture:tap', { timestamp: 1300 });
+      expect(handler.getState()).toBe('sent');
+
+      // Error chunk should reset to idle
+      bus.emit('gateway:chunk', { type: 'error', error: 'test error' });
+      expect(handler.getState()).toBe('idle');
+    });
+
+    it('gateway:chunk error resets FSM from recording to idle', () => {
+      const handler = createHandler();
+      // idle -> recording
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('recording');
+
+      // Error chunk should reset to idle (and trigger STOP_RECORDING action)
+      bus.emit('gateway:chunk', { type: 'error', error: 'connection lost' });
+      expect(handler.getState()).toBe('idle');
+    });
+
+    it('gateway:chunk non-error types do NOT reset FSM', () => {
+      const handler = createHandler();
+      // idle -> recording -> sent
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      bus.emit('gesture:tap', { timestamp: 1300 });
+      expect(handler.getState()).toBe('sent');
+
+      // Non-error chunk types should not trigger reset
+      bus.emit('gateway:chunk', { type: 'response_start' });
+      expect(handler.getState()).toBe('sent');
+
+      bus.emit('gateway:chunk', { type: 'response_delta', text: 'hello' });
+      expect(handler.getState()).toBe('sent');
+
+      bus.emit('gateway:chunk', { type: 'response_end' });
+      expect(handler.getState()).toBe('sent');
+    });
+  });
+
   // ── Destroy ────────────────────────────────────────────────
 
   describe('destroy', () => {

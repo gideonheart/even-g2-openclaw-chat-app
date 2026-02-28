@@ -119,6 +119,13 @@ export function createGestureHandler(opts: {
   unsubs.push(bus.on('gesture:scroll-up', (p) => handleInput('scroll-up', p.timestamp)));
   unsubs.push(bus.on('gesture:scroll-down', (p) => handleInput('scroll-down', p.timestamp)));
 
+  // Reset FSM to idle on gateway error chunks (error recovery)
+  unsubs.push(bus.on('gateway:chunk', (chunk) => {
+    if (chunk.type === 'error') {
+      handleInput('reset', Date.now());
+    }
+  }));
+
   function destroy(): void {
     for (const unsub of unsubs) {
       unsub();
