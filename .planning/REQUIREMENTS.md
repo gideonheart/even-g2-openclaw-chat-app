@@ -26,7 +26,7 @@ Requirements for initial release (EvenHub submission). Each maps to roadmap phas
 
 - [x] **CHAT-01**: User transcript appears as right-aligned bubble on glasses display
 - [x] **CHAT-02**: Assistant response appears as left-aligned bubble on glasses display
-- [ ] **CHAT-03**: Assistant response streams incrementally with 150-300ms update cadence (not per-token)
+- [x] **CHAT-03**: Assistant response streams incrementally with 150-300ms update cadence (not per-token)
 - [x] **CHAT-04**: Chat viewport is virtualized: full history in memory, only visible window rendered on glasses
 - [x] **CHAT-05**: User can scroll up through conversation history via scroll-up gesture
 - [x] **CHAT-06**: User can scroll down / jump to latest via scroll-down gesture
@@ -97,8 +97,8 @@ Requirements for initial release (EvenHub submission). Each maps to roadmap phas
 
 ### UI Modes
 
-- [ ] **UIMD-01**: Glasses display supports hide mode (blank canvas when not actively conversing)
-- [ ] **UIMD-02**: Double-tap wakes glasses display from hidden mode
+- [x] **UIMD-01**: Glasses display supports hide mode (blank canvas when not actively conversing)
+- [x] **UIMD-02**: Double-tap wakes glasses display from hidden mode
 
 ### Mobile Polish
 
@@ -187,13 +187,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ICONS-05 | Phase 3 | Complete |
 | CHAT-01 | Phase 3 | Complete |
 | CHAT-02 | Phase 3 | Complete |
-| CHAT-03 | Phase 3 | Pending |
+| CHAT-03 | Phase 3 | Complete |
 | CHAT-04 | Phase 3 | Complete |
 | CHAT-05 | Phase 3 | Complete |
 | CHAT-06 | Phase 3 | Complete |
 | CHAT-07 | Phase 3 | Complete |
-| UIMD-01 | Phase 3 | Pending |
-| UIMD-02 | Phase 3 | Pending |
+| UIMD-01 | Phase 3 | Complete |
+| UIMD-02 | Phase 3 | Complete |
 | API-01 | Phase 4 | Pending |
 | API-02 | Phase 4 | Pending |
 | API-03 | Phase 4 | Pending |

@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 3 of 6 (Glasses Display Pipeline)
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase
 Status: Executing Phase 3 plans
-Last activity: 2026-02-28 - Completed 03-01 viewport state and icon animator (TDD)
+Last activity: 2026-02-28 - Completed 03-02 GlassesRenderer service with streaming/scroll/hide-wake
 
-Progress: [#######...] 70%
+Progress: [########..] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7 (Phase 1, Phase 4, Phase 5, Phase 2 Plans 1-3, Phase 3 Plan 1)
-- Average duration: ~16 min
-- Total execution time: ~1.82 hours
+- Total plans completed: 8 (Phase 1, Phase 4, Phase 5, Phase 2 Plans 1-3, Phase 3 Plans 1-2)
+- Average duration: ~15 min
+- Total execution time: ~1.87 hours
 
 **By Phase:**
 
@@ -39,6 +39,7 @@ Progress: [#######...] 70%
 *Updated after each plan completion*
 | Phase 02 P03 | 3min | 2 tasks | 3 files |
 | Phase 03 P01 | 4min | 6 tasks | 6 files |
+| Phase 03 P02 | 3min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -61,6 +62,9 @@ Recent decisions affecting current work:
 - [Phase 3-01]: Unicode text icons chosen over 4-bit greyscale image containers for v1 (eliminates pixel packing ambiguity)
 - [Phase 3-01]: MAX_VIEWPORT_CHARS = 1800 (200-char safety buffer under 2000-char SDK limit)
 - [Phase 3-01]: Display logic (viewport.ts, icon-animator.ts) is pure functions with zero SDK imports -- side effects injected via callbacks
+- [Phase 3-02]: BridgeService display methods use plain-object types (PageContainerConfig, TextContainerConfig) not SDK classes -- keeps interface SDK-free
+- [Phase 3-02]: All 3 containers use isEventCapture=0 to manage scrolling in JavaScript (firmware scroll has no position API)
+- [Phase 3-02]: Stream buffer accumulates in appendStreamChunk, flush timer handles batched rendering at 200ms cadence
 
 ### Pending Todos
 
@@ -82,5 +86,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 03-01-PLAN.md (viewport state and icon animator TDD). Plan 02 (GlassesRenderer) is next.
+Stopped at: Completed 03-02-PLAN.md (GlassesRenderer service). Plan 03 (display event wiring) is next.
 Resume file: None
