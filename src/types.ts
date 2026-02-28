@@ -101,6 +101,10 @@ export interface AppEventMap {
   'persistence:warning': { message: string };
   'persistence:restored': { conversationId: string; messageCount: number };
 
+  // Menu events
+  'menu:select': { timestamp: number };
+  'menu:close': {};
+
   // Session management events (local bus coordination)
   'session:created': { id: string; name: string };
   'session:renamed': { id: string; name: string };

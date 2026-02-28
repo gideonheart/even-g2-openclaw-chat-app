@@ -161,11 +161,11 @@ describe('gestureTransition', () => {
       });
     });
 
-    it('tap -> idle with null action (dismiss)', () => {
+    it('tap -> menu with MENU_SELECT', () => {
       const result = gestureTransition('menu', 'tap');
       expect(result).toEqual({
-        nextState: 'idle',
-        action: null,
+        nextState: 'menu',
+        action: { type: 'MENU_SELECT' },
       });
     });
 

@@ -10,6 +10,7 @@ export type GestureAction =
   | { type: 'START_RECORDING' }
   | { type: 'STOP_RECORDING' }
   | { type: 'TOGGLE_MENU' }
+  | { type: 'MENU_SELECT' }
   | { type: 'SCROLL_UP' }
   | { type: 'SCROLL_DOWN' }
   | null;
@@ -48,7 +49,7 @@ const TRANSITIONS: Record<GestureState, Partial<Record<GestureInput, GestureTran
   },
   menu: {
     'double-tap':  { nextState: 'idle', action: { type: 'TOGGLE_MENU' } },
-    'tap':         { nextState: 'idle', action: null },  // dismiss menu
+    'tap':         { nextState: 'menu', action: { type: 'MENU_SELECT' } },
     'scroll-up':   { nextState: 'menu', action: { type: 'SCROLL_UP' } },
     'scroll-down': { nextState: 'menu', action: { type: 'SCROLL_DOWN' } },
     'reset':       { nextState: 'idle', action: null },
