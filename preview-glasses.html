@@ -9,16 +9,18 @@
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:#c9f7d7;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
     .wrap{max-width:980px;margin:18px auto;padding:12px}
-    .title{font:600 14px/1.3 system-ui;color:#9fb2c7;margin-bottom:10px}
+    .title{font:600 14px/1.3 system-ui;color:#9fb2c7;margin-bottom:4px}
+    .subtitle{font:300 12px/1.3 system-ui;color:#6b7d8f;margin-bottom:10px}
+    .dev-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:#6b7d8f;background:#1a2332;padding:2px 6px;border-radius:3px;text-transform:uppercase;font-weight:600;margin-left:6px}
 
     .g2-shell{background:#111827;border:1px solid #1f2937;border-radius:14px;padding:12px}
     .g2-canvas{width:100%;max-width:576px;aspect-ratio:2/1;background:var(--panel);border:1px solid var(--line);margin:auto;position:relative;overflow:hidden}
 
     .status{height:32px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 10px;color:var(--green2);font-size:12px}
-    .content{position:absolute;left:0;right:0;top:32px;bottom:32px;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
+    .content{position:absolute;left:0;right:0;top:32px;bottom:32px;padding:8px 10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
     .hint{position:absolute;left:0;right:0;bottom:0;height:32px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:#5ca67a;font-size:11px}
 
-    .bubble{max-width:82%;padding:6px 8px;border:1px solid var(--dim);line-height:1.25;word-wrap:break-word}
+    .bubble{max-width:82%;padding:6px 8px;border:1px solid var(--dim);line-height:1.25;word-wrap:break-word;font-size:13px}
     .me{align-self:flex-end;color:#baf7cc;border-color:#376e4a}
     .ai{align-self:flex-start;color:var(--green)}
 
@@ -27,13 +29,21 @@
     .thinking .icon{background:transparent}
 
     .controls{display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap}
-    button{background:#0f172a;color:#cfead9;border:1px solid #334155;border-radius:8px;padding:8px 10px;cursor:pointer}
+    button{background:#0f172a;color:#cfead9;border:1px solid #334155;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;font-family:system-ui}
     button:hover{border-color:#4b5563}
+    button.active-ctrl{background:#1e3a5f;border-color:#4b82c4}
+
+    .info-bar{display:flex;gap:12px;margin-top:12px;padding:8px 12px;background:#0f172a;border:1px solid #1f2937;border-radius:8px;font-size:11px;color:#6b7d8f;flex-wrap:wrap}
+    .info-bar span{display:flex;align-items:center;gap:4px}
+    .info-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+    .info-dot--on{background:#56d37e}
+    .info-dot--off{background:#4b5563}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="title">G2 Simulator-style preview (green monochrome, 576×288, icon-first)</div>
+    <div class="title">G2 Simulator<span class="dev-badge">dev only</span></div>
+    <div class="subtitle">576×288 green monochrome, icon-first HUD preview</div>
 
     <div class="g2-shell">
       <div class="g2-canvas" id="canvas">
@@ -41,52 +51,120 @@
 
         <div class="content" id="chat">
           <div class="bubble me">Who am I talking with?</div>
-          <div class="bubble ai">Rolands, this is Gideon. Voice bridge online.</div>
+          <div class="bubble ai" id="aiBubble">Rolands, this is Gideon. Voice bridge online.</div>
         </div>
 
         <div class="hint">Tap=Rec/Stop · Scroll=History · 2xTap=Menu</div>
       </div>
 
-      <div class="controls">
+      <div class="controls" id="controlBar">
         <button onclick="setState('idle')">Idle</button>
         <button onclick="setState('rec')">Recording</button>
         <button onclick="setState('sent')">Sent</button>
         <button onclick="setState('thinking')">Thinking</button>
         <button onclick="appendStream()">Stream token</button>
+        <button onclick="addUserBubble()">+ User msg</button>
+        <button onclick="addAiBubble()">+ AI msg</button>
+        <button onclick="clearChat()">Clear</button>
+      </div>
+
+      <!-- State handoff info bar -->
+      <div class="info-bar" id="infoBar">
+        <span><span class="info-dot info-dot--off" id="infoDotConn"></span> Glasses: <span id="infoConn">unknown</span></span>
+        <span>Session: <span id="infoSession">--</span></span>
+        <span>State: <span id="infoState">idle</span></span>
       </div>
     </div>
   </div>
 
   <script>
-    const statusLine=document.getElementById('statusLine');
-    const timeEl=document.getElementById('time');
-    const chat=document.getElementById('chat');
-    let t=0, timer=null, dot=0;
+    const statusLine = document.getElementById('statusLine');
+    const timeEl = document.getElementById('time');
+    const chat = document.getElementById('chat');
+    let t = 0, timer = null, dot = 0, currentState = 'idle';
 
-    function setState(s){
-      if(timer){clearInterval(timer); timer=null}
-      if(s==='idle'){ statusLine.innerHTML='<span class="thinking"><span class="icon"></span>IDLE</span><span id="time">00:00</span>'; t=0;}
-      if(s==='rec'){
-        statusLine.innerHTML='<span class="rec"><span class="icon"></span>REC</span><span id="time">00:00</span>';
-        const te=()=>document.getElementById('time');
-        timer=setInterval(()=>{t++; const m=String(Math.floor(t/60)).padStart(2,'0'); const ss=String(t%60).padStart(2,'0'); te().textContent=`${m}:${ss}`;},1000);
+    // ── State handoff from companion hub via query params ──
+    const params = new URLSearchParams(window.location.search);
+    const handoff = {
+      session: params.get('session') || '--',
+      connected: params.get('connected') === '1',
+      state: params.get('state') || 'idle',
+      userMsg: params.get('userMsg') || null,
+      aiMsg: params.get('aiMsg') || null,
+    };
+
+    // Apply handoff
+    document.getElementById('infoSession').textContent = handoff.session;
+    document.getElementById('infoConn').textContent = handoff.connected ? 'connected' : 'disconnected';
+    document.getElementById('infoDotConn').className = `info-dot info-dot--${handoff.connected ? 'on' : 'off'}`;
+
+    // Initial AI bubble references session
+    if (handoff.session && handoff.session !== '--') {
+      const aiBubble = document.getElementById('aiBubble');
+      aiBubble.textContent = `This is ${capitalize(handoff.session)}. Voice bridge ${handoff.connected ? 'online' : 'waiting'}.`;
+    }
+
+    if (handoff.userMsg) addBubble('me', handoff.userMsg);
+    if (handoff.aiMsg) addBubble('ai', handoff.aiMsg);
+    if (handoff.state && handoff.state !== 'idle') setState(handoff.state);
+
+    // ── State machine ──────────────────────────────────
+    function setState(s) {
+      currentState = s;
+      document.getElementById('infoState').textContent = s;
+      if (timer) { clearInterval(timer); timer = null; }
+
+      if (s === 'idle') {
+        statusLine.innerHTML = '<span class="thinking"><span class="icon"></span>IDLE</span><span id="time">00:00</span>';
+        t = 0;
       }
-      if(s==='sent'){ statusLine.innerHTML='<span><span class="icon"></span>SENT</span><span>ok</span>'; }
-      if(s==='thinking'){
-        statusLine.innerHTML='<span class="thinking"><span class="icon"></span>THINKING <span id="dots">·</span></span><span>wait</span>';
-        timer=setInterval(()=>{dot=(dot+1)%4; const d='·'.repeat(Math.max(1,dot)); const el=document.getElementById('dots'); if(el) el.textContent=d;},350);
+      if (s === 'rec') {
+        statusLine.innerHTML = '<span class="rec"><span class="icon"></span>REC</span><span id="time">00:00</span>';
+        timer = setInterval(() => {
+          t++;
+          const m = String(Math.floor(t / 60)).padStart(2, '0');
+          const ss = String(t % 60).padStart(2, '0');
+          const te = document.getElementById('time');
+          if (te) te.textContent = `${m}:${ss}`;
+        }, 1000);
+      }
+      if (s === 'sent') {
+        statusLine.innerHTML = '<span><span class="icon"></span>SENT</span><span>ok</span>';
+      }
+      if (s === 'thinking') {
+        statusLine.innerHTML = '<span class="thinking"><span class="icon"></span>THINKING <span id="dots">·</span></span><span>wait</span>';
+        timer = setInterval(() => {
+          dot = (dot + 1) % 4;
+          const d = '·'.repeat(Math.max(1, dot));
+          const el = document.getElementById('dots');
+          if (el) el.textContent = d;
+        }, 350);
       }
     }
 
-    function appendStream(){
-      const last=chat.querySelector('.ai:last-child');
-      if(!last){
-        const n=document.createElement('div'); n.className='bubble ai'; n.textContent='Gideon:'; chat.appendChild(n);
+    // ── Chat operations ────────────────────────────────
+    function appendStream() {
+      const last = chat.querySelector('.ai:last-child');
+      if (!last) {
+        addBubble('ai', capitalize(handoff.session || 'Gideon') + ':');
       }
-      const target=chat.querySelector('.ai:last-child');
+      const target = chat.querySelector('.ai:last-child');
       target.textContent += ' token';
-      chat.scrollTop=chat.scrollHeight;
+      chat.scrollTop = chat.scrollHeight;
     }
+
+    function addBubble(type, text) {
+      const n = document.createElement('div');
+      n.className = `bubble ${type}`;
+      n.textContent = text || (type === 'me' ? 'Hello?' : 'Responding...');
+      chat.appendChild(n);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function addUserBubble() { addBubble('me'); }
+    function addAiBubble() { addBubble('ai'); }
+    function clearChat() { chat.innerHTML = ''; }
+    function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
   </script>
 </body>
 </html>

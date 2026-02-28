@@ -6,150 +6,930 @@
   <title>Even OpenClaw</title>
   <link rel="stylesheet" href="../even-g2-apps/src/style.css" />
   <style>
-    body { background: var(--bc-3rd); }
-    #app { max-width: 600px; margin: 0 auto; padding-bottom: 96px; }
-    .topbar { display:flex; align-items:center; justify-content:space-between; padding: 6px 0 10px; }
-    .topbar__title { font-size: 36px; line-height: 1; font-weight: var(--weight-light); }
-    .tabline { display:flex; gap: 18px; border-bottom: 1px solid var(--line-color, #e8e8e8); margin-bottom: 14px; }
-    .tabline button { border:0; background:transparent; padding: 10px 0; color: var(--tc-2nd); font-size: var(--font-size-body); }
-    .tabline button.active { color: var(--tc-1st); border-bottom: 2px solid var(--tc-1st); }
-    .page { display:none; }
-    .page.active { display:block; }
-    .kv { display:flex; justify-content:space-between; align-items:center; }
-    .bottom-nav-wrap { position: fixed; left:0; right:0; bottom:0; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, transparent, var(--bc-3rd) 45%); }
-    .bottom-nav { max-width: 600px; margin: 0 auto; height: 62px; background: var(--bc-2nd); border:1px solid #e7e7e7; border-radius: 16px; display:grid; grid-template-columns:repeat(4,1fr); align-items:center; }
-    .bottom-nav button { border:0; background:transparent; height:100%; color: var(--tc-2nd); display:flex; align-items:center; justify-content:center; }
+    /* ── App layout ──────────────────────────────────── */
+    body { background: var(--bc-3rd); overscroll-behavior: none; }
+    #app { max-width: 600px; margin: 0 auto; padding: 0 var(--space-page-gutter) 96px; }
+
+    /* ── Top bar ─────────────────────────────────────── */
+    .topbar {
+      display: flex; align-items: center; justify-content: center;
+      padding: 14px 0 8px; position: relative;
+    }
+    .topbar__title {
+      font-size: var(--text-title-lg-size);
+      letter-spacing: var(--text-title-lg-tracking);
+      font-weight: var(--weight-regular);
+      color: var(--tc-1st);
+    }
+
+    /* ── Tabs (uses Even tabs component) ─────────────── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Page sections ───────────────────────────────── */
+    .page-section { margin-top: var(--space-section); }
+    .page-section:first-child { margin-top: var(--space-item); }
+    .section-title {
+      font-size: var(--text-title-sm-size);
+      letter-spacing: var(--text-title-sm-tracking);
+      font-weight: var(--weight-regular);
+      color: var(--tc-2nd);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      padding: 0 4px;
+    }
+
+    /* ── Status dot ──────────────────────────────────── */
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .status-dot--ok { background: var(--tc-green); }
+    .status-dot--warn { background: #f5a623; }
+    .status-dot--err { background: var(--tc-red); }
+    .status-dot--off { background: var(--bc-4th); }
+
+    /* ── Bottom nav ──────────────────────────────────── */
+    .bottom-nav-wrap {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
+      background: linear-gradient(180deg, transparent, var(--bc-3rd) 45%);
+      z-index: 100;
+    }
+    .bottom-nav {
+      max-width: 600px; margin: 0 auto; height: 56px;
+      background: var(--bc-1st); border: 1px solid var(--bc-4th);
+      border-radius: 16px; display: grid; grid-template-columns: repeat(4, 1fr); align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .bottom-nav button {
+      border: 0; background: transparent; height: 100%;
+      color: var(--tc-2nd); display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 2px;
+      cursor: pointer; transition: color 120ms;
+    }
     .bottom-nav button.active { color: var(--tc-1st); }
-    .nav-ico { width:22px; height:22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-    .mono { font-family: var(--font-family-mono); }
+    .bottom-nav button span {
+      font-size: 10px; font-weight: var(--weight-regular);
+      font-family: var(--font-family-base);
+    }
+    .nav-ico {
+      width: 22px; height: 22px; stroke: currentColor;
+      fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    /* ── Card list shortcuts ─────────────────────────── */
+    .card-list { display: grid; gap: var(--space-row-tight); }
+    .card-list .list-item { cursor: pointer; }
+    .card-list .list-item:hover { background: var(--bc-2nd); }
+    .list-item__chevron { color: var(--tc-2nd); font-size: 16px; margin-left: 4px; }
+
+    /* ── Settings form ───────────────────────────────── */
+    .settings-form { display: none; }
+    .settings-form.active { display: block; }
+    .settings-form .card { margin-bottom: var(--space-item); }
+    .form-grid { display: grid; gap: var(--space-item); }
+    .field-row { display: flex; gap: 8px; align-items: flex-end; }
+    .field-row .field { flex: 1; }
+    .eye-btn {
+      border: none; background: transparent; color: var(--tc-2nd);
+      cursor: pointer; padding: 8px 4px; font-size: 16px;
+      align-self: flex-end; margin-bottom: 2px;
+    }
+    .btn-row { display: flex; gap: 8px; margin-top: var(--space-item); }
+    .btn-row .btn { flex: 1; }
+
+    /* ── Sessions panel ──────────────────────────────── */
+    .session-active-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: var(--text-title-xs-size); color: var(--tc-green);
+    }
+    .session-item { cursor: pointer; transition: background 120ms; }
+    .session-item:hover { background: var(--bc-2nd); }
+    .session-item.is-active { border-left: 3px solid var(--tc-green); }
+
+    /* ── Logs ────────────────────────────────────────── */
+    .log-filters { display: flex; gap: 6px; margin-bottom: var(--space-item); flex-wrap: wrap; }
+    .log-filter {
+      border: 1px solid var(--bc-4th); border-radius: var(--radius-base);
+      background: var(--bc-1st); color: var(--tc-2nd);
+      padding: 4px 10px; cursor: pointer; font-size: var(--text-title-xs-size);
+      font-family: var(--font-family-base); font-weight: var(--weight-regular);
+      transition: all 120ms;
+    }
+    .log-filter.active { background: var(--bc-highlight); color: var(--tc-highlight); border-color: var(--bc-highlight); }
+    .log-entry {
+      display: grid; gap: 2px; padding: 8px 12px;
+      border-bottom: 1px solid var(--sc-2nd);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px; line-height: 1.4;
+    }
+    .log-entry__header { display: flex; justify-content: space-between; align-items: center; }
+    .log-entry__level { font-weight: 600; text-transform: uppercase; }
+    .log-entry__level--info { color: var(--tc-2nd); }
+    .log-entry__level--warn { color: #f5a623; }
+    .log-entry__level--error { color: var(--tc-red); }
+    .log-entry__time { color: var(--tc-2nd); }
+    .log-entry__msg { color: var(--tc-1st); word-break: break-word; }
+    .log-entry__cid { color: var(--tc-2nd); font-size: 11px; }
+    .log-list { max-height: 400px; overflow-y: auto; }
+
+    /* ── Toast ────────────────────────────────────────── */
+    .toast-container {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      z-index: 200; transition: opacity 300ms;
+    }
+    .toast-container.hidden { opacity: 0; pointer-events: none; }
+
+    /* ── Modal overlay ───────────────────────────────── */
+    .modal { display: none; z-index: 300; }
+    .modal.active { display: flex; }
+
+    /* ── Misc ─────────────────────────────────────────── */
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .kv { display: flex; justify-content: space-between; align-items: center; }
+    .hidden { display: none !important; }
+    a { color: var(--tc-accent); text-decoration: none; }
+    .dev-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; color: var(--tc-2nd); background: var(--sc-2nd);
+      padding: 2px 6px; border-radius: 3px; text-transform: uppercase;
+      font-weight: var(--weight-regular);
+    }
   </style>
 </head>
 <body>
-  <div id="app" class="home">
+  <div id="app">
+    <!-- ── Top bar ────────────────────────────────────── -->
     <header class="topbar">
-      <span class="u-type-title-md">‹</span>
       <h1 class="topbar__title">Even OpenClaw</h1>
-      <span class="u-type-title-md">◱</span>
     </header>
 
-    <nav class="tabline">
-      <button class="active" data-tab="home">Home</button>
-      <button data-tab="features">Glasses features</button>
+    <!-- ── Tab line ───────────────────────────────────── -->
+    <nav class="tabs" id="tabline">
+      <button class="tab is-active" data-tab="home">Home</button>
+      <button class="tab" data-tab="features">Features</button>
     </nav>
 
+    <!-- ════════════════════════════════════════════════ -->
+    <!-- PAGE: Home                                      -->
+    <!-- ════════════════════════════════════════════════ -->
     <section id="home" class="page active">
-      <section class="card">
-        <div class="kv">
-          <div>
-            <div class="u-text-title-sm">Glasses connection</div>
-            <div class="u-type-body-sm u-tc-2nd" id="gState">Disconnected</div>
+      <!-- Connection status -->
+      <div class="page-section">
+        <div class="section-title">Glasses</div>
+        <div class="card">
+          <div class="kv">
+            <div>
+              <div class="u-text-title-base">Connection</div>
+              <div class="u-type-body-base u-tc-2nd" id="gState">
+                <span class="status-dot status-dot--off"></span> Disconnected
+              </div>
+            </div>
+            <span class="tag" id="gBattery">-- %</span>
           </div>
-          <span class="tag tag--default" id="gBattery">G: --</span>
+          <div style="margin-top: var(--space-item); display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <button class="btn btn--highlight" onclick="connectGlasses()">Connect</button>
+            <button class="btn btn--ghost" onclick="disconnectGlasses()">Disconnect</button>
+          </div>
         </div>
-        <div style="margin-top:10px; display:grid; gap:8px;">
-          <button class="btn btn--primary btn--wide" onclick="connectGlasses()">Connect glasses</button>
-          <button class="btn btn--ghost btn--wide" onclick="disconnectGlasses()">Disconnect</button>
-        </div>
-      </section>
+      </div>
 
-      <section class="card" style="margin-top:12px;">
-        <div class="list">
-          <div class="list-item">
-            <div class="list-item__content"><div class="list-item__title">OpenClaw session</div><div class="list-item__subtitle">Switch live agent session</div></div>
-            <div class="list-item__meta mono">gideon</div>
+      <!-- Quick actions -->
+      <div class="page-section">
+        <div class="section-title">Quick actions</div>
+        <div class="card card-list">
+          <div class="list-item" onclick="showSessions()">
+            <div class="list-item__content">
+              <div class="list-item__title">OpenClaw session</div>
+              <div class="list-item__subtitle">Switch live agent session</div>
+            </div>
+            <div class="list-item__meta mono" id="activeSessionDisplay">gideon</div>
+            <span class="list-item__chevron">›</span>
           </div>
-          <div class="list-item">
-            <div class="list-item__content"><div class="list-item__title">STT provider</div><div class="list-item__subtitle">WhisperX / OpenAI / Custom</div></div>
-            <div class="list-item__meta">WhisperX</div>
+          <div class="list-item" onclick="show('settings'); openSettingsField('sttProvider')">
+            <div class="list-item__content">
+              <div class="list-item__title">STT provider</div>
+              <div class="list-item__subtitle">Speech-to-text engine</div>
+            </div>
+            <div class="list-item__meta" id="sttDisplay">WhisperX</div>
+            <span class="list-item__chevron">›</span>
           </div>
-          <div class="list-item">
-            <div class="list-item__content"><div class="list-item__title">Simulator preview</div><div class="list-item__subtitle">Check glasses rendering</div></div>
-            <div class="list-item__meta"><a href="./preview-glasses.html">Open ›</a></div>
+          <div class="list-item" onclick="launchSimulator()">
+            <div class="list-item__content">
+              <div class="list-item__title">Simulator preview</div>
+              <div class="list-item__subtitle">Check glasses rendering</div>
+            </div>
+            <div class="list-item__meta"><span class="dev-badge">dev</span></div>
+            <span class="list-item__chevron">›</span>
           </div>
         </div>
-      </section>
+      </div>
     </section>
 
+    <!-- ════════════════════════════════════════════════ -->
+    <!-- PAGE: Features (Apps)                           -->
+    <!-- ════════════════════════════════════════════════ -->
     <section id="features" class="page">
-      <section class="home__section">
-        <div class="note">
-          <div class="u-text-title-sm">Glasses features</div>
-          <div class="u-type-body-base u-tc-2nd">Manage G2 ↔ OpenClaw voice bridge with minimal friction.</div>
+      <div class="page-section">
+        <div class="section-title">Glasses features</div>
+        <div class="note-card">
+          <div class="note-card__title">G2 ↔ OpenClaw voice bridge</div>
+          <div class="note-card__subtitle">Manage voice interactions with minimal friction.</div>
         </div>
-      </section>
+      </div>
 
-      <section class="card" style="margin-top:12px;">
-        <div class="list-item list-item--outlined">
-          <span class="list-item__leading u-text-title-xs u-tc-2nd">01</span>
-          <div class="list-item__content"><div class="list-item__title">Session routing</div><div class="list-item__subtitle">Switch active OpenClaw session</div></div>
+      <div class="page-section">
+        <div class="card card-list">
+          <div class="list-item">
+            <span class="list-item__leading u-text-title-xs u-tc-2nd">01</span>
+            <div class="list-item__content">
+              <div class="list-item__title">Session routing</div>
+              <div class="list-item__subtitle">Switch active OpenClaw agent persona</div>
+            </div>
+          </div>
+          <div class="list-item">
+            <span class="list-item__leading u-text-title-xs u-tc-2nd">02</span>
+            <div class="list-item__content">
+              <div class="list-item__title">Live diagnostics</div>
+              <div class="list-item__subtitle">Logs + health from bottom nav</div>
+            </div>
+          </div>
+          <div class="list-item">
+            <span class="list-item__leading u-text-title-xs u-tc-2nd">03</span>
+            <div class="list-item__content">
+              <div class="list-item__title">Voice capture</div>
+              <div class="list-item__subtitle">Tap-to-record with streaming response</div>
+            </div>
+          </div>
+          <div class="list-item">
+            <span class="list-item__leading u-text-title-xs u-tc-2nd">04</span>
+            <div class="list-item__content">
+              <div class="list-item__title">Glasses simulator</div>
+              <div class="list-item__subtitle">Preview 576×288 green monochrome HUD</div>
+            </div>
+            <div class="list-item__meta"><span class="dev-badge">dev</span></div>
+          </div>
         </div>
-        <div class="list-item" style="margin-top:8px;">
-          <span class="list-item__leading u-text-title-xs u-tc-2nd">02</span>
-          <div class="list-item__content"><div class="list-item__title">Live diagnostics</div><div class="list-item__subtitle">Logs + health from bottom nav</div></div>
-        </div>
-      </section>
+      </div>
 
-      <button class="btn btn--primary btn--wide" style="margin-top:12px;">Glasses UI ready</button>
+      <div class="page-section">
+        <button class="btn btn--highlight btn--wide" style="width:100%;" onclick="launchSimulator()">Open simulator</button>
+      </div>
     </section>
 
+    <!-- ════════════════════════════════════════════════ -->
+    <!-- PAGE: Health                                    -->
+    <!-- ════════════════════════════════════════════════ -->
     <section id="health" class="page">
-      <section class="card">
-        <div class="u-text-title-sm">Connection health</div>
-        <div class="indicator indicator--progress" style="margin-top:10px;"><div class="indicator__track"><div class="indicator__bar is-partial-75"></div></div></div>
-        <div class="u-type-body-sm u-tc-2nd" style="margin-top:8px;">Gateway online · STT ready · Session route active</div>
-      </section>
-      <section class="card" style="margin-top:12px;"><div class="u-text-title-sm">Logs</div><div class="u-type-body-sm u-tc-2nd">Voice turns, retries, and bridge events.</div></section>
+      <!-- Service checks -->
+      <div class="page-section">
+        <div class="section-title">Service checks</div>
+        <div class="card card-list">
+          <div class="list-item" id="hGateway">
+            <span class="list-item__leading"><span class="status-dot status-dot--off" id="hGatewayDot"></span></span>
+            <div class="list-item__content">
+              <div class="list-item__title">Gateway</div>
+              <div class="list-item__subtitle" id="hGatewayStatus">Not configured</div>
+            </div>
+          </div>
+          <div class="list-item" id="hStt">
+            <span class="list-item__leading"><span class="status-dot status-dot--off" id="hSttDot"></span></span>
+            <div class="list-item__content">
+              <div class="list-item__title">STT provider</div>
+              <div class="list-item__subtitle" id="hSttStatus">Not configured</div>
+            </div>
+          </div>
+          <div class="list-item" id="hSession">
+            <span class="list-item__leading"><span class="status-dot status-dot--off" id="hSessionDot"></span></span>
+            <div class="list-item__content">
+              <div class="list-item__title">Active session</div>
+              <div class="list-item__subtitle" id="hSessionStatus">No session</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Latest turn diagnostics -->
+      <div class="page-section">
+        <div class="section-title">Latest turn</div>
+        <div class="card" id="latestTurnCard">
+          <div class="u-type-body-base u-tc-2nd">No voice turns recorded yet.</div>
+        </div>
+      </div>
+
+      <!-- Logs -->
+      <div class="page-section">
+        <div class="kv" style="margin-bottom: 8px;">
+          <div class="section-title" style="margin-bottom: 0;">Logs</div>
+          <button class="btn btn--tight btn--ghost" onclick="copyDiagnostics()">Copy all</button>
+        </div>
+        <div class="log-filters">
+          <button class="log-filter active" data-level="all" onclick="filterLogs('all', this)">All</button>
+          <button class="log-filter" data-level="info" onclick="filterLogs('info', this)">Info</button>
+          <button class="log-filter" data-level="warn" onclick="filterLogs('warn', this)">Warn</button>
+          <button class="log-filter" data-level="error" onclick="filterLogs('error', this)">Error</button>
+        </div>
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <div class="log-list" id="logList">
+            <!-- Logs rendered by JS -->
+          </div>
+        </div>
+      </div>
     </section>
 
+    <!-- ════════════════════════════════════════════════ -->
+    <!-- PAGE: Settings                                  -->
+    <!-- ════════════════════════════════════════════════ -->
     <section id="settings" class="page">
-      <section class="card list">
-        <div class="item"><span>OpenClaw gateway URL</span><span>›</span></div>
-        <div class="item"><span>Session key</span><span>›</span></div>
-        <div class="item"><span>STT provider</span><span>›</span></div>
-        <div class="item"><span>Provider API keys</span><span>›</span></div>
-        <div class="item"><span>Gesture customization</span><span>›</span></div>
-      </section>
+      <!-- Settings list (main view) -->
+      <div id="settingsList" class="settings-form active">
+        <div class="page-section">
+          <div class="section-title">Connection</div>
+          <div class="card card-list">
+            <div class="list-item" onclick="openSettingsField('gatewayUrl')">
+              <div class="list-item__content">
+                <div class="list-item__title">Gateway URL</div>
+                <div class="list-item__subtitle mono" id="settGatewayDisplay">Not set</div>
+              </div>
+              <span class="list-item__chevron">›</span>
+            </div>
+            <div class="list-item" onclick="openSettingsField('sessionKey')">
+              <div class="list-item__content">
+                <div class="list-item__title">Session key</div>
+                <div class="list-item__subtitle" id="settKeyDisplay">Not set</div>
+              </div>
+              <span class="list-item__chevron">›</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="page-section">
+          <div class="section-title">Voice</div>
+          <div class="card card-list">
+            <div class="list-item" onclick="openSettingsField('sttProvider')">
+              <div class="list-item__content">
+                <div class="list-item__title">STT provider</div>
+                <div class="list-item__subtitle" id="settSttDisplay">WhisperX</div>
+              </div>
+              <span class="list-item__chevron">›</span>
+            </div>
+            <div class="list-item" onclick="openSettingsField('apiKey')">
+              <div class="list-item__content">
+                <div class="list-item__title">Provider API key</div>
+                <div class="list-item__subtitle" id="settApiKeyDisplay">Not set</div>
+              </div>
+              <span class="list-item__chevron">›</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="page-section">
+          <div class="section-title">Data</div>
+          <div class="card">
+            <div class="btn-row" style="margin-top: 0;">
+              <button class="btn btn--ghost" onclick="exportSettings()">Export settings</button>
+              <button class="btn btn--ghost" onclick="document.getElementById('importFile').click()">Import settings</button>
+              <input type="file" id="importFile" accept=".json" style="display:none" onchange="importSettings(event)" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings edit form (shown when editing a field) -->
+      <div id="settingsEdit" class="settings-form">
+        <div class="page-section">
+          <button class="btn btn--ghost btn--tight" onclick="closeSettingsEdit()">‹ Back</button>
+        </div>
+        <div class="page-section">
+          <div class="card">
+            <div class="form-grid" id="settingsFormContainer">
+              <!-- Dynamically rendered by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 
+  <!-- ── Bottom navigation ──────────────────────────── -->
   <div class="bottom-nav-wrap">
     <nav class="bottom-nav" id="bottomNav">
       <button class="active" data-page="home" aria-label="Home">
-        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5"/><path d="M6.5 10.5V19h11v-8.5"/></svg>
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2"/></svg>
+        <span>Home</span>
       </button>
       <button data-page="health" aria-label="Health">
-        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 20s-6.5-3.9-8.5-8A4.8 4.8 0 0 1 12 7a4.8 4.8 0 0 1 8.5 5c-2 4.1-8.5 8-8.5 8Z"/></svg>
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        <span>Health</span>
       </button>
-      <button data-page="features" aria-label="Apps">
-        <svg class="nav-ico" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg>
+      <button data-page="features" aria-label="Features">
+        <svg class="nav-ico" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>
+        <span>Apps</span>
       </button>
       <button data-page="settings" aria-label="Settings">
         <svg class="nav-ico" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="3"/>
-          <path d="M12 2.8v2.1M12 19.1v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M2.8 12h2.1M19.1 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5"/>
-          <circle cx="12" cy="12" r="8"/>
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.32 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
         </svg>
+        <span>Settings</span>
       </button>
     </nav>
   </div>
 
+  <!-- ── Toast ──────────────────────────────────────── -->
+  <div class="toast-container hidden" id="toastContainer">
+    <div class="toast">
+      <span class="toast__text" id="toastText"></span>
+    </div>
+  </div>
+
+  <!-- ── Session switch modal ───────────────────────── -->
+  <div class="modal" id="sessionModal">
+    <div class="modal__panel">
+      <div class="modal__header">
+        <div class="modal__title">Switch session</div>
+      </div>
+      <div class="modal__body" id="sessionModalBody">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--ghost" onclick="closeSessionModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Confirm modal ──────────────────────────────── -->
+  <div class="modal" id="confirmModal">
+    <div class="modal__panel">
+      <div class="modal__header">
+        <div class="modal__title" id="confirmTitle">Confirm</div>
+      </div>
+      <div class="modal__body" id="confirmBody"></div>
+      <div class="modal__footer">
+        <button class="btn btn--ghost" onclick="closeConfirm()">Cancel</button>
+        <button class="btn btn--highlight" id="confirmOk" onclick="confirmAction()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    const tabs=[...document.querySelectorAll('.tabline button')];
-    const nav=[...document.querySelectorAll('#bottomNav button')];
-    const pages=['home','features','health','settings'];
+    /* ================================================================
+       EVEN OPENCLAW — Companion Hub Application
+       ================================================================
+       Assumptions & decisions (sensible defaults):
+       - Settings stored in localStorage under key "even-openclaw-settings"
+       - Secret fields (sessionKey, apiKey) masked; excluded from export by default
+       - 3 demo sessions for session-switching UX (gideon, atlas, helper)
+       - Logs stored in-memory (ring buffer, max 200 entries)
+       - Simulator launched with state query params
+       - Validation: gateway URL must start with http(s)://, required fields non-empty
+       ================================================================ */
 
-    function show(page){
-      pages.forEach(p=>document.getElementById(p).classList.remove('active'));
-      document.getElementById(page).classList.add('active');
-      nav.forEach(n=>n.classList.toggle('active', n.dataset.page===page));
-      tabs.forEach(t=>t.classList.toggle('active', t.dataset.tab===page));
+    // ── State ──────────────────────────────────────────
+    const STORAGE_KEY = 'even-openclaw-settings';
+    const DEFAULT_SETTINGS = {
+      gatewayUrl: '',
+      sessionKey: '',
+      sttProvider: 'whisperx',
+      apiKey: '',
+    };
+
+    let settings = loadSettings();
+    let glassesConnected = false;
+    let activeSession = 'gideon';
+    let currentLogFilter = 'all';
+    let pendingConfirm = null;
+
+    const SESSIONS = [
+      { id: 'gideon', name: 'Gideon', desc: 'Coding assistant' },
+      { id: 'atlas', name: 'Atlas', desc: 'Research agent' },
+      { id: 'helper', name: 'Helper', desc: 'General assistant' },
+    ];
+
+    // ── Log system (in-memory ring buffer) ─────────────
+    const MAX_LOGS = 200;
+    const logs = [];
+    let logIdCounter = 0;
+
+    function addLog(level, msg, cid) {
+      logs.unshift({
+        id: ++logIdCounter,
+        level,
+        msg,
+        cid: cid || null,
+        time: new Date(),
+      });
+      if (logs.length > MAX_LOGS) logs.pop();
+      renderLogs();
     }
-    tabs.forEach(t=>t.onclick=()=>show(t.dataset.tab));
-    nav.forEach(n=>n.onclick=()=>show(n.dataset.page));
 
-    function connectGlasses(){ document.getElementById('gState').textContent='Connected'; document.getElementById('gBattery').textContent='G: 100'; }
-    function disconnectGlasses(){ document.getElementById('gState').textContent='Disconnected'; document.getElementById('gBattery').textContent='G: --'; }
-    window.connectGlasses=connectGlasses; window.disconnectGlasses=disconnectGlasses;
+    // Seed some demo logs
+    addLog('info', 'App initialized', null);
+    addLog('info', 'Settings loaded from localStorage', null);
+    addLog('warn', 'Gateway URL not configured', null);
+
+    // ── Settings persistence ───────────────────────────
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+      } catch (e) { console.warn('Failed to load settings', e); }
+      return { ...DEFAULT_SETTINGS };
+    }
+
+    function saveSettings() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        refreshSettingsDisplay();
+        refreshHealthDisplay();
+        addLog('info', 'Settings saved');
+      } catch (e) {
+        addLog('error', 'Failed to save settings: ' + e.message);
+      }
+    }
+
+    function exportSettings() {
+      const exported = { ...settings };
+      // Exclude secrets by default
+      delete exported.sessionKey;
+      delete exported.apiKey;
+      const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'even-openclaw-settings.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Settings exported (secrets excluded)');
+      addLog('info', 'Settings exported');
+    }
+
+    function importSettings(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          // Validate structure
+          if (typeof imported !== 'object') throw new Error('Invalid format');
+          // Merge (don't overwrite secrets unless explicitly in file)
+          if (imported.gatewayUrl !== undefined) settings.gatewayUrl = imported.gatewayUrl;
+          if (imported.sttProvider !== undefined) settings.sttProvider = imported.sttProvider;
+          if (imported.sessionKey !== undefined) settings.sessionKey = imported.sessionKey;
+          if (imported.apiKey !== undefined) settings.apiKey = imported.apiKey;
+          saveSettings();
+          showToast('Settings imported');
+          addLog('info', 'Settings imported from file');
+        } catch (err) {
+          showToast('Import failed: invalid JSON');
+          addLog('error', 'Settings import failed: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = ''; // Reset file input
+    }
+
+    // ── Settings form ──────────────────────────────────
+    const FIELD_CONFIG = {
+      gatewayUrl: {
+        label: 'Gateway URL',
+        type: 'url',
+        placeholder: 'https://your-gateway.example.com',
+        help: 'OpenClaw voice gateway endpoint',
+        validate: (v) => !v || /^https?:\/\/.+/.test(v) ? '' : 'Must be a valid http(s):// URL',
+        secret: false,
+      },
+      sessionKey: {
+        label: 'Session key',
+        type: 'password',
+        placeholder: 'Enter session key',
+        help: 'Identifies your OpenClaw session',
+        validate: () => '',
+        secret: true,
+      },
+      sttProvider: {
+        label: 'STT provider',
+        type: 'select',
+        options: [
+          { value: 'whisperx', label: 'WhisperX' },
+          { value: 'openai', label: 'OpenAI Whisper' },
+          { value: 'custom', label: 'Custom endpoint' },
+        ],
+        help: 'Speech-to-text engine for voice transcription',
+        validate: () => '',
+        secret: false,
+      },
+      apiKey: {
+        label: 'Provider API key',
+        type: 'password',
+        placeholder: 'Enter API key',
+        help: 'API key for the selected STT provider (optional)',
+        validate: () => '',
+        secret: true,
+      },
+    };
+
+    let currentEditField = null;
+
+    function openSettingsField(fieldId) {
+      // Ensure we're on settings page
+      show('settings');
+      currentEditField = fieldId;
+      const config = FIELD_CONFIG[fieldId];
+      if (!config) return;
+
+      document.getElementById('settingsList').classList.remove('active');
+      document.getElementById('settingsEdit').classList.add('active');
+
+      const container = document.getElementById('settingsFormContainer');
+      let html = `<div class="u-text-title-base" style="margin-bottom: 4px;">${config.label}</div>`;
+      html += `<div class="u-type-body-base u-tc-2nd" style="margin-bottom: var(--space-item);">${config.help}</div>`;
+
+      if (config.type === 'select') {
+        html += `<div class="field"><select class="input" id="fieldInput">`;
+        config.options.forEach(opt => {
+          const sel = settings[fieldId] === opt.value ? 'selected' : '';
+          html += `<option value="${opt.value}" ${sel}>${opt.label}</option>`;
+        });
+        html += `</select></div>`;
+      } else {
+        const inputType = config.secret ? 'password' : 'text';
+        const value = settings[fieldId] || '';
+        html += `<div class="field">`;
+        html += `<div class="field-row">`;
+        html += `<div class="field" style="flex:1;"><input class="input" type="${inputType}" id="fieldInput" value="${escHtml(value)}" placeholder="${config.placeholder}" autocomplete="off" /></div>`;
+        if (config.secret) {
+          html += `<button class="eye-btn" onclick="toggleFieldVisibility()" id="eyeBtn" type="button">👁</button>`;
+        }
+        html += `</div>`;
+        html += `<div class="field__error" id="fieldError"></div>`;
+        html += `</div>`;
+      }
+
+      html += `<div class="btn-row">`;
+      html += `<button class="btn btn--highlight" onclick="saveField()">Save</button>`;
+      html += `<button class="btn btn--ghost" onclick="closeSettingsEdit()">Cancel</button>`;
+      html += `</div>`;
+
+      container.innerHTML = html;
+
+      // Focus input
+      setTimeout(() => {
+        const input = document.getElementById('fieldInput');
+        if (input) input.focus();
+      }, 100);
+    }
+
+    function toggleFieldVisibility() {
+      const input = document.getElementById('fieldInput');
+      const btn = document.getElementById('eyeBtn');
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '🔒';
+      } else {
+        input.type = 'password';
+        btn.textContent = '👁';
+      }
+    }
+
+    function saveField() {
+      if (!currentEditField) return;
+      const config = FIELD_CONFIG[currentEditField];
+      const input = document.getElementById('fieldInput');
+      const value = input.value.trim();
+
+      // Validate
+      const error = config.validate(value);
+      if (error) {
+        const errEl = document.getElementById('fieldError');
+        if (errEl) errEl.textContent = error;
+        input.parentElement?.parentElement?.classList.add('field--error');
+        return;
+      }
+
+      settings[currentEditField] = value;
+      saveSettings();
+      closeSettingsEdit();
+      showToast(`${config.label} updated`);
+    }
+
+    function closeSettingsEdit() {
+      currentEditField = null;
+      document.getElementById('settingsList').classList.add('active');
+      document.getElementById('settingsEdit').classList.remove('active');
+    }
+
+    function refreshSettingsDisplay() {
+      // Settings page displays
+      document.getElementById('settGatewayDisplay').textContent =
+        settings.gatewayUrl ? truncate(settings.gatewayUrl, 30) : 'Not set';
+      document.getElementById('settKeyDisplay').textContent =
+        settings.sessionKey ? '••••••••' : 'Not set';
+      document.getElementById('settSttDisplay').textContent =
+        STT_LABELS[settings.sttProvider] || settings.sttProvider;
+      document.getElementById('settApiKeyDisplay').textContent =
+        settings.apiKey ? '••••••••' : 'Not set';
+
+      // Home page displays
+      document.getElementById('sttDisplay').textContent =
+        STT_LABELS[settings.sttProvider] || settings.sttProvider;
+    }
+
+    const STT_LABELS = { whisperx: 'WhisperX', openai: 'OpenAI Whisper', custom: 'Custom' };
+
+    // ── Session switching ──────────────────────────────
+    function showSessions() {
+      const body = document.getElementById('sessionModalBody');
+      let html = '<div style="display:grid; gap:6px; margin-top:8px;">';
+      SESSIONS.forEach(s => {
+        const isActive = s.id === activeSession;
+        html += `<div class="list-item session-item ${isActive ? 'is-active' : ''}" onclick="switchSession('${s.id}')">`;
+        html += `<div class="list-item__content">`;
+        html += `<div class="list-item__title">${s.name}</div>`;
+        html += `<div class="list-item__subtitle">${s.desc}</div>`;
+        html += `</div>`;
+        if (isActive) {
+          html += `<div class="session-active-badge"><span class="status-dot status-dot--ok"></span> Active</div>`;
+        }
+        html += `</div>`;
+      });
+      html += '</div>';
+      body.innerHTML = html;
+      document.getElementById('sessionModal').classList.add('active');
+    }
+
+    function switchSession(sessionId) {
+      if (sessionId === activeSession) {
+        closeSessionModal();
+        return;
+      }
+      const session = SESSIONS.find(s => s.id === sessionId);
+      pendingConfirm = () => {
+        activeSession = sessionId;
+        document.getElementById('activeSessionDisplay').textContent = session.name.toLowerCase();
+        closeSessionModal();
+        closeConfirm();
+        showToast(`Switched to ${session.name}`);
+        addLog('info', `Session switched to ${session.name}`, `sess-${Date.now()}`);
+        refreshHealthDisplay();
+      };
+      closeSessionModal();
+      document.getElementById('confirmTitle').textContent = 'Switch session?';
+      document.getElementById('confirmBody').textContent =
+        `Switch from current session to "${session.name}" (${session.desc})?`;
+      document.getElementById('confirmModal').classList.add('active');
+    }
+
+    function closeSessionModal() {
+      document.getElementById('sessionModal').classList.remove('active');
+    }
+
+    function confirmAction() {
+      if (pendingConfirm) pendingConfirm();
+      pendingConfirm = null;
+    }
+
+    function closeConfirm() {
+      document.getElementById('confirmModal').classList.remove('active');
+      pendingConfirm = null;
+    }
+
+    // ── Health display ─────────────────────────────────
+    function refreshHealthDisplay() {
+      const gwOk = !!settings.gatewayUrl;
+      const sttOk = !!settings.sttProvider;
+      const sessOk = !!activeSession;
+
+      setHealthDot('hGatewayDot', gwOk ? 'ok' : 'off');
+      document.getElementById('hGatewayStatus').textContent = gwOk ? truncate(settings.gatewayUrl, 35) : 'Not configured';
+
+      setHealthDot('hSttDot', sttOk ? 'ok' : 'off');
+      document.getElementById('hSttStatus').textContent = sttOk ? (STT_LABELS[settings.sttProvider] || settings.sttProvider) : 'Not configured';
+
+      setHealthDot('hSessionDot', sessOk ? 'ok' : 'off');
+      document.getElementById('hSessionStatus').textContent = sessOk ? activeSession : 'No session';
+    }
+
+    function setHealthDot(id, state) {
+      const el = document.getElementById(id);
+      el.className = `status-dot status-dot--${state}`;
+    }
+
+    // ── Logs rendering ─────────────────────────────────
+    function renderLogs() {
+      const list = document.getElementById('logList');
+      const filtered = currentLogFilter === 'all' ? logs : logs.filter(l => l.level === currentLogFilter);
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="u-type-body-base u-tc-2nd" style="padding: 16px; text-align: center;">No log entries.</div>';
+        return;
+      }
+      list.innerHTML = filtered.map(l => {
+        const time = l.time.toLocaleTimeString('en-US', { hour12: false });
+        return `<div class="log-entry">
+          <div class="log-entry__header">
+            <span class="log-entry__level log-entry__level--${l.level}">${l.level}</span>
+            <span class="log-entry__time">${time}</span>
+          </div>
+          <div class="log-entry__msg">${escHtml(l.msg)}</div>
+          ${l.cid ? `<div class="log-entry__cid">cid: ${escHtml(l.cid)}</div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    function filterLogs(level, btn) {
+      currentLogFilter = level;
+      document.querySelectorAll('.log-filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderLogs();
+    }
+
+    function copyDiagnostics() {
+      const diag = {
+        timestamp: new Date().toISOString(),
+        settings: { gatewayUrl: settings.gatewayUrl, sttProvider: settings.sttProvider },
+        activeSession,
+        glassesConnected,
+        logs: logs.slice(0, 50).map(l => ({
+          level: l.level,
+          msg: l.msg,
+          time: l.time.toISOString(),
+          cid: l.cid,
+        })),
+      };
+      navigator.clipboard.writeText(JSON.stringify(diag, null, 2)).then(() => {
+        showToast('Diagnostics copied to clipboard');
+      }).catch(() => {
+        showToast('Failed to copy — check permissions');
+      });
+    }
+
+    // ── Glasses connection (mock) ──────────────────────
+    function connectGlasses() {
+      glassesConnected = true;
+      document.getElementById('gState').innerHTML =
+        '<span class="status-dot status-dot--ok"></span> Connected';
+      document.getElementById('gBattery').textContent = '87 %';
+      addLog('info', 'Glasses connected (mock)', 'conn-' + Date.now());
+      showToast('Glasses connected');
+    }
+
+    function disconnectGlasses() {
+      glassesConnected = false;
+      document.getElementById('gState').innerHTML =
+        '<span class="status-dot status-dot--off"></span> Disconnected';
+      document.getElementById('gBattery').textContent = '-- %';
+      addLog('info', 'Glasses disconnected');
+    }
+
+    // ── Simulator launch ───────────────────────────────
+    function launchSimulator() {
+      const params = new URLSearchParams({
+        session: activeSession,
+        connected: glassesConnected ? '1' : '0',
+      });
+      window.open(`./preview-glasses.html?${params.toString()}`, '_blank');
+      addLog('info', 'Simulator opened', null);
+    }
+
+    // ── Navigation ─────────────────────────────────────
+    const allTabs = [...document.querySelectorAll('#tabline .tab')];
+    const allNav = [...document.querySelectorAll('#bottomNav button')];
+    const allPages = ['home', 'features', 'health', 'settings'];
+
+    function show(page) {
+      // Close settings edit if open
+      if (page !== 'settings') closeSettingsEdit();
+
+      allPages.forEach(p => document.getElementById(p).classList.remove('active'));
+      document.getElementById(page).classList.add('active');
+      allNav.forEach(n => n.classList.toggle('active', n.dataset.page === page));
+      allTabs.forEach(t => t.classList.toggle('is-active', t.dataset.tab === page));
+
+      // Show/hide tabline for home/features only
+      document.getElementById('tabline').style.display =
+        (page === 'home' || page === 'features') ? 'flex' : 'none';
+    }
+
+    allTabs.forEach(t => t.onclick = () => show(t.dataset.tab));
+    allNav.forEach(n => n.onclick = () => show(n.dataset.page));
+
+    // ── Toast helper ───────────────────────────────────
+    let toastTimer = null;
+    function showToast(msg) {
+      const container = document.getElementById('toastContainer');
+      document.getElementById('toastText').textContent = msg;
+      container.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => container.classList.add('hidden'), 2500);
+    }
+
+    // ── Utilities ──────────────────────────────────────
+    function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
+
+    // ── Init ───────────────────────────────────────────
+    refreshSettingsDisplay();
+    refreshHealthDisplay();
+    renderLogs();
   </script>
 </body>
 </html>
