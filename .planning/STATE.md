@@ -9,16 +9,16 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 14-data-integrity-foundation
-Current Plan: 5 of 5
-Status: Phase 14 COMPLETE (all 5 plans executed)
-Last activity: 2026-02-28 - Completed 14-05 (orphan grace period + diagnostics surface)
+Phase: 15-write-verification-auto-save-hardening
+Current Plan: 1 of 2
+Status: Plan 15-01 complete, Plan 15-02 pending
+Last activity: 2026-02-28 - Completed 15-01 (write verification, error escalation, partial save)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 33 (Phases 1-11 + Phase 13 gap closure + Phase 12 complete + Phase 14 complete)
-- Total tests: 398 (all passing)
+- Total plans completed: 34 (Phases 1-14 + Phase 13 gap closure + Phase 15 plan 01)
+- Total tests: 411 (all passing)
 - Total LOC: ~10,600 TypeScript (64 files)
 - Total execution time: ~5.0 hours
 
@@ -40,6 +40,7 @@ Last activity: 2026-02-28 - Completed 14-05 (orphan grace period + diagnostics s
 | 12 | 3/3 (live conversation view + hub text input + history/search) | ~15m | 5m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
 | 14 | 5/5 (event types + onclose + sentinel filtering + integrity checker TDD + storage health + boot wiring + reopenDB wiring + orphan grace period) | ~17m | 3.4m |
+| 15 | 1/2 (write verification + error escalation + partial save) | ~7m | 7m |
 
 ## Accumulated Context
 
@@ -93,6 +94,12 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - Both boot files share localStorage orphan keys for cross-context cleanup (glasses detects, hub cleans or vice versa) (14-05)
 - staleOrphans filter (intersection of previous + current) provides scheduling-layer re-verification before IDB-layer re-verification (14-05)
 - orphanCount uses conditional spread to omit field entirely when no orphans present (clean payload) (14-05)
+- verifyMessage uses separate readonly transaction (not shared with write tx) per Pitfall P1 (15-01)
+- verifyMessage never rejects -- resolves false on any IDB error (verification failure is data, not exception) (15-01)
+- storageVerified flag resets on persistence:warning to allow re-verification after transient failures (15-01)
+- Dual-emit on retry exhaustion: persistence:warning for soft handler + persistence:error for Phase 18 error presenter (15-01)
+- Partial save includes hardcoded English ' [response interrupted]' suffix (per research Open Question 3) (15-01)
+- Verification is async fire-and-forget -- does not block subsequent saves (15-01)
 
 ### Pending Todos
 
@@ -118,5 +125,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 14-05-PLAN.md (orphan grace period + diagnostics surface) -- Phase 14 complete
+Stopped at: Completed 15-01-PLAN.md (write verification + error escalation + partial save)
 Resume file: None
