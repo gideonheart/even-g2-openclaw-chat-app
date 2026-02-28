@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A public EvenHub frontend app for Even G2 smart glasses that provides voice/chat UX for interacting with an OpenClaw AI agent. Users speak through the glasses, audio is sent to a backend gateway (`openclaw-even-g2-voice-gateway`) for STT processing and OpenClaw agent responses, which stream back as bubble chat in a compact HUD rendered on the 576x288 glasses display. The app also includes a companion mobile/desktop hub for settings, diagnostics, and session management.
+A public EvenHub frontend app for Even G2 smart glasses that provides voice/chat UX for interacting with an OpenClaw AI agent. Users speak through the glasses, audio is sent to a backend gateway (`openclaw-even-g2-voice-gateway`) for STT processing and OpenClaw agent responses, which stream back as bubble chat in a compact HUD rendered on the 576x288 glasses display. The app includes a companion mobile/desktop hub for settings, diagnostics, and session management. v1.0 shipped core libraries (gesture FSM, bridge wrapper, display pipeline, gateway client) and the complete companion hub UI.
 
 ## Core Value
 
@@ -12,60 +12,55 @@ Users can have natural voice conversations with an AI assistant through their Ev
 
 ### Validated
 
-- Validated: Native Even-style frontend shell with bottom nav, settings, logs, simulator entry — existing
-- Validated: Even G2 shared design tokens/components integration — existing
-- Validated: Mobile zoom disabled and consistent SVG icon bottom nav — existing
-- Validated: Simplified settings gear icon for bottom-nav — existing
-- Validated: EvenHub frontend at root, simulator preview at /preview-glasses.html — existing
+- ✓ TypeScript strict mode infrastructure with Vite + Vitest — v1.0
+- ✓ Settings store with validation, secret partitioning, localStorage persistence, export/import — v1.0
+- ✓ EvenBridge SDK wrapper with lifecycle management and typed event bus — v1.0
+- ✓ Dev-mode mock bridge with keyboard shortcuts for testing without glasses — v1.0
+- ✓ Dual-mode audio capture (glasses PCM frames + browser MediaRecorder fallback) — v1.0
+- ✓ Pure-function gesture FSM (5 states × 4 inputs) with transition table — v1.0
+- ✓ Gesture handler with 275ms tap debounce, action dispatch, and hint bar text — v1.0
+- ✓ Icon-first HUD with animated state icons (idle, recording, sent, thinking) at 3-6 fps — v1.0
+- ✓ Bubble chat renderer (user right-aligned, assistant left-aligned) — v1.0
+- ✓ Virtualized viewport with 1800-char SDK limit windowing — v1.0
+- ✓ Streaming response renderer with 200ms batched update cadence — v1.0
+- ✓ GlassesRenderer service with 3-container text layout, scroll, hide/wake — v1.0
+- ✓ Display controller event wiring (bus → renderer → bridge SDK) — v1.0
+- ✓ Gateway API client with SSE streaming via eventsource-parser — v1.0
+- ✓ Connection health monitoring with heartbeat detection — v1.0
+- ✓ Auto-reconnect after connectivity loss — v1.0
+- ✓ Companion hub: home, health, logs, sessions, settings pages — v1.0
+- ✓ Simulator at /preview-glasses.html with hub launcher — v1.0
+- ✓ Native Even-style shell with bottom nav, SVG icons, active states — v1.0
+- ✓ Mobile polish: safe-area insets, no horizontal scroll, no clipped cards — v1.0
 
 ### Active
 
-- [ ] Icon-first HUD with animated state icons (recording, sent, thinking)
-- [ ] Bubble chat renderer (user right, assistant left)
-- [ ] Scrollable virtualized history viewport (render only visible window)
-- [ ] Streaming response renderer with incremental updates
-- [ ] Gesture handling state machine (tap, double-tap, scroll up, scroll down)
-- [ ] Audio capture and bridge event handling
-- [ ] Settings form with validation (backend URL, STT provider, session key, gesture mapping)
-- [ ] Settings persistence in localStorage with secure masking for keys
-- [ ] Settings export/import JSON (without secrets by default)
-- [ ] Session list panel with active marker and switch UX
-- [ ] Home screen: glasses connect/disconnect, battery/status, quick action cards
-- [ ] Health view: service checks, sync status, latest turn diagnostics
-- [ ] Apps/Features view: simulator entry + session actions
-- [ ] Logs view with filter (info/warn/error) and correlation ID display
-- [ ] Copy diagnostics action for debugging
-- [ ] Simulator launcher from frontend with "dev-only" note
-- [ ] State handoff mock to simulator via query params
-- [ ] Hide/Wake UI modes + menu
-- [ ] Mobile polish: safe-area behavior, no horizontal scroll, no clipped cards
-- [ ] Backend API client (no secrets in frontend)
-- [ ] TypeScript strict mode throughout
-- [ ] Test suite using Vitest
+- [ ] End-to-end voice loop: tap → record → gateway → stream → glasses display
+- [ ] Runtime main.ts initialization wiring all modules together
+- [ ] EvenHub submission package (self-contained dist/index.html via vite-plugin-singlefile)
+- [ ] App metadata for EvenHub listing (name, icon, description, permissions)
+- [ ] bridge:audio-frame → audioCapture.onFrame() bus subscription (glasses-mode PCM)
+- [ ] Remove orphaned event types from AppEventMap (display:state-change/viewport-update/hide/wake)
 
 ### Out of Scope
 
 - OpenClaw secret handling — belongs in gateway repo, not public frontend
 - STT provider credentials — belongs in gateway repo
 - Direct OpenClaw privileged calls from browser — requires backend policy proxy
-- Real-time video/camera features — not part of voice chat UX
+- Real-time video/camera features — Even G2 has no camera by design (privacy-first)
 - Multi-user/collaborative features — single-user glasses experience
+- Custom fonts/themes on glasses — G2 has one fixed font, 4-bit greyscale
+- Full conversation transcript export — privacy concern; gateway should own this
+- Offline mode — real-time voice loop is core value
 
 ## Context
 
-The Even G2 are smart glasses with a compact 576x288 display. The EvenHub is Even's app marketplace. This app targets submission to EvenHub as a public app. It operates as a frontend-only application that communicates with a separate backend gateway repo (`openclaw-even-g2-voice-gateway`) for all sensitive operations.
+Shipped v1.0 MVP with 5,484 LOC TypeScript across 38 files, 240 passing tests.
+Tech stack: Vite, TypeScript strict mode, Vitest, @evenrealities/even_hub_sdk, eventsource-parser.
 
-Existing codebase already has:
-- Native Even-style shell with bottom navigation
-- Shared design tokens from `even-g2-apps`
-- SVG icon set for bottom nav
-- Settings gear icon in nav
-- Simulator preview at `/preview-glasses.html`
-- Mobile zoom disabled
+Architecture: Pure-function core modules (gesture-fsm.ts, viewport.ts, icon-animator.ts) with zero SDK imports. Side effects confined to bridge boundary (even-bridge.ts). Event bus connects all modules. Factory pattern for services (GlassesRenderer, GestureHandler, DisplayController).
 
-The UI must operate with only 4 gestures on the glasses: tap, double-tap, scroll up, scroll down. All text rendering targets 150-300ms update cadence; icon animations at 3-6 fps. Max text per response display: 2000 chars. The target canvas is 576x288 pixels.
-
-Development workflow: side-by-side repos with contract-first API development. Frontend points to configurable gateway URL.
+All modules are tested library components. Runtime assembly (main.ts entry point wiring) is Phase 6 scope. Companion hub is vanilla JS/HTML with progressive TypeScript migration.
 
 ## Constraints
 
@@ -81,11 +76,18 @@ Development workflow: side-by-side repos with contract-first API development. Fr
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Separate frontend from gateway repo | Prevents secret leakage, cleaner OSS, independent release cycles | -- Pending |
-| Frontend-only architecture | Public-safe EvenHub app, no privileged calls from browser | -- Pending |
-| Contract-first API development | Enables parallel frontend/gateway development with shared types | -- Pending |
-| Virtualized viewport rendering | 576x288 display can't show full chat history; render visible window only | -- Pending |
-| 4-gesture input model | Hardware constraint of Even G2 glasses; must map all UX to tap/double-tap/scroll | -- Pending |
+| Separate frontend from gateway repo | Prevents secret leakage, cleaner OSS, independent release cycles | ✓ Good |
+| Frontend-only architecture | Public-safe EvenHub app, no privileged calls from browser | ✓ Good |
+| Contract-first API development | Enables parallel frontend/gateway development with shared types | ✓ Good |
+| Virtualized viewport rendering | 576x288 display can't show full chat history; render visible window only | ✓ Good — 1800-char limit with 200-char buffer |
+| 4-gesture input model | Hardware constraint of Even G2 glasses; must map all UX to tap/double-tap/scroll | ✓ Good — FSM cleanly handles all states |
+| Pure-function core modules | Gesture FSM, viewport, icon animator have zero SDK imports | ✓ Good — fully testable, 240 tests |
+| Unicode text icons over 4-bit greyscale | Eliminates pixel packing ambiguity for v1 | ✓ Good — simpler, works well |
+| 275ms tap debounce (tap only) | Prevents double-tap false positives without blocking legitimate gestures | ✓ Good |
+| Record-based FSM transition table | Cleaner than switch/case, self-documenting, extensible | ✓ Good |
+| 200ms streaming flush cadence | Batches token-level updates into readable chunks | ✓ Good |
+| 3-container text layout (status/chat/hint) | Separates concerns on glasses display | ✓ Good |
+| SDK class wrapping only in even-bridge.ts | All other modules use plain objects + event bus | ✓ Good — clean boundary |
 
 ---
-*Last updated: 2026-02-27 after initialization*
+*Last updated: 2026-02-28 after v1.0 milestone*
