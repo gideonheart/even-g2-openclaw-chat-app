@@ -98,12 +98,12 @@ Plans:
   3. User can browse past conversations in the hub, grouped by session, and open any conversation to read the full transcript
   4. User can delete individual conversations from the hub history view
   5. User can search across all conversations and see matching snippets with the search term highlighted
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 12-01: TBD
-- [ ] 12-02: TBD
-- [ ] 12-03: TBD
+- [ ] 12-01-PLAN.md — Live conversation view + streaming indicator (HUB-01, HUB-02)
+- [ ] 12-02-PLAN.md — Hub text input + gateway text turn API (HUB-03, HUB-04)
+- [ ] 12-03-PLAN.md — History browsing, deletion, and full-text search (HUB-05, HUB-06, HUB-07, HUB-08)
 
 ### Phase 13: Phase 9 Verification & Sync Wiring
 **Goal**: Close Phase 9 verification gap and wire the sync message types that are currently dead code, enabling Phase 12's real-time hub features
