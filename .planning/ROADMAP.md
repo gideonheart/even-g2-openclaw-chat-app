@@ -35,7 +35,7 @@
 - [ ] **Phase 9: IndexedDB Persistence** - Conversation and message storage with auto-save and boot recovery
 - [x] **Phase 10: Dynamic Sessions & Cross-Context Sync** - Session CRUD, event bus bridge, and real-time hub-glasses relay (completed 2026-02-28)
 - [x] **Phase 11: Glasses Command Menu** - Double-tap overlay with session commands, scroll navigation, and auto-close (completed 2026-02-28)
-- [ ] **Phase 12: Hub Conversation Features** - Live view, text input, history browsing, and full-text search
+- [x] **Phase 12: Hub Conversation Features** - Live view, text input, history browsing, and full-text search (completed 2026-02-28)
 - [x] **Phase 13: Phase 9 Verification & Sync Wiring** - Verify persistence, fix sync message stubs, wire auto-save relay *(gap closure)* (completed 2026-02-28)
 
 ## Phase Details
@@ -138,5 +138,5 @@ Phases execute: 9 → 10 → **13** → 11 → 12 (Phase 13 must complete before
 | 9. IndexedDB Persistence | v1.2 | 2/2 | Unverified | - |
 | 10. Dynamic Sessions & Cross-Context Sync | v1.2 | 3/3 | Complete | 2026-02-28 |
 | 11. Glasses Command Menu | 2/2 | Complete    | 2026-02-28 | - |
-| 12. Hub Conversation Features | 2/3 | In Progress|  | - |
+| 12. Hub Conversation Features | 3/3 | Complete   | 2026-02-28 | - |
 | 13. Phase 9 Verification & Sync Wiring | 1/1 | Complete    | 2026-02-28 | - |

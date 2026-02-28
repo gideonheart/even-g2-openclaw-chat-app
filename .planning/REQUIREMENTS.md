@@ -40,10 +40,10 @@ Requirements for v1.2 Conversation Intelligence & Hub Interaction. Each maps to 
 - [x] **HUB-02**: Hub shows streaming indicator while assistant is responding
 - [x] **HUB-03**: User can type messages from hub into active conversation
 - [x] **HUB-04**: Hub text messages appear on glasses display with responses streaming to both
-- [ ] **HUB-05**: User can browse past conversations grouped by session in hub
-- [ ] **HUB-06**: User can view full conversation transcript in hub
-- [ ] **HUB-07**: User can delete individual conversations from hub
-- [ ] **HUB-08**: User can search across all conversation history with results showing matched snippets
+- [x] **HUB-05**: User can browse past conversations grouped by session in hub
+- [x] **HUB-06**: User can view full conversation transcript in hub
+- [x] **HUB-07**: User can delete individual conversations from hub
+- [x] **HUB-08**: User can search across all conversation history with results showing matched snippets
 
 ## Future Requirements
 
@@ -99,10 +99,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HUB-02 | Phase 12 | Complete |
 | HUB-03 | Phase 12 | Complete |
 | HUB-04 | Phase 12 | Complete |
-| HUB-05 | Phase 12 | Pending |
-| HUB-06 | Phase 12 | Pending |
-| HUB-07 | Phase 12 | Pending |
-| HUB-08 | Phase 12 | Pending |
+| HUB-05 | Phase 12 | Complete |
+| HUB-06 | Phase 12 | Complete |
+| HUB-07 | Phase 12 | Complete |
+| HUB-08 | Phase 12 | Complete |
 
 **Coverage:**
 - v1.2 requirements: 23 total

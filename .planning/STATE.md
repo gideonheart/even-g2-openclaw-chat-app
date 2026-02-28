@@ -9,18 +9,18 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 12 of 13 (Hub Conversation Features) -- IN PROGRESS
-Plan: 2 of 3 in current phase (12-01, 12-02 complete)
-Status: Executing Phase 12
-Last activity: 2026-02-28 - Completed 12-02: Hub text input with gateway and sync wiring
+Phase: 12 of 13 (Hub Conversation Features) -- COMPLETE
+Plan: 3 of 3 in current phase (12-01, 12-02, 12-03 complete)
+Status: Phase 12 Complete
+Last activity: 2026-02-28 - Completed 12-03: Conversation history and search
 
-Progress: [███████████████████████] 27/28 plans (v1.0-v1.1 + Phase 12 plans 1-2)
+Progress: [████████████████████████] 28/28 plans (v1.0-v1.1 + Phase 12 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 27 (Phases 1-11 + Phase 13 gap closure + Phase 12 plans 1-2)
-- Total tests: 360 (all passing)
+- Total plans completed: 28 (Phases 1-11 + Phase 13 gap closure + Phase 12 complete)
+- Total tests: 372 (all passing)
 - Total LOC: ~7,900 TypeScript (59 files)
 - Total execution time: ~4.8 hours
 
@@ -39,7 +39,7 @@ Progress: [███████████████████████
 | 9 | 2 (data layer TDD + wiring) | ~10m | 5m |
 | 10 | 3/3 (session store + sync bridge + glasses wiring + hub sessions) | ~16m | 5m |
 | 11 | 2/2 (command menu state + FSM extension, controller + boot wiring) | ~8m | 4m |
-| 12 | 2/3 (live conversation view + hub text input) | ~9m | 4.5m |
+| 12 | 3/3 (live conversation view + hub text input + history/search) | ~15m | 5m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
 
 ## Accumulated Context
@@ -76,6 +76,10 @@ All decisions logged in PROJECT.md Key Decisions table (20 entries with outcomes
 - Streaming div approach for hub text response: create div on response_start, update on delta (12-02)
 - Hub gateway client is separate instance from glasses gateway with independent lifecycle (12-02)
 - Send button disabled during request to prevent duplicate text submissions (12-02)
+- extractSnippet as pure exported function for testability and reuse (12-03)
+- searchMessages uses single readonly IDB transaction over both stores for consistency (12-03)
+- Features/Apps page fully replaced by Chat page for conversation history access (12-03)
+- Search results rendered with escHtml + highlighted match span for XSS safety (12-03)
 
 ### Pending Todos
 
@@ -99,5 +103,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 12-02-PLAN.md (Hub text input with gateway and sync wiring)
+Stopped at: Completed 12-03-PLAN.md (Conversation history and search - Phase 12 complete)
 Resume file: None
