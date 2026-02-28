@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 16.5-integration-hardening
-Current Plan: 1 of 2
-Status: Plan 01 complete
-Last activity: 2026-02-28 - Completed 16.5-01: Glasses integration hardening (reopenDB handle propagation, eviction subscriber, cleanup teardown)
+Current Plan: 2 of 2
+Status: Phase 16.5 complete
+Last activity: 2026-02-28 - Completed 16.5-02: Hub integration hardening (reopenDB handle propagation, storage health emission, eviction notification, driftReconciler cleanup)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 38 (Phases 1-16.5 + Phase 13 gap closure)
+- Total plans completed: 39 (Phases 1-16.5 + Phase 13 gap closure)
 - Total tests: 436 (all passing)
 - Total LOC: ~10,800 TypeScript (66 files)
-- Total execution time: ~5.1 hours
+- Total execution time: ~5.2 hours
 
 **By Phase:**
 
@@ -42,7 +42,7 @@ Last activity: 2026-02-28 - Completed 16.5-01: Glasses integration hardening (re
 | 14 | 5/5 (event types + onclose + sentinel filtering + integrity checker TDD + storage health + boot wiring + reopenDB wiring + orphan grace period) | ~17m | 3.4m |
 | 15 | 2/2 (write verification + error escalation + partial save + hub error escalation + partial response preservation) | ~19m | 9.5m |
 | 16 | 2/2 (sync monitor + drift reconciler + countMessages TDD + boot wiring) | ~8m | 4m |
-| 16.5 | 1/2 (glasses integration hardening: reopenDB propagation + eviction + cleanup) | ~4m | 4m |
+| 16.5 | 2/2 (glasses + hub integration hardening: reopenDB propagation + eviction + health + cleanup) | ~12m | 6m |
 
 ## Accumulated Context
 
@@ -121,6 +121,9 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - Recreate all 5 IDB-dependent modules after reopenDB (store, sessionStore, autoSave, driftReconciler, syncMonitor) instead of partial refresh (16.5-01)
 - evictionDetected flag pattern: set boolean during boot, check after renderer init to avoid missed synchronous events (16.5-01)
 - driftReconciler.destroy() placed before syncMonitor.destroy() in cleanup to clear mismatch counter before stopping heartbeat (16.5-01)
+- Hub reopenDB handler recreates only ConversationStore (not SessionManager) -- full recreation too complex for gap closure (16.5-02)
+- Hub uses addLog + showToast for persistence notifications (no event bus, deferred to Phase 18) (16.5-02)
+- DriftReconciler type imported as DriftReconcilerType alias and stored in module-level hubDriftReconciler for beforeunload cleanup (16.5-02)
 
 ### Pending Todos
 
@@ -148,5 +151,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 16.5-01-PLAN.md (glasses integration hardening)
+Stopped at: Completed 16.5-02-PLAN.md (hub integration hardening -- Phase 16.5 complete)
 Resume file: None
