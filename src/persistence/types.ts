@@ -30,3 +30,13 @@ export interface ConversationStore {
   getMessages(conversationId: string): Promise<MessageRecord[]>;
   getLastConversation(): Promise<ConversationRecord | undefined>;
 }
+
+export interface SessionStore {
+  createSession(name?: string): Promise<ConversationRecord>;
+  renameSession(id: string, name: string): Promise<ConversationRecord>;
+  deleteSession(id: string): Promise<void>;
+  listSessions(): Promise<ConversationRecord[]>;
+  getSession(id: string): Promise<ConversationRecord | undefined>;
+  getActiveSessionId(): string | null;
+  setActiveSessionId(id: string): void;
+}
