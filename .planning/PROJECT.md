@@ -66,6 +66,52 @@ Users can have natural voice conversations with an AI assistant through their Ev
 - Error UX: visible error states, recovery prompts, sync/storage health indicators
 - Test coverage: integration tests for failure scenarios, E2E resilience tests, CI pipeline
 
+#### Data Integrity (ARCHITECTURE.md IntegrityChecker + StorageHealth + PITFALLS P1/P2/P4/P9)
+
+- [ ] **RES-01:** Boot-time integrity check -- scan for orphaned messages (conversationId with no matching conversation) and dangling session pointer (localStorage active ID pointing to deleted conversation). Single read-only IDB transaction. Under 50ms, under 50 lines of code. Do NOT do per-write verification (Pitfall P1). Do NOT auto-delete orphans (Pitfall P2) -- use grace period.
+- [ ] **RES-02:** Storage health monitoring -- call navigator.storage.estimate() on boot, emit quota info via event bus. Warn at 80% usage, critical at 95%. Feature-detect with 'storage' in navigator.
+- [ ] **RES-03:** Persistent storage request -- call navigator.storage.persist() on first boot. Log whether granted. If denied, show non-dismissible warning on hub health page.
+- [ ] **RES-04:** Eviction detection via sentinel record -- write sentinel to IDB on first run. On subsequent boots, if IDB opens but sentinel missing, data was evicted. Emit storage:evicted event. Do NOT show first-run experience when data was evicted (Pitfall P4).
+- [ ] **RES-05:** Orphan cleanup with grace period -- mark suspected orphans with timestamp. Only delete after 30-second grace period. Verify orphan status a second time before deletion. Surface orphan counts in hub diagnostics. One integrity check per boot maximum (Pitfall P2).
+- [ ] **RES-15:** IDB database onclose handler -- hook IDBDatabase.onclose to detect unexpected closure (eviction, manual clear). Emit persistence:error with type database-closed. Attempt reopenDB().
+
+#### Write & Save Hardening (ARCHITECTURE.md AutoSave + ConversationStore + PITFALLS P1)
+
+- [ ] **RES-06:** Write verification for first message only -- after first successful addMessage() in a session, read back via separate readonly transaction to confirm storage is working. Skip verification for subsequent messages in same session. Re-verify after any persistence:warning event.
+- [ ] **RES-07:** Error escalation in auto-save -- after all retries exhausted, emit persistence:error (not just persistence:warning). Include error type, conversationId, recoverable flag.
+- [ ] **RES-08:** Partial response preservation -- on mid-stream SSE failure, save partial assistant text with "[response interrupted]" suffix rather than discarding. Clear pendingAssistantText after save.
+
+#### Sync Hardening (ARCHITECTURE.md SyncMonitor + DriftReconciler + PITFALLS P3/P6)
+
+- [ ] **RES-09:** Sync sequence numbering -- add optional seq field to SyncMessage. Each context maintains monotonic counter. Detect gaps in received sequence numbers.
+- [ ] **RES-10:** Sync heartbeat -- send sync:heartbeat message every 10 seconds with active conversation message count. Detect peer disconnection after 30 seconds of silence.
+- [ ] **RES-11:** Drift reconciliation via IDB re-read -- when heartbeat reveals message count mismatch, re-read from IndexedDB (single source of truth) and re-render. Do NOT build complex sync protocol. IDB is shared, re-reading is cheapest reconciliation (Pitfall P3/P6).
+- [ ] **RES-12:** IDB-as-truth sync design -- all sync hardening must work without BroadcastChannel. BC is optional "hurry up" notification. IDB is the authority. Design for poll-with-event-trigger pattern (Pitfall P3).
+
+#### FSM & Gateway Resilience (ARCHITECTURE.md + PITFALLS P7/P8)
+
+- [ ] **RES-13:** FSM watchdog timer -- 45-second timeout for any transient state (recording, sent, thinking). Auto-reset to idle if no transition fires. Emit fsm:watchdog-reset event.
+- [ ] **RES-14:** Gateway error classification -- distinguish connection errors (safe to auto-retry) from mid-stream errors (show partial response, prompt user). Add receivedAnyData flag in streamSSEResponse. Do NOT auto-retry mid-stream failures (Pitfall P7).
+
+#### Error UX (ARCHITECTURE.md ErrorPresenter + HealthIndicator + PITFALLS P5/P10)
+
+- [ ] **RES-16:** Glasses error display hierarchy -- transient errors in status bar only (container 0), auto-clear 3 seconds. Recoverable errors in status + hint bar, auto-clear 10 seconds, "tap to retry." Fatal errors full-screen but with "double-tap for menu" escape. Never occupy chat container (container 1) for more than 5 seconds (Pitfall P5).
+- [ ] **RES-17:** Hub error display -- toasts for transient errors (auto-clear 5s), persistent banners for ongoing issues with action buttons. Error banner component with severity, message, optional recovery action, optional dismiss.
+- [ ] **RES-18:** Hub health page enhancement -- add storage quota indicator (usage/quota/percent), sync status (last heartbeat, sequence gaps), overall health level (ok/degraded/error). Use existing status-dot CSS pattern.
+- [ ] **RES-19:** Glasses health policy -- no persistent health indicators on glasses. Only show errors when actionable or temporary. No technical jargon on glasses ("Storage full" not "QuotaExceededError"). Every glasses error has auto-clear or existing gesture dismiss (Pitfall P10).
+
+#### Event System (ARCHITECTURE.md AppEventMap)
+
+- [ ] **RES-20:** New AppEventMap events -- add persistence:error, sync:drift-detected, sync:reconciled, health:status-change, fsm:watchdog-reset event types to src/types.ts. All additive (no breaking changes).
+
+#### Test Infrastructure (STACK.md test helpers)
+
+- [ ] **RES-21:** Failure simulation test helpers -- createFailingStore (fails after N writes), createLossySyncBridge (drops every Nth message). Uses existing fake-indexeddb forceCloseDatabase() for IDB closure simulation. No new dev dependencies.
+
+#### Stack Constraints (STACK.md)
+
+- [ ] **RES-22:** Zero new runtime dependencies -- all features use browser built-in APIs (Storage API, IDB durability, IDBDatabase.onclose). Zero bundle impact.
+
 ### Out of Scope
 
 - OpenClaw secret handling — belongs in gateway repo, not public frontend
@@ -84,6 +130,8 @@ Users can have natural voice conversations with an AI assistant through their Ev
 
 Shipped v1.2 Conversation Intelligence with ~10,300 LOC TypeScript across 60 files, 372 passing tests (25 suites).
 Tech stack: Vite, TypeScript strict mode, Vitest, @evenrealities/even_hub_sdk, eventsource-parser, @evenrealities/evenhub-cli, fake-indexeddb (dev).
+
+v1.3 research completed: 3 streams (ARCHITECTURE.md, STACK.md, PITFALLS.md) with HIGH confidence findings. Zero new runtime dependencies needed -- all resilience features use browser built-in APIs (Storage API, IDB durability, IDBDatabase.onclose) and existing project patterns.
 
 Architecture: Pure-function core modules (gesture-fsm.ts, viewport.ts, icon-animator.ts, command-menu.ts) with zero SDK imports. Side effects confined to bridge boundary (even-bridge.ts). Event bus + SyncBridge connects all modules across contexts. Factory pattern for services. Environment router (main.ts) detects Even App WebView vs browser and routes to glasses-main.ts or hub-main.ts. Layer 0-5 initialization sequence in glasses-main.ts ensures correct dependency order. IndexedDB persistence layer with ConversationStore and SessionStore. BroadcastChannel sync with localStorage fallback for cross-context messaging.
 
