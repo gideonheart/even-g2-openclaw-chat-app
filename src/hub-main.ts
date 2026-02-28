@@ -1073,7 +1073,7 @@ async function initPersistence(): Promise<{
       origin: 'hub',
       getActiveConversationId: () => mgr.getActiveSessionId() ?? '',
       onHeartbeat: (conversationId, remoteCount) => {
-        driftReconciler.handleHeartbeat(conversationId, remoteCount);
+        driftReconciler.handleHeartbeat(conversationId, remoteCount).catch(() => {});
       },
     });
 

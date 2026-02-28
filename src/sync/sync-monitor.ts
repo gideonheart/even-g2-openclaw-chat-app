@@ -17,18 +17,11 @@ export function createSyncMonitor(opts: {
 }): SyncMonitor {
   const { bridge, store, origin, getActiveConversationId, onHeartbeat } = opts;
 
-  let localSeq = 0;
+  let heartbeatSeq = 0;
   let lastRemoteSeq = -1;
   let lastReceivedAt = 0;
-  let sequenceGaps = 0;
+  let heartbeatGaps = 0;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-
-  // ── Send with seq ──────────────────────────────────────
-
-  function send(msg: SyncMessage): void {
-    localSeq += 1;
-    bridge.postMessage({ ...msg, seq: localSeq });
-  }
 
   // ── Incoming message handler ───────────────────────────
 
@@ -42,7 +35,7 @@ export function createSyncMonitor(opts: {
     if (msg.seq !== undefined) {
       if (lastRemoteSeq >= 0 && msg.seq > lastRemoteSeq + 1) {
         // Gap detected
-        sequenceGaps += msg.seq - lastRemoteSeq - 1;
+        heartbeatGaps += msg.seq - lastRemoteSeq - 1;
       } else if (lastRemoteSeq >= 0 && msg.seq <= lastRemoteSeq) {
         // Peer reboot -- reset tracking, do NOT increase gaps
         // (seq went lower than last seen)
@@ -63,16 +56,22 @@ export function createSyncMonitor(opts: {
   function startHeartbeat(): void {
     if (heartbeatTimer !== null) return;
     heartbeatTimer = setInterval(async () => {
-      const conversationId = getActiveConversationId();
-      if (!conversationId) return;
+      try {
+        const conversationId = getActiveConversationId();
+        if (!conversationId) return;
 
-      const messageCount = await store.countMessages(conversationId);
-      send({
-        type: 'sync:heartbeat',
-        origin,
-        messageCount,
-        conversationId,
-      });
+        const messageCount = await store.countMessages(conversationId);
+        heartbeatSeq += 1;
+        bridge.postMessage({
+          type: 'sync:heartbeat',
+          origin,
+          messageCount,
+          conversationId,
+          seq: heartbeatSeq,
+        });
+      } catch {
+        // IDB error -- skip this heartbeat, next interval will retry
+      }
     }, HEARTBEAT_INTERVAL_MS);
   }
 
@@ -92,9 +91,9 @@ export function createSyncMonitor(opts: {
 
   function getStats(): SyncMonitorStats {
     return {
-      localSeq,
+      heartbeatSeq,
       lastRemoteSeq,
-      sequenceGaps,
+      heartbeatGaps,
       lastReceivedAt,
       heartbeatActive: heartbeatTimer !== null,
     };
@@ -105,5 +104,5 @@ export function createSyncMonitor(opts: {
     return Date.now() - lastReceivedAt < ALIVE_TIMEOUT_MS;
   }
 
-  return { send, startHeartbeat, stopHeartbeat, destroy, getStats, isAlive };
+  return { startHeartbeat, stopHeartbeat, destroy, getStats, isAlive };
 }

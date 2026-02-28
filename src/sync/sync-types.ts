@@ -21,7 +21,6 @@ export interface SyncBridge {
 }
 
 export interface SyncMonitor {
-  send(msg: SyncMessage): void;
   startHeartbeat(): void;
   stopHeartbeat(): void;
   destroy(): void;
@@ -31,9 +30,9 @@ export interface SyncMonitor {
 }
 
 export interface SyncMonitorStats {
-  localSeq: number;
+  heartbeatSeq: number;
   lastRemoteSeq: number;
-  sequenceGaps: number;
+  heartbeatGaps: number;
   lastReceivedAt: number;
   heartbeatActive: boolean;
 }
