@@ -2,7 +2,6 @@
 
 import { STT_LABELS } from './types';
 import type { AppSettings, LogLevel } from './types';
-import { findSession } from './sessions';
 import { maskSecret } from './settings';
 import { truncate } from './utils';
 import type { LogStore } from './logs';
@@ -13,7 +12,7 @@ export function createAppState(initialSettings: AppSettings) {
   return {
     settings: initialSettings,
     glassesConnected: false,
-    activeSession: 'gideon',
+    activeSession: '',
     currentLogFilter: 'all' as LogLevel | 'all',
     pendingConfirm: null as (() => void) | null,
     currentEditField: null as string | null,
@@ -51,7 +50,7 @@ export function disconnectGlasses(
 export interface SwitchResult {
   switched: boolean;
   reason?: string;
-  session?: { id: string; name: string; desc: string };
+  sessionId?: string;
 }
 
 export function switchSession(
@@ -63,14 +62,13 @@ export function switchSession(
     return { switched: false, reason: 'Already active session' };
   }
 
-  const session = findSession(sessionId);
-  if (!session) {
-    return { switched: false, reason: 'Session not found' };
+  if (!sessionId) {
+    return { switched: false, reason: 'No session ID provided' };
   }
 
   state.activeSession = sessionId;
-  log('info', `Session switched to ${session.name}`, `sess-${Date.now()}`);
-  return { switched: true, session };
+  log('info', `Session switched to ${sessionId}`, `sess-${Date.now()}`);
+  return { switched: true, sessionId };
 }
 
 // ── Log filtering (pure delegation) ──────────────────────

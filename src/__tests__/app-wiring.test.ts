@@ -36,7 +36,7 @@ describe('app-wiring', () => {
 
       expect(state.settings).toEqual(settings);
       expect(state.glassesConnected).toBe(false);
-      expect(state.activeSession).toBe('gideon');
+      expect(state.activeSession).toBe('');
       expect(state.currentLogFilter).toBe('all');
       expect(state.pendingConfirm).toBeNull();
       expect(state.currentEditField).toBeNull();
@@ -79,35 +79,46 @@ describe('app-wiring', () => {
   describe('switchSession', () => {
     it('with valid session ID returns switched: true', () => {
       const state = createAppState(makeSettings());
+      state.activeSession = 'old-session';
       const { logFn } = makeLogFn();
 
-      // gideon is the default active, switch to atlas
-      const result = switchSession(state, 'atlas', logFn);
+      const result = switchSession(state, 'new-session', logFn);
 
       expect(result.switched).toBe(true);
-      expect(result.session?.id).toBe('atlas');
-      expect(state.activeSession).toBe('atlas');
+      expect(result.sessionId).toBe('new-session');
+      expect(state.activeSession).toBe('new-session');
     });
 
-    it('with invalid session ID returns switched: false', () => {
+    it('with empty session ID returns switched: false', () => {
       const state = createAppState(makeSettings());
       const { logFn } = makeLogFn();
 
-      const result = switchSession(state, 'nonexistent', logFn);
+      const result = switchSession(state, '', logFn);
 
       expect(result.switched).toBe(false);
-      expect(result.reason).toBe('Session not found');
-      expect(state.activeSession).toBe('gideon'); // unchanged
+      expect(result.reason).toBe('Already active session');
     });
 
     it('with same-as-current session returns switched: false', () => {
       const state = createAppState(makeSettings());
+      state.activeSession = 'my-session';
       const { logFn } = makeLogFn();
 
-      const result = switchSession(state, 'gideon', logFn);
+      const result = switchSession(state, 'my-session', logFn);
 
       expect(result.switched).toBe(false);
       expect(result.reason).toBe('Already active session');
+    });
+
+    it('with no session ID provided returns switched: false', () => {
+      const state = createAppState(makeSettings());
+      state.activeSession = 'current';
+      const { logFn } = makeLogFn();
+
+      // Empty string but different from current
+      const result = switchSession(state, '', logFn);
+
+      expect(result.switched).toBe(false);
     });
   });
 
