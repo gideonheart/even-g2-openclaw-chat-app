@@ -19,7 +19,7 @@ import {
 } from './app-wiring';
 import { createSessionStore } from './persistence/session-store';
 import { createConversationStore } from './persistence/conversation-store';
-import type { SessionStore, ConversationStore } from './persistence/types';
+import type { SessionStore, ConversationStore, SearchResult } from './persistence/types';
 import { createSyncBridge } from './sync/sync-bridge';
 import type { SyncBridge } from './sync/sync-types';
 import { createGatewayClient } from './api/gateway-client';
@@ -417,7 +417,7 @@ function launchSimulator(): void {
 
 // ── Navigation ───────────────────────────────────────────────
 
-const allPages = ['home', 'features', 'health', 'settings'] as const;
+const allPages = ['home', 'chat', 'health', 'settings'] as const;
 
 function show(page: string): void {
   if (page !== 'settings') closeSettingsEdit();
@@ -433,8 +433,9 @@ function show(page: string): void {
     tab.classList.toggle('is-active', tab.dataset.tab === page);
   });
 
-  $('tabline').style.display =
-    page === 'home' || page === 'features' ? 'flex' : 'none';
+  $('tabline').style.display = page === 'home' ? 'flex' : 'none';
+
+  if (page === 'chat') renderHistory();
 }
 
 // ── Diagnostics copy ─────────────────────────────────────────
@@ -525,6 +526,22 @@ function init(): void {
   // Copy diagnostics
   document.querySelector('[data-action="copy-diagnostics"]')?.addEventListener('click', copyDiagnostics);
 
+  // Chat page: search input with 300ms debounce
+  const chatSearchInput = document.getElementById('chatSearchInput') as HTMLInputElement | null;
+  if (chatSearchInput) {
+    chatSearchInput.addEventListener('input', () => {
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        handleSearch(chatSearchInput.value.trim());
+      }, 300);
+    });
+  }
+
+  // Chat page: back to history button
+  document.getElementById('chatBackBtn')?.addEventListener('click', () => {
+    renderHistory();
+  });
+
   // Initialize displays
   refreshSettingsDisplay();
   refreshHealthDisplay();
@@ -570,6 +587,170 @@ async function loadLiveConversation(): Promise<void> {
   }
   hideStreamingIndicator();
 }
+
+// ── Chat history page ────────────────────────────────────
+
+async function renderHistory(): Promise<void> {
+  const historyEl = $('chatHistory');
+  const historySection = $('chatHistorySection');
+  const transcriptSection = $('chatTranscriptSection');
+  const searchResults = $('chatSearchResults');
+
+  // Show history, hide transcript and search
+  historySection.classList.remove('hidden');
+  transcriptSection.classList.add('hidden');
+  searchResults.classList.add('hidden');
+
+  // Clear search input
+  const searchInput = document.getElementById('chatSearchInput') as HTMLInputElement | null;
+  if (searchInput) searchInput.value = '';
+
+  if (!sessionManager || !hubConversationStore) {
+    historyEl.innerHTML = '<div class="u-type-body-base u-tc-2nd" style="padding: 16px; text-align: center;">Storage unavailable</div>';
+    return;
+  }
+
+  const sessions = await sessionManager.loadSessions();
+
+  if (sessions.length === 0) {
+    historyEl.innerHTML = '<div class="u-type-body-base u-tc-2nd" style="padding: 16px; text-align: center;">No conversations yet</div>';
+    return;
+  }
+
+  let html = '';
+  for (const s of sessions) {
+    const dateStr = new Date(s.updatedAt).toLocaleDateString();
+    html += `<div class="history-item" data-conv-id="${escHtml(s.id)}">`;
+    html += `<div class="history-item__body">`;
+    html += `<div class="history-item__name">${escHtml(s.name)}</div>`;
+    html += `<div class="history-item__meta">${dateStr}</div>`;
+    html += `</div>`;
+    html += `<div class="history-item__actions">`;
+    html += `<button class="btn btn--ghost btn--tight history-delete-btn" data-conv-id="${escHtml(s.id)}" style="color:var(--c-error,#e53e3e); font-size:12px;">Delete</button>`;
+    html += `</div>`;
+    html += `</div>`;
+  }
+  historyEl.innerHTML = html;
+
+  // Bind click handlers
+  historyEl.querySelectorAll('.history-item').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.history-delete-btn')) return;
+      const convId = (el as HTMLElement).dataset.convId!;
+      showTranscript(convId);
+    });
+  });
+
+  historyEl.querySelectorAll('.history-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const convId = (btn as HTMLElement).dataset.convId!;
+      handleDeleteFromHistory(convId);
+    });
+  });
+}
+
+async function showTranscript(sessionId: string): Promise<void> {
+  if (!sessionManager || !hubConversationStore) return;
+
+  const sessions = await sessionManager.loadSessions();
+  const session = sessions.find((s) => s.id === sessionId);
+  const title = session ? session.name : 'Conversation';
+
+  $('chatTranscriptTitle').textContent = title;
+
+  const messages = await hubConversationStore.getMessages(sessionId);
+  const transcriptEl = $('chatTranscript');
+
+  if (messages.length === 0) {
+    transcriptEl.innerHTML = '<div class="u-type-body-base u-tc-2nd" style="text-align: center;">No messages</div>';
+  } else {
+    transcriptEl.innerHTML = '';
+    for (const msg of messages) {
+      const div = document.createElement('div');
+      div.className = `chat-msg chat-msg--${msg.role}`;
+      div.textContent = msg.text;
+      transcriptEl.appendChild(div);
+    }
+  }
+
+  $('chatHistorySection').classList.add('hidden');
+  $('chatSearchResults').classList.add('hidden');
+  $('chatTranscriptSection').classList.remove('hidden');
+}
+
+async function handleDeleteFromHistory(sessionId: string): Promise<void> {
+  if (!sessionManager) return;
+
+  appState.pendingConfirm = async () => {
+    await sessionManager!.deleteSession(sessionId);
+    // If deleted the active session, switch to most recent
+    if (sessionId === sessionManager!.getActiveSessionId()) {
+      const remaining = await sessionManager!.loadSessions();
+      if (remaining.length > 0) {
+        sessionManager!.switchSession(remaining[0].id);
+        appState.activeSession = remaining[0].id;
+      }
+      await loadLiveConversation();
+    }
+    closeConfirm();
+    showToast('Conversation deleted');
+    addLog('info', 'Conversation deleted from history');
+    refreshHealthDisplay();
+    await renderHistory();
+  };
+  $('confirmTitle').textContent = 'Delete conversation?';
+  $('confirmBody').textContent = 'This will permanently delete this conversation and all its messages.';
+  $('confirmModal').classList.add('active');
+}
+
+// ── Chat search ─────────────────────────────────────────
+
+async function handleSearch(query: string): Promise<void> {
+  const searchResultsSection = $('chatSearchResults');
+  const historySection = $('chatHistorySection');
+  const transcriptSection = $('chatTranscriptSection');
+  const searchListEl = $('chatSearchList');
+
+  if (!query) {
+    searchResultsSection.classList.add('hidden');
+    historySection.classList.remove('hidden');
+    return;
+  }
+
+  if (!hubConversationStore) return;
+
+  const results: SearchResult[] = await hubConversationStore.searchMessages(query, 50);
+
+  if (results.length === 0) {
+    searchListEl.innerHTML = '<div class="u-type-body-base u-tc-2nd" style="padding: 16px; text-align: center;">No matches found</div>';
+  } else {
+    let html = '';
+    for (const r of results) {
+      const dateStr = new Date(r.timestamp).toLocaleDateString();
+      const roleBadge = r.role === 'user' ? 'You' : 'Assistant';
+      html += `<div class="search-result" data-conv-id="${escHtml(r.conversationId)}">`;
+      html += `<div class="search-result__meta">${escHtml(r.conversationName)} &middot; ${roleBadge} &middot; ${dateStr}</div>`;
+      html += `<div class="search-result__snippet">${escHtml(r.snippet.before)}<span class="search-result__match">${escHtml(r.snippet.match)}</span>${escHtml(r.snippet.after)}</div>`;
+      html += `</div>`;
+    }
+    searchListEl.innerHTML = html;
+  }
+
+  historySection.classList.add('hidden');
+  transcriptSection.classList.add('hidden');
+  searchResultsSection.classList.remove('hidden');
+
+  // Bind click handlers to open transcript
+  searchListEl.querySelectorAll('.search-result').forEach((el) => {
+    el.addEventListener('click', () => {
+      const convId = (el as HTMLElement).dataset.convId!;
+      showTranscript(convId);
+    });
+  });
+}
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ── Hub text input ──────────────────────────────────────────
 

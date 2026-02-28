@@ -147,6 +147,19 @@
     .chat-msg--user { background: var(--bc-highlight); color: var(--tc-highlight); margin-left: 40px; text-align: right; }
     .chat-msg--assistant { background: var(--bc-2nd); color: var(--tc-1st); margin-right: 40px; }
 
+    /* ── History & Search ─────────────────────────────── */
+    .history-item { padding: 10px 12px; border-bottom: 1px solid var(--sc-2nd); cursor: pointer; transition: background 120ms; display: flex; align-items: center; justify-content: space-between; }
+    .history-item:hover { background: var(--bc-2nd); }
+    .history-item__body { flex: 1; min-width: 0; }
+    .history-item__name { font-size: var(--text-title-sm-size); color: var(--tc-1st); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .history-item__meta { font-size: var(--text-title-xs-size); color: var(--tc-2nd); margin-top: 2px; }
+    .history-item__actions { flex-shrink: 0; margin-left: 8px; }
+    .search-result { padding: 10px 12px; border-bottom: 1px solid var(--sc-2nd); cursor: pointer; transition: background 120ms; }
+    .search-result:hover { background: var(--bc-2nd); }
+    .search-result__snippet { font-size: var(--text-body-base-size); color: var(--tc-1st); margin-top: 4px; word-break: break-word; }
+    .search-result__match { background: var(--bc-highlight); color: var(--tc-highlight); padding: 1px 2px; border-radius: 2px; }
+    .search-result__meta { font-size: var(--text-title-xs-size); color: var(--tc-2nd); }
+
     /* ── Misc ─────────────────────────────────────────── */
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .kv { display: flex; justify-content: space-between; align-items: center; }
@@ -170,7 +183,6 @@
     <!-- ── Tab line ───────────────────────────────────── -->
     <nav class="tabs" id="tabline">
       <button class="tab is-active" data-tab="home">Home</button>
-      <button class="tab" data-tab="features">Features</button>
     </nav>
 
     <!-- ════════════════════════════════════════════════ -->
@@ -249,53 +261,39 @@
     </section>
 
     <!-- ════════════════════════════════════════════════ -->
-    <!-- PAGE: Features (Apps)                           -->
+    <!-- PAGE: Chat (History)                            -->
     <!-- ════════════════════════════════════════════════ -->
-    <section id="features" class="page">
+    <section id="chat" class="page">
+      <!-- Search bar -->
       <div class="page-section">
-        <div class="section-title">Glasses features</div>
-        <div class="note-card">
-          <div class="note-card__title">G2 &#x2194; OpenClaw voice bridge</div>
-          <div class="note-card__subtitle">Manage voice interactions with minimal friction.</div>
+        <div class="field">
+          <input class="input" type="search" id="chatSearchInput" placeholder="Search conversations..." autocomplete="off" />
         </div>
       </div>
 
-      <div class="page-section">
-        <div class="card card-list">
-          <div class="list-item">
-            <span class="list-item__leading u-text-title-xs u-tc-2nd">01</span>
-            <div class="list-item__content">
-              <div class="list-item__title">Session routing</div>
-              <div class="list-item__subtitle">Switch active OpenClaw agent persona</div>
-            </div>
-          </div>
-          <div class="list-item">
-            <span class="list-item__leading u-text-title-xs u-tc-2nd">02</span>
-            <div class="list-item__content">
-              <div class="list-item__title">Live diagnostics</div>
-              <div class="list-item__subtitle">Logs + health from bottom nav</div>
-            </div>
-          </div>
-          <div class="list-item">
-            <span class="list-item__leading u-text-title-xs u-tc-2nd">03</span>
-            <div class="list-item__content">
-              <div class="list-item__title">Voice capture</div>
-              <div class="list-item__subtitle">Tap-to-record with streaming response</div>
-            </div>
-          </div>
-          <div class="list-item">
-            <span class="list-item__leading u-text-title-xs u-tc-2nd">04</span>
-            <div class="list-item__content">
-              <div class="list-item__title">Glasses simulator</div>
-              <div class="list-item__subtitle">Preview 576&#xD7;288 green monochrome HUD</div>
-            </div>
-            <div class="list-item__meta"><span class="dev-badge">dev</span></div>
-          </div>
+      <!-- Search results (hidden by default) -->
+      <div class="page-section hidden" id="chatSearchResults">
+        <div class="section-title">Search results</div>
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <div id="chatSearchList" style="max-height: 400px; overflow-y: auto;"></div>
         </div>
       </div>
 
-      <div class="page-section">
-        <button class="btn btn--highlight btn--wide" style="width:100%;" data-action="simulator">Open simulator</button>
+      <!-- History list -->
+      <div class="page-section" id="chatHistorySection">
+        <div class="section-title">Conversation history</div>
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <div id="chatHistory" style="max-height: 500px; overflow-y: auto;"></div>
+        </div>
+      </div>
+
+      <!-- Transcript view (hidden by default) -->
+      <div class="page-section hidden" id="chatTranscriptSection">
+        <button class="btn btn--ghost btn--tight" id="chatBackBtn" style="margin-bottom: 8px;">&#8249; Back to history</button>
+        <div class="section-title" id="chatTranscriptTitle">Conversation</div>
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <div id="chatTranscript" style="max-height: 500px; overflow-y: auto; padding: 12px;"></div>
+        </div>
       </div>
     </section>
 
@@ -444,9 +442,9 @@
         <svg class="nav-ico" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
         <span>Health</span>
       </button>
-      <button data-page="features" aria-label="Features">
-        <svg class="nav-ico" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>
-        <span>Apps</span>
+      <button data-page="chat" aria-label="Chat">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        <span>Chat</span>
       </button>
       <button data-page="settings" aria-label="Settings">
         <svg class="nav-ico" viewBox="0 0 24 24">
