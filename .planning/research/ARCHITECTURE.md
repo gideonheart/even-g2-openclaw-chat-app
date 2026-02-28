@@ -1,573 +1,867 @@
-# Architecture Patterns: Voice Loop Integration & EvenHub Submission
+# Architecture Research: v1.2 Conversation Intelligence & Hub Interaction
 
-**Domain:** Even G2 smart glasses voice-chat app (v1.1 integration wiring)
+**Domain:** Integration architecture for persistence, cross-context sync, dynamic sessions, and command menu into existing Even G2 OpenClaw Chat App
 **Researched:** 2026-02-28
-**Confidence:** HIGH (based on direct codebase analysis + SDK documentation)
+**Confidence:** HIGH (based on full codebase analysis of all 43 source files + verified platform constraints)
 
-## Context
+## Critical Architectural Insight: Same-Context Model
 
-This is NOT a greenfield architecture document. v1.0 shipped 38 files with a clean, well-tested module graph. The question is strictly: how do the existing modules wire together at runtime in main.ts to create the end-to-end voice loop, and what build changes produce a self-contained EvenHub submission package?
+The existing codebase has an environment router in `main.ts` that branches to either `glasses-main.ts` (Even App WebView) or `hub-main.ts` (browser). Research confirms the Even App loads a single WebView instance -- the web app renders both the glasses display (via SDK bridge over BLE) and the companion phone UI (standard DOM) in the **same JavaScript context**.
 
-## Existing Architecture (Verified from Source)
+**What this means for v1.2:**
+
+| Scenario | Context Model | Sync Mechanism |
+|----------|--------------|----------------|
+| Production (Even App) | Single WebView, single JS context | Shared in-memory event bus -- no cross-context bridging needed |
+| Dev mode: hub in browser | Separate tab from glasses simulator | BroadcastChannel for real-time sync between index.html and preview-glasses.html |
+| Dev mode: hub only | Single tab, no glasses | Direct function calls, no sync needed |
+
+The "hub <-> glasses real-time communication" requirement is already solved in production by the shared event bus. Cross-context bridging (BroadcastChannel) is needed only for the **dev mode simulator** scenario where the glasses preview opens in a separate tab.
+
+This simplifies the architecture dramatically. The main.ts router currently runs EITHER glasses OR hub code. In production, it needs to run BOTH in the same context, sharing a single bus instance.
+
+## System Overview: v1.2 Integration Map
 
 ```
-                    Even Hub SDK (WebView bridge)
-                           |
-                    even-bridge.ts   <-- ONLY SDK import boundary
-                           |
-                      Event Bus      <-- createEventBus<AppEventMap>()
-                     /    |    \
-            gesture-   audio-    gateway-
-            handler    capture    client
-               |          |          |
-          gesture-fsm  (PCM/WebM)  (SSE stream)
-               |                     |
-         display-controller  --------+
-               |
-         glasses-renderer
-          /       |       \
-    viewport  icon-animator  bridge (SDK calls)
++---------------------------------------------------------------------+
+|                    EXISTING: Layer 0-5 Boot (glasses-main.ts)       |
+|  L0: EventBus + Settings                                           |
+|  L1: Bridge (SDK/Mock)                                              |
+|  L2: AudioCapture + PCM wiring                                      |
+|  L3: GestureHandler + FSM                                           |
+|  L4: DisplayController + GlassesRenderer                            |
+|  L5: GatewayClient + VoiceLoopController                            |
++---------------------------------------------------------------------+
+|                    NEW: Layer 2.5 -- Persistence                    |
+|  +--------------+  +------------------+  +---------------+          |
+|  | ConvoStore   |  | SessionManager   |  | SearchIndex   |          |
+|  | (IndexedDB)  |  | (CRUD + active)  |  | (in-memory)   |          |
+|  +------+-------+  +--------+---------+  +------+--------+          |
+|         |                   |                    |                   |
++---------+-------------------+--------------------+-------------------+
+|                    NEW: Layer 3.5 -- Command Menu                   |
+|  +--------------------+  +-----------------------------+            |
+|  | CommandMenuFSM      |  | CommandMenuRenderer         |            |
+|  | (pure function)     |  | (glasses text containers)   |            |
+|  +--------------------+  +-----------------------------+            |
++---------------------------------------------------------------------+
+|                    NEW: Layer 5.5 -- Hub Integration                |
+|  +------------------+  +------------------+  +--------------+       |
+|  | HubLiveView      |  | HubTextInput     |  | HistoryBrowse|       |
+|  | (DOM rendering)  |  | (input -> bus)   |  | (IDB queries)|       |
+|  +------------------+  +------------------+  +--------------+       |
++---------------------------------------------------------------------+
+|                    NEW: DevSync (dev mode only)                     |
+|  +--------------------------------------------------------------+   |
+|  | BroadcastChannelBridge -- mirrors bus events across tabs      |   |
+|  | Only instantiated when devMode=true AND hub/simulator split   |   |
+|  +--------------------------------------------------------------+   |
++---------------------------------------------------------------------+
 ```
 
-**Key invariants from v1.0:**
-- Pure-function core modules (gesture-fsm.ts, viewport.ts, icon-animator.ts) have zero SDK imports
-- All SDK interaction goes through BridgeService interface (even-bridge.ts or bridge-mock.ts)
-- Event bus is synchronous dispatch, registration order matters (display controller AFTER gesture handler)
-- Factory pattern for all services: `createXxx(opts)` returns interface object
-- GatewayClient has its own internal event system (onChunk/onStatusChange) separate from the bus
+## New Component Responsibilities
 
-## Recommended Architecture: Voice Loop Wiring
+| Component | Responsibility | Module Type | New File |
+|-----------|---------------|-------------|----------|
+| ConvoStore | IndexedDB CRUD for conversations and messages | Side-effect (I/O) | `src/persistence/convo-store.ts` |
+| SessionManager | Dynamic session lifecycle (create/rename/delete/switch/list), replaces static SESSIONS array | Pure logic + ConvoStore delegate | `src/sessions/session-manager.ts` |
+| SearchIndex | In-memory token index built on load, queried for full-text search | Pure function | `src/persistence/search-index.ts` |
+| CommandMenuFSM | Pure state machine for menu item navigation (selected index, items list) | Pure function (zero imports) | `src/gestures/command-menu-fsm.ts` |
+| CommandMenuRenderer | Renders command menu items to glasses text container when menu state is active | Side-effect (bridge calls) | `src/display/command-menu-renderer.ts` |
+| CommandMenu | Orchestrator connecting FSM + renderer + session actions | Glue module | `src/gestures/command-menu.ts` |
+| PersistenceTap | Bus listener that persists messages to IndexedDB as they flow | Side-effect (bus subscriber) | `src/persistence/persistence-tap.ts` |
+| HubLiveView | Renders current glasses conversation in hub DOM, subscribes to bus events | DOM + bus subscriber | `src/hub/hub-live-view.ts` |
+| HubTextInput | Text input field in hub that sends typed messages into the conversation | DOM + bus emitter | `src/hub/hub-text-input.ts` |
+| HistoryBrowser | Hub UI for browsing past conversations with search | DOM + ConvoStore queries | `src/hub/history-browser.ts` |
+| BroadcastChannelBridge | Dev-only: mirrors selected bus events across BroadcastChannel for simulator sync | Side-effect (BroadcastChannel) | `src/bridge/broadcast-bridge.ts` |
 
-### The Missing Piece: VoiceLoopController
+## Recommended Project Structure (v1.2 additions)
 
-The voice loop is the data flow: `gesture:tap -> record -> audio blob -> gateway -> SSE chunks -> display`. All the individual segments exist. What is missing is a single orchestrator that:
+```
+src/
+  persistence/                # NEW: IndexedDB layer
+    convo-store.ts            # IndexedDB wrapper for conversations + messages
+    search-index.ts           # In-memory full-text search index
+    persistence-tap.ts        # Bus subscriber that writes to IndexedDB
+    db-schema.ts              # Database schema version constants + types
+  sessions/                   # REFACTORED: replaces flat sessions.ts
+    session-manager.ts        # Dynamic session CRUD (was: static SESSIONS array)
+    session-types.ts          # Session-related types
+  gestures/                   # EXISTING + additions
+    gesture-fsm.ts            # UNCHANGED
+    gesture-handler.ts        # MODIFIED: delegate to command-menu on menu state
+    command-menu-fsm.ts       # NEW: pure FSM for menu item selection
+    command-menu.ts           # NEW: orchestrator connecting FSM + renderer + actions
+  display/                    # EXISTING + additions
+    glasses-renderer.ts       # MODIFIED: add loadConversation() + getLastAssistantMessage()
+    command-menu-renderer.ts  # NEW: renders menu overlay on glasses
+    display-controller.ts     # MODIFIED: wire command menu events
+    viewport.ts               # UNCHANGED
+    icon-animator.ts          # UNCHANGED
+  hub/                        # NEW: hub-specific UI modules
+    hub-live-view.ts          # Real-time mirror of glasses conversation
+    hub-text-input.ts         # Text input -> conversation
+    history-browser.ts        # Conversation history UI + search
+  bridge/                     # EXISTING + additions
+    even-bridge.ts            # UNCHANGED
+    bridge-mock.ts            # UNCHANGED
+    bridge-types.ts           # UNCHANGED
+    broadcast-bridge.ts       # NEW: dev-mode cross-tab event mirroring
+  events.ts                   # UNCHANGED (bus factory)
+  types.ts                    # MODIFIED: add new event types to AppEventMap
+  main.ts                     # MODIFIED: production boots both glasses + hub
+  glasses-main.ts             # MODIFIED: integrate persistence + command menu layers
+  hub-main.ts                 # MODIFIED: integrate live view, text input, history
+  settings.ts                 # UNCHANGED
+  voice-loop-controller.ts    # MODIFIED: add text turn support for hub input
+```
 
-1. Listens for `audio:recording-stop` on the bus (gesture handler already emits this)
-2. Takes the audio blob and calls `gatewayClient.sendVoiceTurn()`
-3. Forwards gateway chunks to the bus as `gateway:chunk` events
-4. Manages the gateway status forwarding to the bus
+### Structure Rationale
 
-This is the **VoiceLoopController** -- a new, thin glue module.
+- **persistence/:** Isolates all IndexedDB I/O into one folder. Matches the existing pattern of side-effect isolation (bridge/ for SDK, api/ for gateway). The convo-store module is the ONLY module that touches IndexedDB, same as even-bridge.ts is the ONLY module that touches the SDK.
+- **sessions/:** Promotes sessions from a flat constant file to a proper module with CRUD. The static `SESSIONS` array in `sessions.ts` becomes the seed data for first-run, then IndexedDB owns session storage.
+- **hub/:** Groups all hub-specific DOM rendering modules. Keeps the hub-main.ts file thin (wiring only) by extracting component logic into dedicated modules.
+- **gestures/command-menu-fsm.ts:** Follows the exact pattern of gesture-fsm.ts -- pure function, zero imports, record-based transition table. This is the proven pattern in the codebase.
 
-### Component Boundaries
+## Architectural Patterns
 
-| Component | Responsibility | Communicates With | Status |
-|-----------|---------------|-------------------|--------|
-| **EventBus** | Typed pub/sub backbone | All modules | EXISTS |
-| **EvenBridge / BridgeMock** | SDK boundary, gesture/audio forwarding | EventBus (publishes gesture:*, bridge:*) | EXISTS |
-| **AudioCapture** | PCM frame buffering / MediaRecorder | GestureHandler (lifecycle), Bridge (PCM frames) | EXISTS |
-| **GestureHandler** | FSM + action dispatch | EventBus (subscribes gesture:*, emits audio:*) | EXISTS |
-| **GatewayClient** | HTTP+SSE to voice gateway | VoiceLoopController (called directly) | EXISTS |
-| **GlassesRenderer** | Display layout, streaming, scroll | BridgeService (SDK calls), DisplayController | EXISTS |
-| **DisplayController** | Event-to-renderer wiring | EventBus (subscribes all), GlassesRenderer | EXISTS |
-| **VoiceLoopController** | Audio->gateway->bus orchestration | EventBus, GatewayClient, Settings | **NEW** |
-| **main.ts** | Bootstrap + dependency wiring | Creates all of the above | **REWRITE** |
+### Pattern 1: Persistence Tap (Bus Listener Pattern)
 
-### VoiceLoopController Design
+**What:** ConvoStore subscribes to existing bus events (`gateway:chunk`, `audio:recording-stop`) and persists messages as they flow through the system. No existing modules need to know about persistence.
+**When to use:** Adding persistence to an existing event-driven system without modifying producers.
+**Trade-offs:** PRO: zero coupling to existing modules. CON: persistence becomes a "silent subscriber" that could fail without visible feedback.
 
 ```typescript
-// src/voice-loop/voice-loop-controller.ts
-
-export interface VoiceLoopController {
-  destroy(): void;
-}
-
-export function createVoiceLoopController(opts: {
+// persistence-tap.ts -- subscribes to bus, writes to IndexedDB
+export function createPersistenceTap(opts: {
   bus: EventBus<AppEventMap>;
-  gateway: GatewayClient;
-  settings: () => AppSettings;
-}): VoiceLoopController {
-  const { bus, gateway, settings } = opts;
+  convoStore: ConvoStore;
+  sessionManager: SessionManager;
+  renderer: GlassesRenderer;
+}): { destroy(): void } {
+  const { bus, convoStore, sessionManager, renderer } = opts;
   const unsubs: Array<() => void> = [];
 
-  // 1. When recording stops, send audio to gateway
-  unsubs.push(
-    bus.on('audio:recording-stop', ({ sessionId, blob }) => {
-      const s = settings();
-      gateway.sendVoiceTurn(s, {
-        sessionId,
-        audio: blob,
-        sttProvider: s.sttProvider,
+  // Persist user messages when transcript arrives
+  unsubs.push(bus.on('gateway:chunk', async (chunk) => {
+    if (chunk.type === 'transcript' && chunk.text) {
+      await convoStore.addMessage(sessionManager.activeSessionId(), {
+        role: 'user',
+        text: chunk.text,
+        timestamp: Date.now(),
       });
-    }),
-  );
+    }
+    if (chunk.type === 'response_end') {
+      const lastMsg = renderer.getLastAssistantMessage();
+      if (lastMsg) {
+        await convoStore.addMessage(sessionManager.activeSessionId(), {
+          role: 'assistant',
+          text: lastMsg.text,
+          timestamp: lastMsg.timestamp,
+        });
+      }
+    }
+  }));
 
-  // 2. Forward gateway chunks to the event bus
-  unsubs.push(
-    gateway.onChunk((chunk) => {
-      bus.emit('gateway:chunk', chunk);
-    }),
-  );
-
-  // 3. Forward gateway status to the event bus
-  unsubs.push(
-    gateway.onStatusChange((status) => {
-      bus.emit('gateway:status', { status });
-    }),
-  );
-
-  function destroy(): void {
-    for (const unsub of unsubs) unsub();
-    unsubs.length = 0;
-    gateway.destroy();
-  }
-
-  return { destroy };
+  return {
+    destroy() {
+      for (const unsub of unsubs) unsub();
+      unsubs.length = 0;
+    },
+  };
 }
 ```
 
-**Why a separate module instead of inline in main.ts:** Testability. The voice loop controller can be unit-tested by injecting a mock bus, mock gateway, and mock settings -- same pattern as every other v1.0 module. Inlining this logic in main.ts would make it untestable.
+**Why this pattern:** The existing architecture already uses the bus as the central nervous system. Persistence is just another subscriber. This avoids the anti-pattern of threading a `saveMessage()` call through every module that touches messages.
 
-### Audio Frame Subscription (Tech Debt Fix)
+### Pattern 2: Pure FSM for Command Menu (Matches Existing gesture-fsm.ts)
 
-There is a known gap: `bridge:audio-frame` events are emitted by even-bridge.ts but nothing subscribes to route them to `audioCapture.onFrame()`. This subscription belongs in main.ts wiring:
-
-```typescript
-bus.on('bridge:audio-frame', ({ pcm }) => {
-  audioCapture.onFrame(pcm);
-});
-```
-
-This is a one-liner but is critical for glasses-mode PCM recording (non-dev-mode).
-
-## Data Flow: Complete Voice Turn
-
-```
-User taps glasses touchpad
-       |
-       v
-even-bridge.ts detects OsEventTypeList.CLICK_EVENT
-       |
-       v
-bus.emit('gesture:tap', { timestamp })
-       |
-       v
-gesture-handler.ts: gestureTransition('idle', 'tap')
-  -> state = 'recording', action = START_RECORDING
-  -> audioCapture.startRecording(sessionId)
-  -> bridge.startAudio()
-  -> bus.emit('audio:recording-start', { sessionId })
-       |
-       v
-display-controller.ts hears 'audio:recording-start'
-  -> renderer.setIconState('recording')
-  -> icon shows blinking dot
-       |
-       v
-[PCM frames flow: bridge -> bus:'bridge:audio-frame' -> audioCapture.onFrame()]
-       |
-       v
-User taps again
-       |
-       v
-gesture-handler.ts: gestureTransition('recording', 'tap')
-  -> state = 'sent', action = STOP_RECORDING
-  -> bridge.stopAudio()
-  -> audioCapture.stopRecording() -> Promise<Blob>
-  -> bus.emit('audio:recording-stop', { sessionId, blob })
-       |
-       v
-display-controller.ts hears 'audio:recording-stop'
-  -> renderer.setIconState('sent')
-       |
-       v
-voice-loop-controller.ts hears 'audio:recording-stop'
-  -> gateway.sendVoiceTurn(settings, { sessionId, audio: blob, sttProvider })
-       |
-       v
-gateway-client.ts POSTs FormData to gateway /voice/turn
-  -> reads SSE stream from response body
-  -> emits chunks via onChunk callbacks
-       |
-       v
-voice-loop-controller.ts forwards chunk to bus
-  -> bus.emit('gateway:chunk', chunk)
-       |
-       v
-display-controller.ts hears 'gateway:chunk'
-  chunk.type === 'transcript':
-    -> renderer.addUserMessage(text)
-    -> renderer.setIconState('sent')
-  chunk.type === 'response_start':
-    -> renderer.startStreaming()
-    -> renderer.setIconState('thinking')
-  chunk.type === 'response_delta':
-    -> renderer.appendStreamChunk(text)
-  chunk.type === 'response_end':
-    -> renderer.endStreaming()
-    -> renderer.setIconState('idle')
-       |
-       v
-glasses-renderer.ts pushes text to glasses display
-  -> bridge.textContainerUpgrade(containerID, content)
-```
-
-## Initialization Dependency Graph for main.ts
-
-The initialization order is constrained by several dependency and registration-order requirements.
-
-### Dependency Constraints
-
-```
-EventBus         -- no deps, create first
-Settings         -- no deps, load from localStorage
-AudioCapture     -- needs devMode flag only
-BridgeService    -- needs EventBus (to emit gesture/audio events)
-GatewayClient    -- no deps at creation time
-GestureHandler   -- needs EventBus, BridgeService, AudioCapture, activeSessionId
-GlassesRenderer  -- needs BridgeService, EventBus
-DisplayController-- needs EventBus, GlassesRenderer, GestureHandler (MUST be after GestureHandler)
-VoiceLoopController -- needs EventBus, GatewayClient, Settings
-```
-
-### Registration Order Constraint
-
-The event bus dispatches synchronously in registration order. The display-controller.ts file documents this explicitly:
-
-> "The display controller's hint-update handlers must be registered AFTER the gesture handler is created."
-
-This means: GestureHandler subscribes to gesture events FIRST, then DisplayController subscribes SECOND. When a gesture event fires, the gesture handler processes the state transition first, then the display controller reads the post-transition hint text.
-
-### Correct Initialization Sequence
+**What:** The command menu is a separate pure FSM that the gesture handler delegates to when `state === 'menu'`. Menu items are a static array; scroll-up/scroll-down move selection; tap executes the selected command.
+**When to use:** Any new UI state machine in this codebase should follow the pure-function FSM pattern.
+**Trade-offs:** PRO: fully testable, zero dependencies, self-documenting. CON: requires an orchestrator module to wire FSM output to side effects.
 
 ```typescript
-// src/glasses-main.ts (glasses runtime entry point)
+// command-menu-fsm.ts -- zero imports, pure function
+export type MenuCommand = '/new' | '/reset' | '/switch' | '/rename' | '/delete';
 
-export async function boot(): Promise<void> {
-  // -- Layer 0: Foundation (no deps) ---------------------
+export interface MenuState {
+  items: MenuCommand[];
+  selectedIndex: number;
+}
+
+export type MenuInput = 'scroll-up' | 'scroll-down' | 'tap' | 'close';
+
+export interface MenuTransition {
+  nextState: MenuState;
+  action: { type: 'EXECUTE'; command: MenuCommand } | { type: 'CLOSE' } | null;
+}
+
+export function menuTransition(state: MenuState, input: MenuInput): MenuTransition {
+  switch (input) {
+    case 'scroll-up':
+      return {
+        nextState: {
+          ...state,
+          selectedIndex: Math.max(0, state.selectedIndex - 1),
+        },
+        action: null,
+      };
+    case 'scroll-down':
+      return {
+        nextState: {
+          ...state,
+          selectedIndex: Math.min(state.items.length - 1, state.selectedIndex + 1),
+        },
+        action: null,
+      };
+    case 'tap':
+      return {
+        nextState: state,
+        action: { type: 'EXECUTE', command: state.items[state.selectedIndex] },
+      };
+    case 'close':
+      return {
+        nextState: { ...state, selectedIndex: 0 },
+        action: { type: 'CLOSE' },
+      };
+  }
+}
+```
+
+### Pattern 3: Thin IndexedDB Wrapper (No Library)
+
+**What:** A hand-rolled IndexedDB wrapper using raw `IDBDatabase` with promise helpers. No Dexie, no idb-keyval.
+**When to use:** When the app has simple schema needs (2 object stores, 3 indexes) and bundle size is critical (42KB .ehpk target).
+**Trade-offs:** PRO: zero dependency added, full control, minimal bundle impact. CON: more boilerplate than Dexie, must handle upgrade events manually.
+
+**Rationale for raw IndexedDB over Dexie:**
+- Dexie adds 22-26KB gzipped to the bundle. The entire app is currently 42KB packaged. This would be a 50%+ size increase.
+- The schema is trivial: 2 object stores (`sessions`, `messages`), 3 indexes (`sessionId`, `timestamp`, compound `[sessionId, timestamp]`). Dexie's query builder and schema migration system are overkill.
+- The existing codebase uses zero external runtime dependencies beyond the Even SDK. Adding Dexie would break this pattern.
+
+```typescript
+// convo-store.ts -- raw IndexedDB with promise wrapper
+const DB_NAME = 'even-openclaw';
+const DB_VERSION = 1;
+
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains('sessions')) {
+        const sessions = db.createObjectStore('sessions', { keyPath: 'id' });
+        sessions.createIndex('createdAt', 'createdAt');
+      }
+      if (!db.objectStoreNames.contains('messages')) {
+        const messages = db.createObjectStore('messages', {
+          keyPath: 'id',
+          autoIncrement: true,
+        });
+        messages.createIndex('sessionId', 'sessionId');
+        messages.createIndex('timestamp', 'timestamp');
+        messages.createIndex('sessionId_timestamp', ['sessionId', 'timestamp']);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+```
+
+### Pattern 4: BroadcastChannel as Dev-Only Event Mirror
+
+**What:** In dev mode, a thin bridge subscribes to selected bus events and forwards them over BroadcastChannel. The receiving tab (glasses simulator) subscribes to the channel and re-emits into its local bus.
+**When to use:** Only in dev mode when hub and glasses simulator run in separate browser tabs.
+**Trade-offs:** PRO: enables dev testing of the full hub-glasses flow. CON: adds a code path that only runs in development.
+
+**BroadcastChannel compatibility:** Supported in Android WebView since v54, iOS WKWebView since v15.4. Since the Even App uses flutter_inappwebview which delegates to native WebView, BroadcastChannel is available. However, this bridge is only needed in dev mode (browser tabs), NOT in production (single WebView context).
+
+```typescript
+// broadcast-bridge.ts -- dev-mode only, conditional instantiation
+const CHANNEL_NAME = 'even-openclaw-sync';
+
+// Events worth mirroring (skip high-frequency audio frames)
+const MIRROR_EVENTS: (keyof AppEventMap)[] = [
+  'gateway:chunk',
+  'gateway:status',
+  'audio:recording-start',
+  'audio:recording-stop',
+  'gesture:menu-toggle',
+  'session:switched',
+  'hub:text-message',
+];
+
+export function createBroadcastBridge(
+  bus: EventBus<AppEventMap>,
+): { destroy(): void } {
+  const channel = new BroadcastChannel(CHANNEL_NAME);
+  const unsubs: Array<() => void> = [];
+
+  // Outbound: bus -> channel (skip re-emits to prevent loops)
+  let suppressReEmit = false;
+  for (const eventName of MIRROR_EVENTS) {
+    unsubs.push(bus.on(eventName, (payload: unknown) => {
+      if (!suppressReEmit) {
+        channel.postMessage({ event: eventName, payload });
+      }
+    }));
+  }
+
+  // Inbound: channel -> bus
+  channel.onmessage = (msg) => {
+    const { event, payload } = msg.data;
+    if (MIRROR_EVENTS.includes(event)) {
+      suppressReEmit = true;
+      bus.emit(event, payload);
+      suppressReEmit = false;
+    }
+  };
+
+  return {
+    destroy() {
+      for (const unsub of unsubs) unsub();
+      unsubs.length = 0;
+      channel.close();
+    },
+  };
+}
+```
+
+## Data Flow
+
+### Conversation Persistence Flow
+
+```
+[Voice Turn Completes]
+    |
+    v
+bus.emit('gateway:chunk', { type: 'transcript', text })
+    |
+    +---> GlassesRenderer.addUserMessage(text)          [existing: display]
+    +---> PersistenceTap -> ConvoStore.addMessage(...)   [NEW: persist]
+    +---> HubLiveView.renderMessage(msg)                 [NEW: hub mirror]
+    |
+bus.emit('gateway:chunk', { type: 'response_end' })
+    |
+    +---> GlassesRenderer.endStreaming()                 [existing: display]
+    +---> PersistenceTap -> ConvoStore.addMessage(...)   [NEW: persist]
+    +---> SearchIndex.index(sessionId, assistantMsg)      [NEW: search]
+```
+
+### Command Menu Flow
+
+```
+[Double-tap while idle/thinking]
+    |
+    v
+GestureHandler: gestureTransition(state, 'double-tap')
+  -> state = 'menu', action = TOGGLE_MENU
+    |
+    v
+bus.emit('gesture:menu-toggle', { active: true })
+    |
+    +---> DisplayController: renderer.hide()              [existing]
+    +---> CommandMenu: activate, render items to glasses   [NEW]
+    |
+[Scroll-up / Scroll-down while state === 'menu']
+    |
+    v
+GestureHandler delegates to CommandMenuFSM:
+  menuTransition(menuState, 'scroll-down')
+    |
+    v
+CommandMenuRenderer: bridge.textContainerUpgrade(2, formattedMenu)
+  e.g. "  /new\n> /reset\n  /switch\n  /rename\n  /delete"
+    |
+[Tap while state === 'menu']
+    |
+    v
+CommandMenuFSM -> action: { type: 'EXECUTE', command: '/new' }
+    |
+    v
+CommandMenu orchestrator -> SessionManager.createSession()
+    |
+    v
+GestureHandler: gestureTransition('menu', 'tap') -> state = 'idle'
+bus.emit('gesture:menu-toggle', { active: false })  -> wake display
+```
+
+### Hub Text Input Flow
+
+```
+[User types in hub text input, presses Enter]
+    |
+    v
+HubTextInput: validate non-empty
+    |
+    v
+bus.emit('hub:text-message', { text, sessionId })      [NEW event type]
+    |
+    +---> GlassesRenderer.addUserMessage(text)           [glasses display]
+    +---> PersistenceTap -> ConvoStore.addMessage(...)    [persist]
+    +---> VoiceLoopController -> gateway.sendTextTurn()   [NEW: text API]
+```
+
+### Session Switch Flow
+
+```
+[Command menu: /switch OR Hub session picker]
+    |
+    v
+SessionManager.switchSession(newSessionId)
+    |
+    +---> ConvoStore.getMessages(newSessionId)            [load history]
+    +---> GlassesRenderer.loadConversation(messages)      [render on glasses]
+    +---> bus.emit('session:switched', { sessionId })     [notify all]
+    |
+    v
+HubLiveView hears 'session:switched'
+    +---> Load and render new session's messages
+```
+
+## Modified Boot Sequence: Layer 0-5 + New Layers
+
+The existing Layer 0-5 boot in `glasses-main.ts` needs surgical insertions, not restructuring. New layers slot between existing ones:
+
+```typescript
+export async function boot(): Promise<EventBus<AppEventMap>> {
+  // Layer 0: Foundation (UNCHANGED)
   const bus = createEventBus<AppEventMap>();
   const settings = loadSettings();
-  const devMode = !('__EVEN_BRIDGE__' in window)
-    || new URLSearchParams(location.search).has('dev');
+  const devMode = typeof (window as any).flutter_inappwebview === 'undefined';
 
-  // -- Layer 1: Hardware boundary ------------------------
-  const bridge = devMode
-    ? createBridgeMock(bus)
-    : createEvenBridgeService(bus);
+  // Layer 1: Hardware boundary (UNCHANGED)
+  const bridge = devMode ? createBridgeMock(bus) : createEvenBridgeService(bus);
   await bridge.init();
-  // After init: page container exists, gesture/audio events flowing
+  bridge.textContainerUpgrade(1, 'Connecting...');
 
-  // -- Layer 2: Audio capture ----------------------------
-  const audioCapture = createAudioCapture(devMode);
+  // Layer 2: Audio capture (UNCHANGED)
+  const mockAudio = devMode || new URLSearchParams(location.search).has('mock-audio');
+  const audioCapture = createAudioCapture(mockAudio);
+  bus.on('bridge:audio-frame', ({ pcm }) => audioCapture.onFrame(pcm));
 
-  // Wire PCM frames from bridge to audio capture (tech debt fix)
-  bus.on('bridge:audio-frame', ({ pcm }) => {
-    audioCapture.onFrame(pcm);
-  });
+  // === NEW: Layer 2.5 -- Persistence + Session Management ===
+  const convoStore = await createConvoStore();  // opens IndexedDB
+  const sessionManager = createSessionManager({ convoStore, bus });
+  await sessionManager.init();  // loads sessions from IDB, seeds defaults if empty
 
-  // -- Layer 3: Gesture handling (subscribes to bus FIRST) --
+  // Layer 3: Gesture handling (MODIFIED: dynamic session ID)
   const gestureHandler = createGestureHandler({
     bus,
     bridge,
     audioCapture,
-    activeSessionId: () => 'gideon', // or from settings
+    activeSessionId: () => sessionManager.activeSessionId(),  // was: () => 'gideon'
   });
 
-  // -- Layer 4: Display pipeline (subscribes AFTER gesture) --
+  // === NEW: Layer 3.5 -- Command Menu ===
+  const commandMenu = createCommandMenu({
+    bus, bridge, sessionManager, gestureHandler,
+  });
+
+  // Layer 4: Display pipeline (MODIFIED: load persisted conversation)
   const renderer = createGlassesRenderer({ bridge, bus });
-  const displayController = createDisplayController({
-    bus,
-    renderer,
-    gestureHandler,
-  });
+  const displayController = createDisplayController({ bus, renderer });
   await displayController.init();
-  // After init: 3-container layout rebuilt, icon animator running
 
-  // -- Layer 5: Gateway + voice loop ---------------------
-  const gateway = createGatewayClient();
-  const voiceLoop = createVoiceLoopController({
-    bus,
-    gateway,
-    settings: () => settings,
-  });
-
-  // Start gateway health monitoring
-  if (settings.gatewayUrl) {
-    gateway.startHeartbeat(settings.gatewayUrl);
+  const lastMessages = await convoStore.getMessages(sessionManager.activeSessionId());
+  if (lastMessages.length > 0) {
+    renderer.loadConversation(lastMessages);  // NEW method on renderer
+  } else {
+    renderer.showWelcome();
   }
 
-  // -- Cleanup on page unload ----------------------------
-  window.addEventListener('beforeunload', () => {
-    voiceLoop.destroy();
-    displayController.destroy();
-    gestureHandler.destroy();
+  // Layer 5: Gateway + voice loop (UNCHANGED creation)
+  const gateway = createGatewayClient();
+  const voiceLoopController = createVoiceLoopController({
+    bus, gateway, settings: () => settings,
+  });
+
+  // === NEW: Layer 5.5 -- Persistence Tap ===
+  const persistenceTap = createPersistenceTap({
+    bus, convoStore, sessionManager, renderer,
+  });
+
+  // === NEW: Dev-mode cross-tab sync ===
+  let broadcastBridge: { destroy(): void } | null = null;
+  if (devMode) {
+    broadcastBridge = createBroadcastBridge(bus);
+  }
+
+  // Gateway health check (UNCHANGED)
+  if (settings.gatewayUrl) {
+    const healthy = await gateway.checkHealth(settings.gatewayUrl);
+    if (healthy) {
+      gateway.startHeartbeat(settings.gatewayUrl);
+      bus.emit('gateway:status', { status: 'connected' });
+    }
+  } else {
+    renderer.showConfigRequired();
+  }
+
+  // Cleanup (MODIFIED: add new modules in reverse order)
+  let cleaned = false;
+  function cleanup(): void {
+    if (cleaned) return;
+    cleaned = true;
+    broadcastBridge?.destroy();
+    persistenceTap.destroy();
+    voiceLoopController.destroy();
     gateway.destroy();
+    displayController.destroy();
+    commandMenu.destroy();
+    gestureHandler.destroy();
+    audioCapture.stopRecording().catch(() => {});
     bridge.destroy();
     bus.clear();
-  });
+  }
+
+  if (!devMode) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') cleanup();
+    });
+    window.addEventListener('pagehide', cleanup);
+  }
+
+  // NEW: return bus so hub code can share it in production
+  return bus;
 }
 ```
 
-### Layer Rationale
+## Production main.ts: Shared Context Architecture
 
-| Layer | What | Why This Order |
-|-------|------|----------------|
-| 0 | Bus, settings | Zero dependencies. Everything else needs these. |
-| 1 | Bridge | Must call `init()` before any SDK operations. Creates startup page container. Starts emitting gesture/audio events to bus. |
-| 2 | AudioCapture + PCM wiring | Must exist before GestureHandler calls `audioCapture.startRecording()`. PCM bus subscription must exist before bridge emits frames. |
-| 3 | GestureHandler | Subscribes to gesture events on bus. Must subscribe BEFORE DisplayController so FSM transitions happen first. |
-| 4 | DisplayController + Renderer | Subscribes to gesture events AFTER GestureHandler. Calls `renderer.init()` which does `rebuildPageContainer` (overrides the startup 1-container layout with the 3-container chat layout). |
-| 5 | Gateway + VoiceLoop | Only needed after the full input/display pipeline is running. VoiceLoopController subscribes to `audio:recording-stop` which comes from gesture handler. |
-
-### Dev Mode Detection
-
-The bridge mock should be used when running outside the Even App WebView. Detection strategy:
+The critical change for v1.2 is that the production path must run BOTH glasses and hub code in the same context, sharing the event bus:
 
 ```typescript
-// The SDK injects EvenAppBridge into the WebView context.
-// Simple detection:
-const devMode = !('__EVEN_BRIDGE__' in window);
-// Or use URL parameter for explicit override: ?dev=1
-```
+// main.ts -- v1.2
+async function main() {
+  const isEvenApp =
+    typeof (window as any).flutter_inappwebview !== 'undefined' ||
+    new URLSearchParams(location.search).has('even');
 
-**Recommendation:** Use URL parameter `?dev=1` for explicit dev mode, with fallback to SDK detection. This is the approach used by the pong-even-g2 community app.
-
-## Patterns to Follow
-
-### Pattern 1: Factory + Interface Separation
-**What:** Every service is created via `createXxx(opts)` and returns a plain interface object. No classes.
-**When:** All new modules (VoiceLoopController, any future additions).
-**Why:** Consistent with v1.0 patterns. Enables trivial mocking in tests.
-
-```typescript
-export interface VoiceLoopController {
-  destroy(): void;
+  if (isEvenApp) {
+    // Production: boot glasses AND hub in same context, sharing bus
+    const { boot } = await import('./glasses-main');
+    const bus = await boot();  // boot() now returns the shared bus
+    const { initHub } = await import('./hub-main');
+    initHub(bus);  // hub receives the same bus instance
+  } else {
+    // Dev mode: hub only (glasses simulator in separate tab)
+    const { initHub } = await import('./hub-main');
+    initHub();  // no shared bus; BroadcastChannel bridge if simulator open
+  }
 }
 
-export function createVoiceLoopController(opts: {
-  bus: EventBus<AppEventMap>;
-  gateway: GatewayClient;
-  settings: () => AppSettings;
-}): VoiceLoopController {
-  // ... implementation
-  return { destroy };
-}
-```
-
-### Pattern 2: Bus Subscription Cleanup via unsubs Array
-**What:** Every module that subscribes to the bus collects `() => void` unsubscribe functions in an array, then iterates on `destroy()`.
-**When:** Any module that calls `bus.on()`.
-**Why:** Prevents memory leaks and dangling subscriptions. Already used in gesture-handler.ts and display-controller.ts.
-
-### Pattern 3: Settings as Getter Function
-**What:** Pass `settings: () => AppSettings` instead of `settings: AppSettings` to modules that need current settings at call time.
-**When:** VoiceLoopController needs current gatewayUrl/sttProvider when sending a voice turn, not the values from boot time.
-**Why:** Settings can change via the companion hub. A getter ensures fresh values.
-
-### Pattern 4: Bridge Rebuild for Layout Changes
-**What:** `rebuildPageContainer()` for layout changes, `textContainerUpgrade()` for content updates.
-**When:** The pong-even-g2 community app confirms this: "During gameplay, only textContainerUpgrade is called -- no page rebuilds until the game ends."
-**Why:** Page rebuilds are expensive. The chat layout (3 containers: status/chat/hint) should be set once at init and updated via textContainerUpgrade thereafter.
-
-## Anti-Patterns to Avoid
-
-### Anti-Pattern 1: Gateway Chunks Directly on the Bus
-**What:** Having gatewayClient directly emit to the event bus.
-**Why bad:** GatewayClient has its own internal event system (onChunk/onStatusChange) that is intentionally decoupled from AppEventMap. Coupling them would break the gateway client's independence and testability.
-**Instead:** VoiceLoopController bridges the two systems. Gateway client remains bus-agnostic.
-
-### Anti-Pattern 2: Inline Wiring Logic in main.ts
-**What:** Putting the audio->gateway->bus forwarding logic directly in main.ts.
-**Why bad:** Untestable. main.ts should only do dependency creation and wiring, not contain business logic.
-**Instead:** Extract to VoiceLoopController module. main.ts only creates instances and passes them together.
-
-### Anti-Pattern 3: Multiple Page Rebuilds During Init
-**What:** Both `bridge.init()` (creates startup page) and `renderer.init()` (rebuilds to 3-container chat layout) do page container operations.
-**Why this is fine:** The startup page from `bridge.init()` is immediately replaced by `renderer.init()`. This is the correct pattern -- the startup page is required by the SDK before any other operations work, and the chat layout replaces it once the renderer is ready. Do NOT try to skip the startup page.
-
-### Anti-Pattern 4: Synchronous Settings Snapshot
-**What:** Passing `settings` object directly instead of `() => settings` getter.
-**Why bad:** Settings change at runtime (user edits in companion hub). A snapshot taken at boot would have stale gatewayUrl/apiKey.
-**Instead:** Always pass a getter that returns current settings.
-
-## EvenHub Submission: Build Architecture
-
-### Single-File Output
-
-EvenHub apps run inside the Even App's WebView. The simplest distribution is a self-contained `dist/index.html` with all JS/CSS inlined. Use `vite-plugin-singlefile` (v2.3.0).
-
-**Vite config change:**
-
-```typescript
-import { defineConfig } from 'vite';
-import { viteSingleFile } from 'vite-plugin-singlefile';
-import { resolve } from 'path';
-
-export default defineConfig({
-  root: '.',
-  plugins: [viteSingleFile()],
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-    },
-  },
-  build: {
-    outDir: 'dist',
-    // Single input for EvenHub submission
-    rollupOptions: {
-      input: resolve(__dirname, 'index.html'),
-    },
-  },
-  server: {
-    port: 3200,
-    open: true,
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    include: ['src/**/*.test.ts'],
-  },
+main().catch((err) => {
+  console.error('[main] Fatal boot error:', err);
 });
 ```
 
-**Key changes from current config:**
-1. Add `viteSingleFile()` plugin
-2. Remove multi-entry (`simulator` input) from build -- preview-glasses.html is dev-only
-3. Install: `npm install -D vite-plugin-singlefile`
+**Why boot() must return the bus:** In production, the hub DOM and glasses bridge coexist in the same WebView. The hub's live view, text input, and session management must emit/subscribe to the same bus instance that the glasses pipeline uses. Passing the bus from boot() to initHub() makes this explicit.
 
-### Dual Entry Points: Glasses Runtime vs Companion Hub
+## Hub-Main Integration
 
-The current `main.ts` is the companion hub (settings, health, logs). The glasses runtime is a DIFFERENT code path. These serve different purposes:
-
-| Entry Point | Runs In | Purpose |
-|-------------|---------|---------|
-| Companion hub code | Browser / mobile | Configure settings, view health, manage sessions |
-| Glasses runtime code | Even App WebView | Voice loop, display pipeline, gesture handling |
-
-**Recommendation:** Detect environment at runtime. If running inside Even App WebView, boot the glasses runtime. If in a regular browser, show the companion hub. This keeps a single index.html for EvenHub submission.
+The hub-main.ts currently does pure DOM manipulation with no bus. For v1.2, it accepts an optional shared bus:
 
 ```typescript
-// src/main.ts
-async function main() {
-  const isEvenApp = '__EVEN_BRIDGE__' in window
-    || new URLSearchParams(location.search).has('even');
+// hub-main.ts -- v1.2 signature change
+export async function initHub(sharedBus?: EventBus<AppEventMap>): Promise<void> {
+  // Existing DOM setup (unchanged)...
+  init();
 
-  if (isEvenApp) {
-    const { boot } = await import('./glasses-main');
-    await boot();
+  // NEW: Persistence access (IndexedDB is same-origin, works in both contexts)
+  const convoStore = await createConvoStore();  // reuses same IDB database
+  const sessionManager = createSessionManager({ convoStore });
+  await sessionManager.init();
+
+  // NEW: Create local bus with optional BroadcastChannel bridge for dev mode
+  let bus: EventBus<AppEventMap>;
+  if (sharedBus) {
+    bus = sharedBus;  // Production: shared with glasses
   } else {
-    const { initHub } = await import('./hub-main');
-    initHub();
+    bus = createEventBus<AppEventMap>();
+    // Dev mode: bridge to simulator tab if open
+    createBroadcastBridge(bus);
   }
+
+  // NEW: Hub-specific features
+  createHubLiveView({ bus, convoStore, sessionManager, /* DOM container */ });
+  createHubTextInput({ bus, sessionManager, /* DOM container */ });
+  createHistoryBrowser({ convoStore, sessionManager, /* DOM container */ });
 }
-main();
 ```
 
-**Why this approach:** One index.html, two code paths. vite-plugin-singlefile will inline both code paths (they are small -- total app is ~5,500 LOC). This avoids maintaining two separate HTML files and simplifies EvenHub submission. The dynamic import means tree-shaking separates the code paths at the chunk level, but singlefile inlines everything anyway.
+## AppEventMap Additions
 
-### App Metadata
-
-EvenHub submission requires metadata. Based on community apps and SDK documentation, this includes:
-
-| Field | Value | Notes |
-|-------|-------|-------|
-| name | "OpenClaw Chat" | Short, descriptive |
-| description | "Voice chat with AI through your Even G2" | One-liner |
-| icon | 512x512 PNG | App store icon |
-| permissions | `audio`, `network` | Microphone access, gateway API calls |
-| version | "1.1.0" | Semantic versioning |
-
-**LOW confidence** on exact metadata schema -- EvenHub submission portal specifics are not publicly documented. Validate with Even Realities pilot program team.
-
-### Orphaned Event Types Cleanup
-
-The AppEventMap contains 4 event types that are defined but never emitted or consumed:
+New event types needed for v1.2 features:
 
 ```typescript
-'display:state-change': { state: IconState };
-'display:viewport-update': { text: string };
-'display:hide': Record<string, never>;
-'display:wake': Record<string, never>;
+export interface AppEventMap {
+  // EXISTING (unchanged)
+  'bridge:connected': { deviceName: string };
+  'bridge:disconnected': { reason: string };
+  'bridge:audio-frame': { pcm: Uint8Array; timestamp: number };
+  'gesture:tap': { timestamp: number };
+  'gesture:double-tap': { timestamp: number };
+  'gesture:scroll-up': { timestamp: number };
+  'gesture:scroll-down': { timestamp: number };
+  'audio:recording-start': { sessionId: string };
+  'audio:recording-stop': { sessionId: string; blob: Blob };
+  'gesture:menu-toggle': { active: boolean };
+  'gateway:status': { status: ConnectionStatus };
+  'gateway:chunk': VoiceTurnChunk;
+  'log': { level: LogLevel; msg: string; cid?: string };
+
+  // NEW: Session lifecycle
+  'session:switched': { sessionId: string; sessionName: string };
+  'session:created': { sessionId: string; sessionName: string };
+  'session:renamed': { sessionId: string; newName: string };
+  'session:deleted': { sessionId: string };
+
+  // NEW: Command menu
+  'command:execute': { command: MenuCommand };
+  'menu:selection-changed': { selectedIndex: number; command: MenuCommand };
+
+  // NEW: Hub text input
+  'hub:text-message': { text: string; sessionId: string };
+
+  // NEW: Persistence acknowledgment
+  'message:persisted': { sessionId: string; messageId: number };
+}
 ```
 
-These were likely planned during v1.0 but superseded by direct method calls in the display controller. Remove them to keep the event map clean. This is safe because:
-- No module emits these events (verified by searching the entire codebase)
-- No module subscribes to these events
-- The display controller uses direct renderer method calls instead
+## IndexedDB Schema
 
-## Component Wiring Diagram
+```typescript
+// db-schema.ts
+export const DB_NAME = 'even-openclaw';
+export const DB_VERSION = 1;
 
-```
-main.ts creates:
-  |
-  +-- bus = createEventBus<AppEventMap>()
-  |
-  +-- settings = loadSettings()
-  |
-  +-- bridge = createBridgeMock(bus) OR createEvenBridgeService(bus)
-  |     |
-  |     +-- await bridge.init()  --> SDK startup page created
-  |
-  +-- audioCapture = createAudioCapture(devMode)
-  |     |
-  |     +-- bus.on('bridge:audio-frame') --> audioCapture.onFrame()
-  |
-  +-- gestureHandler = createGestureHandler({ bus, bridge, audioCapture, ... })
-  |     |
-  |     +-- subscribes: gesture:tap, gesture:double-tap, gesture:scroll-*
-  |     +-- emits: audio:recording-start, audio:recording-stop, gesture:menu-toggle
-  |
-  +-- renderer = createGlassesRenderer({ bridge, bus })
-  |
-  +-- displayController = createDisplayController({ bus, renderer, gestureHandler })
-  |     |
-  |     +-- await displayController.init()  --> 3-container layout, icon animator
-  |     +-- subscribes: gateway:chunk, gesture:*, audio:*, gesture:menu-toggle
-  |
-  +-- gateway = createGatewayClient()
-  |
-  +-- voiceLoop = createVoiceLoopController({ bus, gateway, settings: () => settings })
-        |
-        +-- subscribes: audio:recording-stop
-        +-- bridges: gateway.onChunk() --> bus.emit('gateway:chunk')
-        +-- bridges: gateway.onStatusChange() --> bus.emit('gateway:status')
+export interface StoredSession {
+  id: string;           // UUID or slug, keyPath
+  name: string;
+  desc: string;
+  createdAt: number;    // Date.now()
+  updatedAt: number;
+  messageCount: number; // denormalized for fast list rendering
+}
+
+export interface StoredMessage {
+  id?: number;          // auto-increment keyPath
+  sessionId: string;    // foreign key -> sessions.id
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: number;
+  turnId?: string;      // groups user+assistant pair
+}
+
+// Object stores and indexes:
+// sessions: keyPath 'id', index on 'createdAt'
+// messages: autoIncrement 'id', indexes on:
+//   'sessionId'            -- get all messages for a session
+//   'timestamp'            -- global time ordering
+//   ['sessionId', 'timestamp']  -- messages for a session in time order (primary query)
 ```
 
-## New Files Required
+## Full-Text Search Strategy
 
-| File | Type | Purpose | Complexity |
-|------|------|---------|------------|
-| `src/voice-loop/voice-loop-controller.ts` | NEW | Audio->gateway->bus bridge | Low (thin glue, ~40 lines) |
-| `src/glasses-main.ts` | NEW | Glasses runtime bootstrap (init sequence above) | Medium (~60 lines) |
-| `src/hub-main.ts` | RENAME/EXTRACT | Current main.ts companion hub logic | Low (move existing code) |
-| `src/main.ts` | REWRITE | Environment detection + dynamic import | Low (~15 lines) |
-| `src/__tests__/voice-loop-controller.test.ts` | NEW | Voice loop unit tests | Low |
+IndexedDB has no native full-text search. For v1.2, use an **in-memory token index** built at startup:
 
-## Modified Files
+1. On app boot, load all message text from IndexedDB (`getAll` on messages store)
+2. Build a reverse index: `Map<string, Set<number>>` mapping lowercased tokens to message IDs
+3. On search query, tokenize the query, intersect the ID sets, fetch matching messages from IDB
+4. On new message persist, add its tokens to the in-memory index
 
-| File | Change | Reason |
-|------|--------|--------|
-| `src/types.ts` | Remove 4 orphaned event types from AppEventMap | Tech debt cleanup |
-| `vite.config.ts` | Add viteSingleFile plugin, single entry point for build | EvenHub packaging |
-| `package.json` | Add vite-plugin-singlefile dev dependency | Build tooling |
+**Why not a persistent search index in IndexedDB:** The token-to-ID map would be complex to maintain across schema versions. The message corpus for a single user on glasses is small (hundreds to low thousands of messages). Loading all message text into memory at boot is fast (~1ms per 1000 messages) and the in-memory index provides sub-millisecond search.
 
-## FSM State Transition Gap: sent -> thinking
+**Scaling concern:** If message count exceeds ~10K, switch to cursor-based loading and paginated search. This is unlikely for v1.2 given the voice-first interaction model (each turn takes 10-30 seconds).
 
-The gesture FSM has a `sent` state (after recording stops, before gateway responds) and a `thinking` state (while streaming response arrives). Currently, the transition from `sent` to `thinking` is NOT in the FSM transition table -- the FSM comment says "auto-transitions to 'thinking' externally via event bus."
+```typescript
+// search-index.ts -- pure function, zero side effects
+export interface SearchIndex {
+  add(messageId: number, text: string): void;
+  search(query: string): number[];  // returns matching message IDs
+}
 
-This means the display controller handles the visual transition (setting icon to 'thinking' on `response_start`), but the gesture FSM state stays at `sent`. This is acceptable for v1.1 because:
-- The `sent` state ignores all inputs (correct behavior while waiting)
-- The display controller independently manages the icon state
-- The gesture handler does not need to know about `thinking` for input handling
+export function createSearchIndex(): SearchIndex {
+  const index = new Map<string, Set<number>>();
 
-However, if future features need the gesture handler to behave differently during `thinking` vs `sent`, the FSM will need an external state-set mechanism. Flag for future consideration only.
+  function tokenize(text: string): string[] {
+    return text.toLowerCase().split(/\s+/).filter((t) => t.length > 1);
+  }
 
-## Scalability Considerations
+  function add(messageId: number, text: string): void {
+    for (const token of tokenize(text)) {
+      let set = index.get(token);
+      if (!set) { set = new Set(); index.set(token, set); }
+      set.add(messageId);
+    }
+  }
 
-| Concern | At v1.1 (now) | At v2.0 (future) |
-|---------|---------------|-------------------|
-| Conversation length | Viewport windowing handles it (1800-char SDK limit) | Same -- viewport already windows |
-| Multiple sessions | Settings store has activeSession | Could add session-specific conversation history |
-| Bundle size | Single-file inlining is fine (app is <50KB) | May need code splitting if app grows significantly |
-| Audio format | PCM (glasses) / WebM (browser fallback) | Gateway handles transcoding -- frontend does not care |
-| Reconnection | Gateway client has exponential backoff (5 retries) | Could add offline queue for messages |
+  function search(query: string): number[] {
+    const tokens = tokenize(query);
+    if (tokens.length === 0) return [];
+
+    const sets = tokens
+      .map((t) => index.get(t))
+      .filter((s): s is Set<number> => s !== undefined);
+
+    if (sets.length === 0) return [];
+    if (sets.length === 1) return [...sets[0]];
+
+    // Intersect all token sets
+    const smallest = sets.reduce((a, b) => (a.size < b.size ? a : b));
+    return [...smallest].filter((id) =>
+      sets.every((s) => s.has(id)),
+    );
+  }
+
+  return { add, search };
+}
+```
+
+## Modules That Need Modification
+
+| Module | Change | Scope |
+|--------|--------|-------|
+| `types.ts` | Add new event types to AppEventMap, import MenuCommand type | Small: ~20 lines added |
+| `main.ts` | Production path boots both glasses and hub; passes shared bus | Small: ~8 lines changed |
+| `glasses-main.ts` | Insert Layer 2.5 (persistence), 3.5 (command menu), 5.5 (persistence tap); boot() returns bus; modify cleanup | Medium: ~35 lines added |
+| `hub-main.ts` | Accept optional shared bus; initialize hub modules (live view, text input, history) | Medium: ~40 lines added |
+| `gesture-handler.ts` | Delegate to command-menu orchestrator when `state === 'menu'`; add commandMenu dependency | Small: ~15 lines in dispatchAction() |
+| `glasses-renderer.ts` | Add `loadConversation(messages)` and `getLastAssistantMessage()` methods | Small: ~20 lines |
+| `voice-loop-controller.ts` | Add text turn support for hub:text-message events | Small: ~10 lines |
+| `sessions.ts` | Deprecate -- replaced by sessions/session-manager.ts backed by IndexedDB | Full replacement |
+| `index.html` | Add hub live view container, text input, history page, conversations nav | Medium: new HTML sections |
+
+## Modules That Stay Unchanged
+
+| Module | Why Unchanged |
+|--------|--------------|
+| `events.ts` | Event bus factory is generic; new events just need type entries |
+| `gesture-fsm.ts` | Already handles menu state transitions correctly via TOGGLE_MENU |
+| `display-controller.ts` | Already handles menu-toggle and all gateway:chunk events |
+| `even-bridge.ts` | SDK wrapper unchanged; command menu uses existing textContainerUpgrade |
+| `bridge-mock.ts` | Mock interface unchanged |
+| `bridge-types.ts` | BridgeService interface unchanged |
+| `viewport.ts` | Pure viewport windowing unchanged |
+| `icon-animator.ts` | Animation system unchanged |
+| `audio-capture.ts` | Audio pipeline unchanged |
+| `gateway-client.ts` | May need sendTextTurn() method but existing voice turn unchanged |
+| `settings.ts` | Settings schema unchanged for v1.2 |
+| `app-wiring.ts` | Pure hub logic functions unchanged |
+| `logs.ts` | Log store unchanged |
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Splitting Bus Across Contexts Unnecessarily
+
+**What people do:** Create a separate event bus for hub and glasses, then build complex sync infrastructure between them.
+**Why it's wrong:** In production, glasses and hub share the same WebView and JavaScript context. Building cross-context sync for production adds latency, complexity, and failure modes to something that is already a shared memory space.
+**Do this instead:** Use the SAME bus instance for both glasses and hub code in production. Reserve BroadcastChannel bridging for dev-mode simulator only.
+
+### Anti-Pattern 2: Persisting Inside Display Modules
+
+**What people do:** Add `convoStore.addMessage()` calls inside `GlassesRenderer.addUserMessage()` or `endStreaming()`.
+**Why it's wrong:** Couples display rendering to storage I/O. The renderer becomes untestable without IndexedDB mocks. Violates the existing architecture where pure-function modules have zero side-effect imports.
+**Do this instead:** Persistence subscribes to bus events as a separate listener (PersistenceTap). The renderer never knows IndexedDB exists.
+
+### Anti-Pattern 3: Making Command Menu a DOM Overlay
+
+**What people do:** Render the command menu as HTML elements overlaid on the glasses display.
+**Why it's wrong:** The glasses display is NOT DOM. It is a set of text containers pushed to the G2 hardware via SDK bridge calls. HTML overlays are invisible on the physical glasses. The "display" is `bridge.textContainerUpgrade()` calls, not CSS.
+**Do this instead:** Render the command menu by calling `bridge.textContainerUpgrade()` with formatted text showing the menu items and a selection indicator (e.g., `"  /new\n> /reset\n  /switch"`).
+
+### Anti-Pattern 4: Eager-Loading Full Conversation History
+
+**What people do:** Load all messages for all sessions into memory at boot.
+**Why it's wrong:** Adds boot latency proportional to total message count. The glasses boot sequence already shows a "Connecting..." indicator; adding I/O here extends the time before the user can interact.
+**Do this instead:** Load only the active session's messages at boot. Lazy-load other sessions when the user switches or browses history in the hub.
+
+### Anti-Pattern 5: Using SharedWorker for Cross-Context Sync
+
+**What people do:** Reach for SharedWorker as the cross-context communication mechanism.
+**Why it's wrong:** SharedWorker support in Android WebView is inconsistent. BroadcastChannel is simpler, lighter, and has confirmed support in Android WebView since v54. SharedWorker adds unnecessary complexity for what amounts to event forwarding.
+**Do this instead:** BroadcastChannel for dev-mode tab sync. In production, no sync mechanism needed at all.
+
+## Build Order (Dependency Chain)
+
+The dependency chain dictates this build order:
+
+```
+Phase 1: Foundation (no dependencies on other new modules)
+   1. db-schema.ts           -- types only, no logic
+   2. convo-store.ts         -- depends on db-schema, IndexedDB
+   3. search-index.ts        -- pure function, no dependencies
+
+Phase 2: Session Management (depends on Phase 1)
+   4. session-types.ts       -- types for session-manager
+   5. session-manager.ts     -- depends on convo-store
+   6. types.ts updates       -- add new event types to AppEventMap
+
+Phase 3: Glasses Features (depends on Phase 2)
+   7. command-menu-fsm.ts    -- pure function, no dependencies
+   8. command-menu-renderer.ts -- depends on bridge-types
+   9. command-menu.ts         -- depends on 7, 8, session-manager, bus
+  10. gesture-handler.ts mod  -- wire command menu delegation
+  11. glasses-renderer.ts mod -- add loadConversation, getLastAssistantMessage
+  12. persistence-tap.ts      -- depends on convo-store, bus, renderer
+  13. glasses-main.ts mod     -- integrate all new layers
+
+Phase 4: Hub Features (depends on Phase 1, 2)
+  14. hub-live-view.ts       -- depends on bus, convo-store
+  15. hub-text-input.ts      -- depends on bus, session-manager
+  16. history-browser.ts     -- depends on convo-store, search-index
+  17. hub-main.ts mod        -- integrate hub modules, accept shared bus
+  18. main.ts mod            -- shared bus in production path
+
+Phase 5: Dev Sync (depends on Phase 3, 4)
+  19. broadcast-bridge.ts    -- depends on bus, BroadcastChannel API
+  20. Wire into glasses-main + hub-main for dev mode
+```
+
+**Phase ordering rationale:**
+- Phase 1 has zero dependencies on other new modules; everything else depends on it
+- Phase 2 (SessionManager) depends on ConvoStore from Phase 1
+- Phase 3 (glasses features) can be built and tested independently of hub features
+- Phase 4 (hub features) can be built and tested independently of glasses features
+- Phase 5 (dev sync) is the lowest priority -- production works without it
+
+## Integration Points
+
+### Internal Boundaries
+
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| ConvoStore <-> SessionManager | Direct method calls | SessionManager delegates all IDB operations to ConvoStore |
+| PersistenceTap <-> ConvoStore | Direct method calls | PersistenceTap is the only writer outside SessionManager |
+| CommandMenu <-> GestureHandler | Bus events + direct delegation | GestureHandler calls commandMenu methods when state='menu' |
+| HubLiveView <-> GlassesRenderer | Bus events (indirect) | Both subscribe to gateway:chunk; no direct coupling |
+| HubTextInput <-> VoiceLoopController | Bus events (hub:text-message) | Hub emits, voice loop subscribes and sends to gateway |
+| SearchIndex <-> ConvoStore | ConvoStore feeds data, SearchIndex is independent | SearchIndex has no dependency on ConvoStore |
+
+### External Services
+
+| Service | Integration Pattern | Notes |
+|---------|---------------------|-------|
+| IndexedDB | ConvoStore wraps all access | Only convo-store.ts touches IDB |
+| BroadcastChannel | BroadcastBridge wraps all access | Only broadcast-bridge.ts touches BroadcastChannel; dev mode only |
+| Even Hub SDK | even-bridge.ts wraps all access | Unchanged from v1.1 |
+| Gateway API | gateway-client.ts wraps all access | May need new sendTextTurn() endpoint |
 
 ## Sources
 
-- [Even G2 SDK Notes (nickustinov)](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md) -- HIGH confidence, comprehensive SDK documentation verified against codebase
-- [Pong for Even G2](https://github.com/nickustinov/pong-even-g2) -- HIGH confidence, working community app showing SDK patterns and initialization
-- [vite-plugin-singlefile](https://github.com/richardtallent/vite-plugin-singlefile) -- HIGH confidence, v2.3.0, well-maintained
-- [EvenHub Developer Portal](https://evenhub.evenrealities.com/) -- LOW confidence on submission specifics (pilot program, limited public docs)
-- [Even Realities EvenDemoApp](https://github.com/even-realities/EvenDemoApp) -- MEDIUM confidence, official but focused on G1 hardware
-- [Even Realities launch announcement](https://www.webpronews.com/even-realities-launches-even-hub-for-g2-smart-glasses-app-developers/) -- MEDIUM confidence, describes developer program
-- Direct codebase analysis of all 38 source files -- HIGH confidence
+- [MDN: BroadcastChannel API](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API) -- HIGH confidence, official documentation
+- [MDN: Using IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB) -- HIGH confidence, official documentation
+- [Can I WebView: BroadcastChannel](https://caniwebview.com/features/mdn-broadcastchannel/) -- Android WebView support since v54, iOS WKWebView since v15.4 -- HIGH confidence
+- [Even G2 Developer Notes](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md) -- Single WebView architecture for glasses + hub -- MEDIUM confidence (community notes, verified against codebase patterns)
+- [Dexie.js Bundle Size Issue #1585](https://github.com/dexie/Dexie.js/issues/1585) -- 22-26KB gzipped -- HIGH confidence
+- [Speeding up IndexedDB reads and writes](https://nolanlawson.com/2021/08/22/speeding-up-indexeddb-reads-and-writes/) -- batched cursor patterns -- MEDIUM confidence
+- [Cross-Tab Communication patterns](https://dev.to/naismith/cross-tab-communication-with-javascript-1hc9) -- localStorage fallback for BroadcastChannel -- MEDIUM confidence
+- [LogRocket: Offline-first frontend apps in 2025](https://blog.logrocket.com/offline-first-frontend-apps-2025-indexeddb-sqlite/) -- IndexedDB best practices -- MEDIUM confidence
+- [npm-compare: idb vs dexie vs localforage](https://npm-compare.com/dexie,idb,localforage) -- Library comparison -- MEDIUM confidence
+- Direct codebase analysis of all 43 source files across 6,336 LOC -- HIGH confidence
+
+---
+*Architecture research for: Even G2 OpenClaw Chat App v1.2 -- Conversation Intelligence & Hub Interaction*
+*Researched: 2026-02-28*

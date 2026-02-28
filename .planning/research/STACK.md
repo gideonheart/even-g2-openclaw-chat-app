@@ -1,238 +1,346 @@
-# Stack Research: v1.1 Integration Additions
+# Stack Research: v1.2 Conversation Intelligence & Hub Interaction
 
-**Project:** Even G2 OpenClaw Chat App -- v1.1 Integration Milestone
-**Domain:** EvenHub smart glasses app -- runtime wiring + submission packaging
+**Domain:** Conversation persistence, cross-context event bus bridging, command menu, and full-text search for Even G2 smart glasses chat app
 **Researched:** 2026-02-28
 **Confidence:** HIGH
 
 ## Scope
 
-This research covers ONLY the stack additions needed for v1.1:
-1. Single-file build packaging (vite-plugin-singlefile)
-2. EvenHub submission tooling (@evenrealities/evenhub-cli)
-3. EvenHub app metadata format (app.json)
-4. Runtime wiring considerations (no new deps -- existing modules)
+This research covers ONLY the stack additions needed for v1.2:
+1. IndexedDB conversation persistence (replacing in-memory chat)
+2. Cross-context event bus bridge (hub <-> glasses real-time sync)
+3. ID generation for conversations and sessions
+4. Full-text search across stored conversations
+5. Test infrastructure for IndexedDB
 
-The existing stack (Vite 6, TypeScript 5.7, Vitest 3, @evenrealities/even_hub_sdk 0.0.7, jsdom, eventsource-parser) is validated and NOT re-researched.
+The existing stack (Vite 6.1, TypeScript 5.7, Vitest 3, @evenrealities/even_hub_sdk 0.0.7, eventsource-parser, typed event bus, factory pattern modules, localStorage settings, 42KB .ehpk artifact) is validated in v1.0/v1.1 and NOT re-researched.
 
-## Critical Finding: vite-plugin-singlefile Is Optional
+## Critical Constraint: Bundle Size Budget
 
-The PROJECT.md specifies "self-contained dist/index.html via vite-plugin-singlefile" but investigation of 35+ Even G2 sample apps reveals that NONE use vite-plugin-singlefile. The standard EvenHub submission workflow is:
+The current .ehpk artifact is **42KB** (23.5KB dist/index.html). Every new runtime dependency directly inflates this single-file output. The v1.2 features must be achievable with minimal bundle growth.
 
-1. `vite build` produces a standard multi-file `dist/` directory
-2. `evenhub pack app.json dist/` bundles the entire directory into a `.ehpk` archive
-3. The `.ehpk` file is the submission artifact
-
-**Recommendation:** Still add vite-plugin-singlefile because the PROJECT.md explicitly requires it, and a self-contained index.html has real advantages for this project: it simplifies the WebView loading (single file = no relative path resolution issues), eliminates asset path bugs, and works offline when cached. But understand it is a project design choice, not an EvenHub platform requirement.
+**Budget target:** Keep total artifact under **50KB** (allowing ~8KB growth for all v1.2 features including code).
 
 ## New Dependencies
 
-### Build Tooling
+### Runtime
 
-| Technology | Version | Purpose | Why | Confidence |
-|------------|---------|---------|-----|------------|
-| vite-plugin-singlefile | ^2.3.0 | Inline all JS/CSS into dist/index.html | Produces a single self-contained HTML file. v2.3.0 supports Vite `^5.4.11 \|\| ^6.0.0 \|\| ^7.0.0` -- our Vite 6.1 is fully covered. Peer dep on `rollup ^4.44.1` is satisfied by Vite 6's bundled Rollup 4. Adds zero runtime cost (build-time only). 480K+ weekly npm downloads. MIT licensed. | HIGH |
-| @evenrealities/evenhub-cli | ^0.1.5 | `evenhub pack` command for .ehpk submission | Official Even Realities CLI. Used by the sibling even-g2-apps repo at this exact version. Provides `evenhub pack <json> <project>` which takes app.json + dist/ directory and produces the .ehpk submission artifact. Also provides `evenhub init` for scaffolding app.json and `evenhub login` for account auth. Peer dep: TypeScript ^5. | HIGH |
+| Technology | Version | Purpose | Bundle Impact | Why | Confidence |
+|------------|---------|---------|---------------|-----|------------|
+| `idb` | ^8.0.3 | Promise-based IndexedDB wrapper | ~1.2KB brotli | Wraps raw IndexedDB with promises, async iterators, transaction `.done`, and schema versioning. Eliminates 8+ lines of callback boilerplate per read. The only library that justifies its weight -- raw IndexedDB is too verbose for async/await codebase, but Dexie (29KB) is 24x heavier. By Jake Archibald (Chrome DevRel, IndexedDB spec contributor). ESM with `sideEffects: false` for tree-shaking. | HIGH |
 
-### Runtime Dependencies
+### Development
 
-No new runtime dependencies are needed. The voice loop wiring connects existing modules:
-- `createEventBus()` (events.ts) -- already exists
-- `createEvenBridgeService()` (bridge/even-bridge.ts) -- already exists
-- `createAudioCapture()` (audio/audio-capture.ts) -- already exists
-- `createGatewayClient()` (api/gateway-client.ts) -- already exists
-- `createGestureHandler()` (gestures/gesture-handler.ts) -- already exists
-- `createGlassesRenderer()` (display/glasses-renderer.ts) -- already exists
-- `createDisplayController()` (display/display-controller.ts) -- already exists
+| Technology | Version | Purpose | Confidence |
+|------------|---------|---------|------------|
+| `fake-indexeddb` | ^6.0.0 | IndexedDB implementation for Vitest/jsdom | HIGH |
 
-The entire voice loop (tap -> record -> gateway -> stream -> glasses display) is assembled by wiring these existing factory functions together in main.ts with the shared event bus.
+### Browser Built-ins (Zero Bundle Cost)
 
-## Vite Config Integration
+| API | Purpose | Why No Library Needed |
+|-----|---------|----------------------|
+| `BroadcastChannel` | Hub <-> glasses event bus bridge | Same-origin cross-context messaging. Both contexts load the same URL. 92% browser support. Zero bytes. |
+| `crypto.randomUUID()` | Conversation/session ID generation | Native UUID v4. Chrome 92+, Safari 15.1+. Zero bytes vs nanoid (130B) or uuid (6.5KB). |
+| `IndexedDB` (via `idb` wrapper) | Conversation and session persistence | Browser-native structured storage with indexes. Available in flutter_inappwebview on both iOS (WebKit storage manager) and Android (Chromium). |
+| `String.prototype.includes()` | Full-text search | Simple substring scan over cached conversation text. Sufficient for <1000 conversations per user. |
 
-### Current vite.config.ts
+## Detailed Technology Rationale
 
-The existing config has multi-page input (index.html + preview-glasses.html) and a test block. The singlefile plugin requires specific changes.
+### IndexedDB via `idb` (not Dexie, not raw IndexedDB, not idb-keyval)
 
-### Required Changes
+**Why `idb` over raw IndexedDB:**
+Raw IndexedDB uses IDBRequest/onsuccess/onerror callbacks -- verbose, error-prone, incompatible with async/await patterns used throughout the codebase. `idb` wraps every IDBRequest with a Promise, so `await db.get('conversations', id)` replaces 8+ lines of callback boilerplate. Adds transaction `.done` promise for durability confirmation. Supports async iterators for cursor-based reads (`for await (const cursor of store)`). Schema versioning via `upgrade` callback handles future migrations cleanly.
 
+**Why `idb` over Dexie:**
+Dexie is ~29KB min+gzip -- nearly 70% of the current total artifact size. Completely unacceptable for a 42KB .ehpk budget. Dexie's query builder, live queries, and reactive observation are overkill for a chat log store. `idb` at ~1.2KB brotli is 24x smaller.
+
+**Why `idb` over `idb-keyval`:**
+`idb-keyval` (~600B) only supports key-value get/set -- no indexes, no range queries, no cursor iteration. Conversations need compound indexes (e.g., `sessionId` + `createdAt` for chronological listing). Full-text search needs cursor iteration over a word-tokens index. `idb-keyval` cannot create custom object stores or indexes.
+
+### BroadcastChannel for Hub <-> Glasses Sync (not postMessage, not SharedWorker, not polling)
+
+**Architecture context:** The Even App (Flutter) opens the web app URL in a `flutter_inappwebview`. The `main.ts` environment router detects `window.flutter_inappwebview` and loads `glasses-main.ts` (glasses context) or the hub UI runs in a separate browser tab. These are two separate browsing contexts loading the same origin.
+
+**Why BroadcastChannel:**
+- Zero dependencies -- browser API, zero bytes added to bundle
+- Same-origin requirement is automatically satisfied (both contexts load the same URL)
+- Simple pub/sub: `channel.postMessage(event)` / `channel.onmessage = (e) => ...`
+- Decoupled -- neither context needs a reference to the other
+- Works even if one context is not yet open (messages simply not received, no errors)
+
+**Why not postMessage / window.opener:**
+`postMessage` requires a reference to the target window/iframe. The hub and glasses WebView have no parent-child relationship. The Even App WebView is not an iframe inside the hub -- it is a separate Flutter WebView process.
+
+**Why not SharedWorker:**
+SharedWorker support in iOS WebKit is inconsistent. Adds complexity (separate worker file, MessagePort management). BroadcastChannel is simpler and fully sufficient.
+
+**Why not polling shared IndexedDB:**
+Higher latency (~500ms per poll cycle), more code, more battery drain. Use BroadcastChannel as primary mechanism. Shared IndexedDB is the natural fallback if BroadcastChannel is unavailable in a particular WebView environment.
+
+**Bridge pattern -- how it integrates with the existing typed event bus:**
 ```typescript
-import { defineConfig } from 'vite';
-import { resolve } from 'path';
-import { viteSingleFile } from 'vite-plugin-singlefile';
+// In each context (hub-main.ts and glasses-main.ts):
+const channel = new BroadcastChannel('openclaw-sync');
 
-export default defineConfig({
-  root: '.',
-  plugins: [viteSingleFile()],        // <-- ADD
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-    },
-  },
-  build: {
-    outDir: 'dist',
-    // CHANGE: Single entry for EvenHub submission.
-    // The simulator (preview-glasses.html) is a dev tool, not part of
-    // the submission package. Build it separately if needed.
-    rollupOptions: {
-      input: resolve(__dirname, 'index.html'),
-    },
-  },
-  server: {
-    port: 3200,
-    open: true,
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    include: ['src/**/*.test.ts'],
-  },
+// Relay selected outbound events from local bus to BroadcastChannel
+bus.on('conversation:message-added', (payload) => {
+  channel.postMessage({ type: 'conversation:message-added', payload });
 });
+
+// Relay inbound BroadcastChannel messages to local bus
+channel.onmessage = (e) => {
+  const { type, payload } = e.data;
+  bus.emit(type, payload);
+};
+
+// Cleanup
+channel.close(); // on destroy
 ```
 
-### Key Integration Points
+**Risk: MEDIUM** -- BroadcastChannel behavior in `flutter_inappwebview` specifically has not been verified with Even G2 hardware. The implementation should include a fallback: if BroadcastChannel is unavailable, fall back to polling a shared IndexedDB "sync-events" object store. This fallback costs no extra dependencies since IndexedDB is already in use.
 
-1. **Single entry point**: The EvenHub submission needs one index.html. The multi-page config (index.html + preview-glasses.html) must change to single-entry for the production build. The simulator is a dev tool.
+### crypto.randomUUID() for ID Generation (no nanoid, no uuid)
 
-2. **Plugin defaults are correct**: `useRecommendedBuildConfig: true` (default) sets `cssCodeSplit: false`, `assetsInlineLimit: Infinity`, and disables code-splitting -- all correct for a single-file output.
+**Why built-in:**
+- `crypto.randomUUID()` returns a standard UUID v4 string -- perfect for conversation and session IDs
+- Zero bytes added to bundle (vs nanoid 130B, uuid 6.5KB)
+- Supported in all target environments (Chrome 92+, Safari 15.1+, modern WebViews)
+- UUID v4 format is recognizable in IndexedDB DevTools inspection
 
-3. **removeViteModuleLoader**: Leave at default (`false`). The Vite module loader is tiny and removing it can cause issues with dynamic imports if any are used.
-
-4. **No CSS/asset concerns**: The project uses inline styles in index.html (no separate CSS files) and no image assets. The singlefile plugin will inline the single JS bundle.
-
-## app.json Metadata Format
-
-The EvenHub app.json format is reverse-engineered from 8+ sample apps in the local codebase. Fields observed:
-
-### Required Fields
-
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `package_id` | string | Reverse-domain unique identifier | `"com.openclaw.even-g2-chat"` |
-| `name` | string | Display name in EvenHub store | `"OpenClaw Chat"` |
-| `version` | string | Semver version | `"1.1.0"` |
-| `description` | string | App description | `"Voice chat with OpenClaw AI..."` |
-| `author` | string | Developer name or email | `"Your Name"` |
-| `entrypoint` | string | Main HTML file in dist/ | `"index.html"` |
-
-### Optional Fields
-
-| Field | Type | Description | When to Use |
-|-------|------|-------------|-------------|
-| `edition` | string | Edition code (YYYYMM format) | Versioning metadata |
-| `min_app_version` | string | Minimum Even App version required | If using newer SDK features |
-| `tagline` | string | Short marketing tagline | EvenHub listing |
-| `permissions.network` | string[] | Allowed network domains | Apps that make HTTP requests |
-| `permissions.fs` | string[] | Allowed filesystem paths | Apps with local assets |
-
-### Recommended app.json for This Project
-
-```json
-{
-  "package_id": "com.openclaw.even-g2-chat",
-  "edition": "202602",
-  "name": "OpenClaw Chat",
-  "version": "1.1.0",
-  "min_app_version": "0.1.0",
-  "tagline": "Voice chat with AI through your G2 glasses.",
-  "description": "Speak through your Even G2 glasses, get streaming AI responses displayed as compact bubble chat on the heads-up display. Powered by OpenClaw.",
-  "author": "OpenClaw",
-  "entrypoint": "index.html",
-  "permissions": {
-    "network": ["*"]
+**Fallback for edge cases:**
+```typescript
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
   }
+  // Fallback using crypto.getRandomValues (broader support)
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
+  const hex = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
 }
 ```
 
-**Note on `permissions.network`**: This app sends audio to a user-configurable gateway URL (not a fixed domain), so the network permission must be broad. Use `["*"]` or list the expected gateway domains. If EvenHub requires explicit domains, the gateway URL from settings would need to match.
+### Full-Text Search: Manual Tokenization (no FlexSearch, no Lunr, no Fuse.js)
+
+**Why no search library:**
+- FlexSearch light is 4.5KB gzipped -- nearly 10% of current artifact size
+- Chat conversations are relatively small (hundreds, not millions of messages per user)
+- Single-user app -- conversation volume is bounded by one person's usage
+- Search runs on the hub (phone/desktop browser) with ample CPU/memory
+- No need for fuzzy matching, stemming, or relevance ranking -- exact substring match is the expected UX for chat search
+
+**Implementation approach:**
+1. **Simple scan (primary):** Load conversation summaries from IndexedDB, filter with `.toLowerCase().includes(query.toLowerCase())` in memory. For <1000 conversations, this is instant (<10ms).
+2. **Token index (optional upgrade):** Add a `tokens` field (array of unique lowercased words) to each message, use IndexedDB `multiEntry` index for O(log n) term lookup. `idb` supports this natively via standard IndexedDB indexes.
+
+### fake-indexeddb for Testing
+
+**Why needed:**
+- Vitest runs in jsdom environment (per existing `vite.config.ts`)
+- jsdom does not implement IndexedDB
+- `fake-indexeddb` provides a full IndexedDB 2.0 implementation backed by in-memory storage
+- Used by Dexie's own test suite, well-maintained, v6.0.0 current
+
+**Setup:**
+```typescript
+// vitest.setup.ts (or add to existing test config)
+import 'fake-indexeddb/auto';
+```
 
 ## Installation
 
 ```bash
-# New dev dependency (build-time only)
-npm install -D vite-plugin-singlefile@^2.3.0
+# Runtime (one new dependency -- ~1.2KB brotli impact)
+npm install idb@^8.0.3
 
-# New dependency (submission CLI)
-npm install @evenrealities/evenhub-cli@^0.1.5
+# Dev dependencies (IndexedDB testing in jsdom)
+npm install -D fake-indexeddb@^6.0.0
 ```
 
-### Package.json Script Additions
-
-```json
-{
-  "scripts": {
-    "pack": "evenhub pack app.json dist",
-    "build:submit": "tsc && vite build && evenhub pack app.json dist"
-  }
-}
-```
-
-## What NOT to Add
-
-| Avoid | Why | What to Do Instead |
-|-------|-----|-------------------|
-| Framework (React, Svelte, etc.) | Project is vanilla TS with direct DOM manipulation. 440-line main.ts is manageable. Adding a framework for runtime wiring would be overengineering. | Wire factories manually in main.ts init() |
-| State management library (XState, Zustand) | Gesture FSM is 50 lines. App state is a plain object. Event bus handles all pub/sub. | Keep createAppState() + event bus pattern |
-| Vite version upgrade to 7.x | Current Vite 6.1 is stable. vite-plugin-singlefile supports it. Upgrading Vite is unnecessary churn for this milestone. | Stay on Vite ^6.1.0 |
-| TypeScript upgrade to 5.9/6.0 | Current ^5.7.0 works. No features needed from newer versions. | Stay on ^5.7.0 |
-| eventsource-parser (explicit install) | The project's gateway-client.ts has a hand-rolled SSE parser (parseSSELines). The eventsource-parser package is listed in PROJECT.md context but is NOT in package.json dependencies. Do NOT add it -- the existing parser works and has tests. | Keep the existing parseSSELines() |
-| vite-plugin-singlefile-compression | Adds gzip/brotli compression to the single file. Unnecessary -- the .ehpk format handles packaging and the WebView loads locally. | Use standard vite-plugin-singlefile |
-| Additional test frameworks | Vitest 3 with jsdom handles all testing needs. The new wiring code is integration-level (connect factories, verify events flow). | Write integration tests with Vitest |
+**Estimated artifact impact:** +1-2KB gzipped to the final .ehpk (from `idb` library). All other v1.2 features use browser built-ins. Well within the 50KB budget target.
 
 ## Alternatives Considered
 
 | Recommended | Alternative | Why Not |
 |-------------|-------------|---------|
-| vite-plugin-singlefile ^2.3.0 | Manual Rollup config with `inlineDynamicImports` | Plugin is battle-tested, handles edge cases (base64 encoding, CSS inlining), and has 480K+ weekly downloads. Manual config is error-prone. |
-| vite-plugin-singlefile ^2.3.0 | Skip single-file, use standard Vite build | Standard build works fine with `evenhub pack`. But PROJECT.md explicitly requires self-contained index.html, and it has genuine benefits for WebView reliability. |
-| @evenrealities/evenhub-cli ^0.1.5 | Manual .ehpk creation | The .ehpk format uses a WASM-based packer (ehpk_pack_bg.wasm). No public spec. Must use official CLI. |
-| evenhub-cli as dependency | evenhub-cli as global install | Keeping it as a project dependency ensures reproducible builds. Anyone cloning the repo gets the right version via `npm install`. |
+| `idb` (~1.2KB) | Dexie.js (~29KB) | 24x larger, overkill for chat log CRUD. Would consume 70% of current artifact budget. |
+| `idb` (~1.2KB) | `idb-keyval` (~600B) | No indexes, no range queries, no cursor iteration. Cannot support conversation listing by session or full-text search. |
+| `idb` (~1.2KB) | Raw IndexedDB | Callback-based API is verbose, error-prone. 8+ lines per read vs 1 line with `idb`. The 1.2KB cost is justified. |
+| BroadcastChannel (0B) | SharedWorker | Inconsistent iOS WebKit support. More complex API (MessagePort). |
+| BroadcastChannel (0B) | postMessage | Requires window reference. Hub and glasses WebView are not parent-child. |
+| BroadcastChannel (0B) | Polling shared IndexedDB | Higher latency, more code, more battery. Use as fallback only. |
+| `crypto.randomUUID()` (0B) | nanoid (130B) | Built-in is always cheaper than any library. |
+| `crypto.randomUUID()` (0B) | uuid (6.5KB) | Massive for something the browser does natively. |
+| Manual search (0B) | FlexSearch light (4.5KB) | 10% of artifact size for searching <1000 conversations. Overkill. |
+| Manual search (0B) | Elasticlunr (8KB+) | Built for larger corpora. Same overkill concern. |
+| Manual search (0B) | Fuse.js (18KB+) | Fuzzy search is not the UX expectation for chat history. |
 
-## Version Compatibility Matrix
+## What NOT to Use
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| Dexie.js | 29KB gzipped -- nearly doubles artifact size. Live queries, sync, reactive observation all unused. | `idb` at 1.2KB |
+| localForage | 7KB gzipped, wraps IndexedDB with localStorage/WebSQL fallbacks. We do not need fallbacks -- IndexedDB is our target. | `idb` directly |
+| RxDB | 200KB+, reactive database. Massive overkill for single-user chat persistence. | `idb` + manual patterns |
+| uuid npm package | 6.5KB for something the browser does natively. | `crypto.randomUUID()` |
+| FlexSearch / Lunr / Fuse.js | 4.5-20KB for searching a small local dataset. | Manual `.includes()` + optional token index |
+| Service Worker for sync | Not needed -- hub and glasses are always online (real-time voice loop is core value). Adds registration complexity. | BroadcastChannel |
+| WebSocket/SSE for hub-glasses sync | Hub and glasses are same-origin same-device. Network-based sync is unnecessary. | BroadcastChannel |
+| React / framework for hub UI | Project is vanilla TS with direct DOM manipulation. Adding a framework for conversation list would be overengineering for the scope. | Continue vanilla TS + template literals |
+
+## Integration with Existing Codebase
+
+### Event Bus Extension
+
+The existing `AppEventMap` in `src/types.ts` needs new event types for v1.2 features:
+
+```typescript
+// New events to add to AppEventMap
+interface AppEventMap {
+  // ... existing v1.1 events ...
+
+  // Conversation lifecycle
+  'conversation:created': { conversationId: string; sessionId: string; name: string };
+  'conversation:message-added': { conversationId: string; role: 'user' | 'assistant'; text: string };
+  'conversation:renamed': { conversationId: string; newName: string };
+  'conversation:deleted': { conversationId: string };
+
+  // Session management (dynamic)
+  'session:created': { sessionId: string; name: string };
+  'session:switched': { sessionId: string; conversationId: string };
+  'session:renamed': { sessionId: string; newName: string };
+  'session:deleted': { sessionId: string };
+
+  // Command menu (glasses)
+  'menu:opened': { timestamp: number };
+  'menu:closed': { timestamp: number };
+  'menu:command': { command: '/new' | '/reset' | '/switch' | '/rename' | '/delete' };
+  'menu:item-selected': { index: number };
+
+  // Hub text input
+  'hub:text-submitted': { text: string; conversationId: string };
+
+  // Cross-context sync
+  'sync:conversation-update': { conversationId: string; action: string };
+}
+```
+
+### Settings Store: No Changes
+
+The existing `loadSettings()` / `saveSettings()` in `src/settings.ts` uses `localStorage`. This remains unchanged -- settings are small, synchronous, and do not need IndexedDB. Conversations and sessions move to IndexedDB because they are structured, queryable, and potentially large.
+
+### Sessions Store: Migration from Hardcoded to Dynamic
+
+The existing `src/sessions.ts` has a hardcoded `SESSIONS` array with 3 demo sessions. v1.2 replaces this with dynamic sessions backed by IndexedDB. The `Session` type in `src/types.ts` gains new fields:
+
+```typescript
+// Current (v1.1)
+interface Session {
+  id: string;
+  name: string;
+  desc: string;
+}
+
+// New (v1.2)
+interface Session {
+  id: string;           // UUID via crypto.randomUUID()
+  name: string;
+  desc: string;
+  createdAt: number;    // Date.now() timestamp
+  updatedAt: number;    // Date.now() timestamp
+}
+```
+
+### New Types for Conversations
+
+```typescript
+interface Conversation {
+  id: string;           // UUID via crypto.randomUUID()
+  sessionId: string;    // FK to Session
+  name: string;         // Auto-generated or user-set
+  messages: ChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: number;
+}
+```
+
+### IndexedDB Schema Design
+
+```typescript
+import { openDB } from 'idb';
+
+const db = await openDB('openclaw-chat', 1, {
+  upgrade(db) {
+    // Sessions store
+    const sessions = db.createObjectStore('sessions', { keyPath: 'id' });
+    sessions.createIndex('updatedAt', 'updatedAt');
+
+    // Conversations store
+    const convos = db.createObjectStore('conversations', { keyPath: 'id' });
+    convos.createIndex('sessionId', 'sessionId');
+    convos.createIndex('updatedAt', 'updatedAt');
+    convos.createIndex('sessionId_updatedAt', ['sessionId', 'updatedAt']);
+  },
+});
+```
+
+## Version Compatibility
 
 | Package | Compatible With | Notes |
 |---------|-----------------|-------|
-| vite-plugin-singlefile@^2.3.0 | vite@^6.1.0 | Peer dep: `vite ^5.4.11 \|\| ^6.0.0 \|\| ^7.0.0`. Our Vite 6.1 is in range. |
-| vite-plugin-singlefile@^2.3.0 | rollup@^4.x | Peer dep: `rollup ^4.44.1`. Vite 6 bundles Rollup 4. Satisfied. |
-| @evenrealities/evenhub-cli@^0.1.5 | typescript@^5.x | Peer dep: `typescript ^5`. Our TS ^5.7.0 is in range. |
-| @evenrealities/even_hub_sdk@^0.0.7 | vite-plugin-singlefile | SDK is ESM with `"sideEffects": false`. Tree-shaking and inlining work correctly. |
+| `idb@^8.0.3` | TypeScript ^5.7, Vite ^6.1, Vitest ^3.0 | ESM-first, `sideEffects: false`. Works with existing Vite config. No special Rollup plugin needed. Ships TypeScript declarations. |
+| `fake-indexeddb@^6.0.0` | Vitest ^3.0, jsdom ^25.0 | Auto-polyfill mode (`import 'fake-indexeddb/auto'`) patches globalThis. Compatible with existing test environment. |
+| BroadcastChannel | Chrome 54+, Firefox 38+, Safari 15.4+, Edge 79+ | iOS 15.4+ requirement matches Even App minimum. Android WebView uses Chromium, fully supported. |
+| `crypto.randomUUID()` | Chrome 92+, Safari 15.1+, Firefox 95+ | Secure contexts only (HTTPS or localhost). Even App WebView and dev server both qualify. |
+| IndexedDB 2.0 | All modern browsers | `getAll()`, `openKeyCursor()`, multiEntry indexes all available. Supported in flutter_inappwebview via WebKit (iOS) and Chromium (Android) storage managers. |
 
-## Runtime Wiring Architecture (No New Deps)
+## Stack Patterns by Context
 
-The voice loop wiring in main.ts follows a specific initialization order dictated by module dependencies:
+**If running in Even App WebView (glasses context):**
+- IndexedDB writes happen here (conversation messages arrive via gateway SSE)
+- BroadcastChannel emits conversation updates for hub to receive
+- Command menu renders via existing text container system (576x288 display)
+- No DOM manipulation beyond existing `bridge.textContainerUpgrade()`
 
-```
-1. createEventBus<AppEventMap>()           -- shared bus, no deps
-2. createAudioCapture(devMode)             -- standalone, no bus dep
-3. createEvenBridgeService(bus)            -- needs bus
-4. createGatewayClient()                   -- standalone
-5. createGestureHandler({bus, bridge, audioCapture, activeSessionId})
-                                           -- needs bus, bridge, audioCapture
-6. createGlassesRenderer({bridge, bus})    -- needs bridge, bus
-7. createDisplayController({bus, renderer, gestureHandler})
-                                           -- needs bus, renderer, gestureHandler
-                                           -- MUST be created AFTER gestureHandler
-                                              (event registration order matters)
-```
+**If running in browser (hub context):**
+- IndexedDB reads for history browsing and search
+- IndexedDB writes for hub text input (new messages from hub)
+- BroadcastChannel receives live conversation updates from glasses
+- DOM manipulation for conversation list, search UI, text input form
 
-The critical wiring gap (from PROJECT.md active requirements):
-- `bridge:audio-frame` -> `audioCapture.onFrame()` bus subscription is NOT yet wired
-- `audio:recording-stop` -> `gateway.sendVoiceTurn()` is NOT yet wired
-- `gateway:chunk` -> event bus forwarding is NOT yet wired
-
-These are pure event bus subscriptions in main.ts, requiring zero new libraries.
+**If BroadcastChannel unavailable (fallback):**
+- Both contexts share the same IndexedDB (same origin)
+- Hub polls IndexedDB for updates using a timestamp-based change detection
+- No new dependencies needed -- IndexedDB is already present
+- Higher latency (~500ms) but functionally correct
 
 ## Sources
 
-- [vite-plugin-singlefile GitHub](https://github.com/richardtallent/vite-plugin-singlefile) -- README, CHANGELOG, package.json verified
-- [vite-plugin-singlefile Vite 6 compatibility issue #104](https://github.com/richardtallent/vite-plugin-singlefile/issues/104) -- resolved in v2.1.0
-- [vite-plugin-singlefile CHANGELOG](https://github.com/richardtallent/vite-plugin-singlefile/blob/main/CHANGELOG.md) -- v2.3.0 confirmed latest
-- @evenrealities/even_hub_sdk README.md -- read from installed node_modules (v0.0.7)
-- @evenrealities/evenhub-cli package.json -- read from sibling repo node_modules (v0.1.5)
-- `evenhub pack --help` -- verified CLI interface locally
-- 8 app.json files across local Even G2 sample projects -- metadata format reverse-engineered
-- [EvenHub Developer Portal](https://evenhub.evenrealities.com/) -- platform overview
-- Sibling repo even-g2-apps/package.json -- reference implementation of build + pack workflow
+- [idb GitHub repository](https://github.com/jakearchibald/idb) -- ~1.19KB brotli, v8.0.3, promise-based IndexedDB wrapper (HIGH confidence)
+- [idb npm page](https://www.npmjs.com/package/idb) -- version 8.0.3, last published ~April 2025 (HIGH confidence)
+- [Dexie.js bundle size issue #1585](https://github.com/dexie/Dexie.js/issues/1585) -- ~29KB min+gzip confirmed (HIGH confidence)
+- [idb-keyval GitHub](https://github.com/jakearchibald/idb-keyval) -- ~600B, key-value only (HIGH confidence)
+- [BroadcastChannel API - MDN](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API) -- same-origin cross-context messaging (HIGH confidence)
+- [BroadcastChannel browser compatibility](https://www.testmuai.com/web-technologies/broadcastchannel/) -- 92% support score (HIGH confidence)
+- [crypto.randomUUID() - MDN](https://developer.mozilla.org/en-US/docs/Web/API/Crypto/randomUUID) -- browser-native UUID v4 (HIGH confidence)
+- [nanoid GitHub](https://github.com/ai/nanoid) -- 130 bytes, but built-in randomUUID is 0 bytes (HIGH confidence)
+- [Even G2 architecture notes](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md) -- WebView architecture, same-origin, bridge pattern (MEDIUM confidence)
+- [flutter_inappwebview storage manager](https://inappwebview.dev/docs/web-storage-manager/) -- IndexedDB available on iOS via WebKit storage manager (MEDIUM confidence)
+- [flutter_inappwebview GitHub issue #1604](https://github.com/pichillilorenzo/flutter_inappwebview/issues/1604) -- IndexedDB access in WebView (MEDIUM confidence)
+- [FlexSearch GitHub](https://github.com/nextapps-de/flexsearch) -- light build 4.5KB gzip (HIGH confidence)
+- [IndexedDB full-text search PoC](https://gist.github.com/inexorabletash/a279f03ab5610817c0540c83857e4295) -- manual tokenization approach (MEDIUM confidence)
+- [Using IndexedDB - MDN](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB) -- multiEntry indexes for token-based search (HIGH confidence)
+- Existing codebase analysis: `src/events.ts`, `src/types.ts`, `src/sessions.ts`, `src/settings.ts`, `src/main.ts` -- direct source inspection (HIGH confidence)
 
 ---
-*Stack research for: v1.1 Integration milestone (runtime wiring + EvenHub submission)*
+*Stack research for: Even G2 OpenClaw Chat App v1.2 -- Conversation Intelligence & Hub Interaction*
 *Researched: 2026-02-28*

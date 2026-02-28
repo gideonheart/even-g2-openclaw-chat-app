@@ -1,194 +1,280 @@
 # Pitfalls Research
 
-**Domain:** End-to-end voice loop integration and EvenHub submission for Even G2 smart glasses app
+**Domain:** Conversation persistence, cross-context sync, dynamic sessions, and command menu for Even G2 smart glasses app
 **Researched:** 2026-02-28
-**Confidence:** MEDIUM-HIGH (integration pitfalls verified against actual codebase; EvenHub submission details verified against sibling repo and CLI README; event bus timing verified against synchronous dispatch implementation)
+**Confidence:** MEDIUM-HIGH (IndexedDB WebView pitfalls verified against multiple sources and codebase constraints; FSM state explosion verified against existing 5x4 transition table; cross-context sync pitfalls verified against architecture -- Even App WebView runs hub and glasses in separate contexts; bus timing verified against synchronous dispatch in events.ts)
 
 ## Critical Pitfalls
 
-### Pitfall 1: Event Bus Subscription Ordering Determines Correctness
+### Pitfall 1: IndexedDB Transaction Auto-Commit Kills Async Persistence Patterns
 
 **What goes wrong:**
-The display controller reads `gestureHandler.getHintText()` inside its gesture event handlers, but the gesture handler updates its FSM state in its own handlers for the same events. If the display controller subscribes BEFORE the gesture handler, it reads stale state -- the hint text reflects the previous FSM state, not the post-transition state. The display shows "Tap to record" after the user already started recording.
+A developer writes a natural async pattern: open IndexedDB transaction, await gateway response or bus event, then write to the store. The transaction silently auto-commits before the async operation resolves. The put() call throws "Transaction is already committing or done" -- or worse, succeeds silently because a new implicit transaction is created, breaking atomicity. Messages appear saved but are actually lost after app restart.
 
 **Why it happens:**
-The event bus (`createEventBus`) dispatches synchronously to all handlers in registration order. This is by design and is documented in `display-controller.ts` (line 8-11: "ORDERING NOTE"). When wiring modules together in `main.ts`, the subscription order is the initialization order. A developer wiring modules in a different order (e.g., alphabetical, or display-first because "it depends on everything") silently breaks hint bar correctness. There are no runtime errors -- just wrong UI state.
+IndexedDB transactions auto-close as soon as the browser finishes processing the current microtask queue with no pending requests. Any `await` that yields to the event loop (even a single `await sleep(0)`) causes the transaction to commit. This is the single most common IndexedDB bug. The existing codebase has zero async storage -- settings use synchronous localStorage. Developers will naturally try the same patterns they use with localStorage but with `await db.put()` inside broader async flows.
+
+The specific danger in this app: the voice loop controller listens for `gateway:chunk` events (synchronous bus dispatch), and a developer will try to persist each chunk inside the event handler. If they open a transaction in `response_start`, accumulate in `response_delta`, and finalize in `response_end`, the transaction dies between the first and second event because each event dispatch is a separate synchronous call stack.
 
 **How to avoid:**
-- The runtime `main.ts` initialization must follow a strict dependency order: (1) create event bus, (2) create bridge, (3) create audio capture, (4) create gesture handler (subscribes to gesture events), (5) create display controller (subscribes to same gesture events AFTER gesture handler). Document this order with comments explaining why.
-- Add a startup self-test: after wiring, emit a synthetic `gesture:tap` and verify the display controller reads the expected hint text. Log a warning if the hint does not match expected state.
-- Consider adding a `bus.listenerCount('gesture:tap')` assertion before display controller init to verify the gesture handler is already subscribed.
+- Never hold an IndexedDB transaction open across event bus callbacks. Each bus event handler that writes to IndexedDB must open its own transaction, write, and let it auto-commit within that single synchronous call.
+- Use a write-behind buffer pattern: accumulate chat messages in memory (the existing `viewport.messages` array), then persist the complete message to IndexedDB only at `response_end` or on a debounced timer (e.g., every 2 seconds during streaming). One transaction per complete message, not per chunk.
+- Use the `idb` library (Jake Archibald's promise wrapper) which makes transaction scoping explicit and prevents accidental cross-await usage. Avoid raw IndexedDB API.
+- Add a persistence service with a simple API: `saveMessage(msg: ChatMessage): Promise<void>` that internally opens a fresh transaction each call.
 
 **Warning signs:**
-- Hint bar text lags by one state transition (shows previous state's hint)
-- Hint bar text is correct on the second gesture but wrong on the first
-- Tests pass because test setup happens to create handlers in the right order, but the production `main.ts` does not
+- "InvalidStateError: The transaction has finished" in console during streaming
+- Messages appear in the chat UI but disappear after app restart
+- Persistence works for short responses but fails for long streaming responses
+- Tests pass (fake-indexeddb handles auto-commit differently than real browsers)
 
 **Phase to address:**
-Runtime wiring phase (main.ts initialization). This must be the first concern of the integration phase.
+IndexedDB persistence layer phase (first phase of v1.2). Design the transaction strategy before writing any persistence code.
 
 ---
 
-### Pitfall 2: Bridge Must Initialize Before Audio Control or Display Updates
+### Pitfall 2: IndexedDB Persistence May Not Survive Even App WebView Lifecycle
 
 **What goes wrong:**
-The voice loop attempts to start recording (`bridge.startAudio()`) or push display text (`bridge.textContainerUpgrade()`) before the bridge's `init()` has completed. The SDK's `waitForEvenAppBridge()` is asynchronous and `createStartUpPageContainer()` must complete before `audioControl()` works. Calling audio or display methods on a null bridge silently fails (the current code returns `false` or `undefined`), and the user sees no recording indicator and hears no response.
+IndexedDB data persists across page loads in a normal browser, but the Even App runs web content in a `flutter_inappwebview` on the iPhone. WebKit (WKWebView, which backs flutter_inappwebview on iOS) has a history of clearing IndexedDB data under storage pressure, on iOS updates, or after the Even App is force-quit. There is a long-standing WebKit bug (Bug 144875) where WKWebView does not persist IndexedDB data after the parent app closes. Conversations the user thought were saved are silently gone.
 
 **Why it happens:**
-The v1.0 modules were built and tested independently. Each module's factory function is synchronous, but `bridge.init()` is async. In `main.ts`, a developer may create all services synchronously, wire event subscriptions, then call `bridge.init()` -- but a gesture event could fire during bridge initialization (from the mock bridge or a race with real hardware). The gesture handler calls `bridge.startAudio()` which silently fails because the page container does not exist yet.
+The Even App architecture is: server -> HTTPS -> iPhone Even App (Flutter) -> flutter_inappwebview -> your web app. On iOS, flutter_inappwebview uses WKWebView, which has historically had storage persistence issues. Safari also has a 7-day data expiry for sites "without user interaction" (Intelligent Tracking Prevention), though this typically affects third-party contexts. Additionally, if the Even App ever clears its WebView cache (some Flutter apps do this on update), all IndexedDB data is wiped.
+
+The codebase currently uses `localStorage` for settings, which faces the same risks but settings are low-value (easily re-entered). Conversation history is high-value and irreplaceable.
 
 **How to avoid:**
-- The `main.ts` boot sequence must be: (1) create bus, (2) create bridge, (3) `await bridge.init()`, (4) THEN create gesture handler and display controller. No gesture subscriptions should exist before the bridge is ready.
-- Add a guard in the gesture handler: check `bridge.isReady()` (needs a new method or state flag) before dispatching `START_RECORDING` or `STOP_RECORDING`. Emit an error event if the bridge is not ready.
-- The display controller's `init()` calls `renderer.init()` which calls `bridge.rebuildPageContainer()`. This must also await. Chain: `await bridge.init()` then `await displayController.init()`.
-- Consider emitting a `bridge:ready` event that gates the rest of initialization.
+- Treat IndexedDB as a cache, not as the single source of truth. Design the persistence layer with an "export to gateway" capability from day one. The gateway backend is the permanent store; IndexedDB is the fast local buffer.
+- Implement `navigator.storage.persist()` at app startup to request durable storage. Check the return value and log whether persistent storage was granted. If denied, show a warning in the hub diagnostics page.
+- Add a `storage:quota-warning` event to the bus when IndexedDB usage exceeds 50% of the available quota (check via `navigator.storage.estimate()`).
+- On every app boot, verify IndexedDB integrity by reading a known sentinel record. If the sentinel is missing, emit a `storage:data-lost` event and show a user-visible warning rather than silently operating with no history.
+- Include conversation count and last-saved timestamp in the hub's health display so users can see if their data survived.
 
 **Warning signs:**
-- `bridge.startAudio()` returns `false` but no error is logged
-- First tap after app load does nothing; second tap works
-- Display shows blank glasses for 1-2 seconds after app start, then suddenly renders
-- Works in mock mode (mock bridge `init()` resolves instantly) but fails with real glasses
+- Conversation history is empty after iPhone reboot or Even App update
+- `navigator.storage.persisted()` returns `false` on the Even App WebView
+- IndexedDB open() succeeds but the database is empty (data was evicted)
+- Works fine during development (browser has generous storage) but fails on device
 
 **Phase to address:**
-Runtime wiring phase (main.ts initialization). The async initialization chain must be designed correctly from the start.
+IndexedDB persistence layer phase. The storage durability check must be part of the initial implementation, not added later.
 
 ---
 
-### Pitfall 3: Audio Frame Subscription Gap Between Bridge Init and Gesture Handler Creation
+### Pitfall 3: Session Switch During Active Voice Loop Causes Data Corruption
 
 **What goes wrong:**
-The `bridge:audio-frame` event fires from the bridge as soon as `audioControl(true)` is called, but the `audioCapture.onFrame()` subscription to this event does not exist yet. The PROJECT.md explicitly identifies this as tech debt: "bridge:audio-frame -> audioCapture.onFrame() bus subscription (glasses-mode PCM)". If this subscription is wired too late, early PCM frames are silently dropped. The audio blob sent to the gateway is missing the first 100-500ms of speech, cutting off the beginning of the user's utterance.
+The user double-taps to open the command menu and selects /switch while the gateway is streaming a response. The active session ID changes, but the in-flight SSE stream continues delivering chunks for the old session. The display controller writes these chunks to the new session's viewport, and the persistence layer saves them under the new session's ID. The old session loses its final response, and the new session starts with a ghost response from a different conversation.
 
 **Why it happens:**
-The current `audio-capture.ts` module does NOT subscribe to `bridge:audio-frame` on its own -- it exposes a passive `onFrame(pcm)` method that must be called by someone. The missing glue is: `bus.on('bridge:audio-frame', (p) => audioCapture.onFrame(p.pcm))`. This subscription must exist BEFORE any `bridge.startAudio()` call. If the subscription is created in the same initialization block as the gesture handler, a rapid user tap could trigger recording before the subscription is active.
+The existing gesture handler receives `activeSessionId` as a getter function: `activeSessionId: () => string`. The voice loop controller reads `settings()` at the time audio is sent. But the display controller and persistence layer read the "current session" at the time they receive bus events. There is no concept of a "turn ID" that binds a gateway response to the session that initiated it. The gateway does return a `turnId` in `VoiceTurnChunk`, but nothing in the current pipeline uses it for session correlation.
+
+The FSM has a `menu` state that coexists with `thinking` (double-tap during thinking -> menu), but the transition table currently sends `thinking` + `double-tap` -> `menu` with `TOGGLE_MENU` action. There is no guard preventing session switch while a stream is active.
 
 **How to avoid:**
-- Wire the `bridge:audio-frame -> audioCapture.onFrame()` subscription immediately after creating the audio capture module and before any gesture handler that could trigger recording. Place it in the same initialization block as `bus.on('bridge:connected', ...)`.
-- The subscription should be unconditional and permanent (not created/destroyed per recording session). The `audioCapture.onFrame()` method already guards with `if (recording && !devMode)`.
-- Add an integration test: start recording, emit 10 `bridge:audio-frame` events, stop recording, verify the blob contains all 10 frames.
+- Tag every voice turn with both `sessionId` and `turnId` at the point of `audio:recording-stop`. Carry these IDs through the entire pipeline: gateway request, SSE chunks, display rendering, and persistence writes. Never use the "current session" for writes -- always use the turn's originating session.
+- Add a `turn:active` flag to the voice loop controller. When a turn is in flight, the command menu's /switch and /delete commands are disabled (greyed out on the glasses display, show "Finish current turn first" hint).
+- Alternatively, allow session switch during active turn but drain the in-flight response to the originating session. The display stops showing the old turn's chunks, but persistence completes to the correct session ID.
+- Add a `voiceLoop:turnStart` and `voiceLoop:turnEnd` event pair to the bus so all consumers know when a turn is in flight.
 
 **Warning signs:**
-- STT transcription misses the first word of every utterance
-- Audio blob size is smaller than expected for the recording duration
-- Works perfectly in dev mode (browser MediaRecorder) but cuts off on glasses
-- The bug is intermittent -- depends on how fast the user speaks after tapping
+- Switching sessions mid-response causes the new session to show a response from the previous conversation
+- The old session is missing its last response after switching back
+- Persistence layer saves a message with mismatched sessionId and content
+- Race conditions in tests that depend on session ID timing
 
 **Phase to address:**
-Runtime wiring phase. The audio frame subscription is explicitly listed as v1.1 active work.
+Dynamic sessions phase. Must be resolved before session switching is exposed via the command menu.
 
 ---
 
-### Pitfall 4: vite-plugin-singlefile Incompatible with Multi-Page Vite Config
+### Pitfall 4: FSM State Explosion When Adding Command Menu Sub-States
 
 **What goes wrong:**
-The current `vite.config.ts` has two inputs: `main: 'index.html'` and `simulator: 'preview-glasses.html'`. Adding `vite-plugin-singlefile` causes a hard build error: "Invalid value for option 'output.inlineDynamicImports' -- multiple inputs are not supported when 'output.inlineDynamicImports' is true." The build completely fails.
+The existing FSM has 5 states (idle, recording, sent, thinking, menu) with 5 inputs (tap, double-tap, scroll-up, scroll-down, reset). Adding command menu items (/new, /reset, /switch, /rename, /delete) means the `menu` state needs to track which item is focused, handle selection (tap), handle scrolling between items, and handle confirmation for destructive actions (delete). A naive approach adds 5+ sub-states (menu-new-focused, menu-reset-focused, etc.) or a parallel "selected item" variable, blowing up the transition table from 25 entries to 50+ entries and making it untestable.
 
 **Why it happens:**
-`vite-plugin-singlefile` sets `output.inlineDynamicImports = true` to merge all JS/CSS into the HTML. Rollup explicitly forbids this with multiple entry points. This is a fundamental Rollup limitation, not a plugin bug. The plugin maintainer has marked this as "won't fix" ([GitHub issue #83](https://github.com/richardtallent/vite-plugin-singlefile/issues/83)).
+The existing FSM is a flat transition table -- elegant for 5 states but not designed for hierarchical state. The `menu` state currently only has: double-tap -> idle (close), tap -> idle (dismiss), scroll-up/down -> menu (scroll), reset -> idle. Adding "which menu item is selected" and "is a confirmation dialog showing" requires either nested states or auxiliary data alongside the FSM state.
+
+The 576x288 display constraint makes this worse: the menu must show items in a scrollable list, but the display can only show ~4-5 lines of text at the menu's y-position range (the status bar takes 30px, leaving 258px for content).
 
 **How to avoid:**
-- **Option A (recommended): Do not use vite-plugin-singlefile at all.** The sibling `even-g2-apps` repo ships standard Vite output (separate JS/CSS in `dist/assets/`) and uses `evenhub pack app.json dist` successfully. EvenHub packs the entire `dist/` directory into an `.ehpk` file -- it does NOT require a single HTML file. The PROJECT.md assumption about "self-contained dist/index.html" may be a misunderstanding.
-- **Option B: Separate build configs.** Use `vite-plugin-singlefile` only for the main `index.html` build, and build `preview-glasses.html` separately. This requires two Vite build invocations with different configs.
-- **Option C: Remove the simulator from the production build.** The `preview-glasses.html` is a development tool. Exclude it from the production build's `rollupOptions.input`, keep only `index.html`, and enable `vite-plugin-singlefile` for the single entry.
+- Do NOT expand the flat FSM with per-menu-item states. Instead, keep the FSM's `menu` state as-is and add a separate, independent `MenuController` that manages menu item selection, scrolling, and confirmation as its own internal state. The FSM stays at 5 states. The menu controller activates when FSM enters `menu` and deactivates when FSM leaves `menu`.
+- The MenuController is a pure-function module (like gesture-fsm.ts) with its own state: `{ items: MenuItem[], selectedIndex: number, confirmingAction: string | null }`. It receives scroll-up/scroll-down/tap inputs from the gesture handler when FSM is in `menu` state.
+- Use a hierarchical state pattern: the FSM's `menu` state delegates to the MenuController. The gesture handler checks `if (fsmState === 'menu') menuController.handleInput(input)` before the normal FSM transition.
+- Keep the confirmation flow simple: /delete shows "Delete [name]? Tap to confirm" on the display, double-tap to cancel. One level of nesting maximum, no nested menus.
 
 **Warning signs:**
-- Build fails immediately with the inlineDynamicImports error
-- Developer "fixes" it by removing the simulator entry, breaking `npm run dev` for the preview tool
-- Developer disables the singlefile plugin entirely and assumes the dist structure is fine (which it is, but without understanding why)
+- FSM transition table grows beyond 30-35 entries and becomes hard to verify by inspection
+- Test file for gesture-fsm.ts doubles in size
+- Menu selection bugs where scrolling past the last item wraps or gets stuck
+- Gesture inputs are handled differently in menu vs non-menu states with duplicated logic
 
 **Phase to address:**
-EvenHub submission packaging phase. Must be resolved before the first build attempt.
+Command menu phase. Design the MenuController as a separate pure-function module before integrating with the FSM.
 
 ---
 
-### Pitfall 5: `evenhub pack` Requires Correct app.json Schema and `dist/` Structure
+### Pitfall 5: BroadcastChannel Unavailable or Unreliable in Even App WebView
 
 **What goes wrong:**
-The `evenhub pack` command silently produces a corrupt `.ehpk` file or fails validation if the `app.json` has missing fields, wrong `entrypoint` path, or the `permissions.network` array does not include the gateway domain. The app uploads to EvenHub but fails to load on glasses, or loads but cannot reach the backend gateway.
+The hub (running in the phone browser or in a hub WebView) and the glasses app (running in the Even App WebView) need real-time sync. A developer uses BroadcastChannel for cross-context communication, but BroadcastChannel support in Android WebView and iOS WKWebView is listed as "unknown" on caniwebview.com. Even if it works in development (Chrome browser), it fails silently on the actual device because the hub and glasses contexts may not share the same browsing context origin, or BroadcastChannel simply is not available in the flutter_inappwebview runtime.
 
 **Why it happens:**
-The `app.json` schema is sparsely documented. From the sibling repo examples, the required fields are: `package_id`, `edition`, `name`, `version`, `min_app_version`, `tagline`, `description`, `author`, `entrypoint`, and `permissions`. The `permissions.network` array must whitelist every external domain the app contacts. The `entrypoint` must point to the HTML file relative to the dist root (always `index.html`). Developers forget to add their gateway domain to the network permissions, and the WebView silently blocks fetch requests.
+The Even App architecture loads the web app URL in flutter_inappwebview. The hub might be opened as a separate browser tab on the phone, or as a different WebView context within the Even App. BroadcastChannel only works between browsing contexts of the same origin AND within the same storage partition. Two separate WebView instances (even loading the same URL) may have different storage partitions, making BroadcastChannel invisible across them.
+
+The existing codebase has no cross-context communication -- the hub (`hub-main.ts`) and glasses (`glasses-main.ts`) are completely independent. They share the same source but run as separate entry points with separate state.
 
 **How to avoid:**
-- Base the `app.json` on the sibling repo's working examples. Required structure:
-  ```json
-  {
-    "package_id": "com.yourorg.openclaw-chat",
-    "edition": "202602",
-    "name": "OpenClaw Chat",
-    "version": "1.1.0",
-    "min_app_version": "0.1.0",
-    "tagline": "Voice AI assistant for Even G2",
-    "description": "...",
-    "author": "Name <email>",
-    "entrypoint": "index.html",
-    "permissions": {
-      "network": ["*"]
-    }
-  }
-  ```
-- Use wildcard `"*"` for `permissions.network` during development since the gateway URL is user-configurable. The user's gateway could be on any domain/IP.
-- Run `evenhub pack app.json dist --check` to validate the package ID is available before submission.
-- Add a `pack` npm script: `"pack": "evenhub pack app.json dist --output openclaw-chat.ehpk"`.
+- Do NOT rely on BroadcastChannel as the primary sync mechanism. Use it as an optimization only, with a fallback.
+- Primary sync mechanism: IndexedDB as the shared state store + polling. The hub polls IndexedDB every 500ms-1s for new messages. The glasses app writes to IndexedDB after each message. This is slow but universally reliable.
+- Enhancement: Use `localStorage` storage events as a lightweight change notification. Write a `lastUpdated` timestamp to localStorage after each IndexedDB write. The hub listens for the `storage` event and re-reads from IndexedDB when it fires. Storage events fire cross-tab on the same origin.
+- Feature-detect BroadcastChannel (`'BroadcastChannel' in self`) and use it when available, fall back to localStorage events + polling when not.
+- Design the sync layer as an abstract interface: `SyncChannel { send(msg): void; onMessage(cb): Unsubscribe }` with BroadcastChannel and localStorage+polling implementations.
 
 **Warning signs:**
-- `evenhub pack` succeeds but the `.ehpk` file is very small (missing assets)
-- App loads on glasses but fetch requests fail silently (blocked by network permissions)
-- App shows blank screen (wrong `entrypoint` path -- e.g., `dist/index.html` instead of `index.html`)
-- Package ID rejected on submission (already taken, wrong format)
+- Hub shows stale conversation data that never updates
+- Sync works in Chrome dev mode but not on the actual iPhone with Even App
+- `typeof BroadcastChannel` returns `'undefined'` in the Even App WebView console
+- Storage events fire in some contexts but not others
 
 **Phase to address:**
-EvenHub submission packaging phase. Create the `app.json` early and validate with `evenhub pack --check`.
+Event bus bridge / cross-context sync phase. Must be the first thing prototyped on real hardware before building features that depend on it.
 
 ---
 
-### Pitfall 6: SSE Stream Abort Does Not Clean Up Heartbeat Timer or Status Handlers
+### Pitfall 6: Hub Text Input Races with Glasses Voice Input on Same Session
 
 **What goes wrong:**
-The gateway client starts a heartbeat timer via `startHeartbeat()` and registers status change handlers. When the app navigates away, goes to background (phone sleep), or the user switches sessions, these resources are not cleaned up. The heartbeat timer continues firing, making fetch requests to a gateway that may no longer be relevant. Status change handlers accumulate across session switches, causing duplicate UI updates and memory leaks.
+The user types a message in the hub while simultaneously recording a voice message on the glasses. Both inputs target the same session. The gateway receives two overlapping requests. The display shows interleaved responses (hub text response chunks mixed with glasses voice response chunks). The persistence layer saves messages in the wrong order. The conversation becomes incoherent.
 
 **Why it happens:**
-The gateway client's `sendVoiceTurn()` method has its own `abort()` call, but `startHeartbeat()` and `stopHeartbeat()` are independent lifecycle methods. The integration code in `main.ts` must pair every `startHeartbeat()` with a `stopHeartbeat()`, and every `onChunk()`/`onStatusChange()` subscription with its cleanup function. When wiring the voice loop, developers focus on the happy path (send audio, receive response) and forget cleanup.
+The existing voice loop is single-threaded by gesture: tap starts recording, tap stops, gateway receives one request, streams one response. There is no mechanism to queue or block concurrent requests. Adding hub text input introduces a second input source that has no coordination with the glasses voice loop. The gateway client's `sendVoiceTurn()` already calls `abort()` on the previous request, but a hub text submission would be a separate code path that does not share the same abort controller.
+
+The event bus is synchronous and single-threaded, which helps with ordering within a single context, but the hub and glasses run in separate contexts with separate event bus instances. There is no global request queue.
 
 **How to avoid:**
-- The voice loop orchestrator in `main.ts` must track all cleanup functions returned by `gateway.onChunk()` and `gateway.onStatusChange()` and call them on app shutdown.
-- Call `gateway.destroy()` (which calls `abort()`, `stopHeartbeat()`, and clears all handlers) when the app is shutting down or switching sessions.
-- Add a `beforeunload` event listener that calls `gateway.destroy()`.
-- Consider auto-starting the heartbeat inside `sendVoiceTurn()` and auto-stopping it in `destroy()` so the lifecycle is tied to the client, not to external orchestration.
+- Add a turn-level lock: a `TurnManager` that tracks whether a turn is in flight. Both the glasses voice input and the hub text input must acquire this lock before sending to the gateway. If a turn is in flight, the second input is queued (not dropped).
+- The TurnManager lives in the persistence layer (IndexedDB) since it must be visible to both contexts. Write a `currentTurn: { sessionId, turnId, status }` record. Before starting a new turn, check this record.
+- For the hub specifically: show a "Glasses is recording..." indicator that disables the send button when a voice turn is in flight. The hub learns about the glasses state via the cross-context sync channel.
+- For the glasses: if a hub text turn is in flight, the gesture handler shows "Hub message pending..." hint and blocks START_RECORDING until the turn completes.
 
 **Warning signs:**
-- Network tab shows periodic `/health` requests after the user has left the app
-- StatusChangeHandler fires multiple times for a single status change (handlers accumulated)
-- Memory usage grows over time in long sessions (handlers never garbage collected)
-- Console warnings about fetch on a destroyed/detached context
+- Two responses stream simultaneously on the glasses display, interleaving chunks
+- The conversation log shows a hub message sandwiched inside a voice response
+- Gateway receives abort() followed immediately by a new request from a different source
+- Persistence layer has two messages with nearly identical timestamps from different sources
 
 **Phase to address:**
-Runtime wiring phase (main.ts initialization and shutdown). Must include a teardown path, not just a startup path.
+Hub text input phase. Must be designed after the TurnManager/turn-level lock is in place, which depends on the persistence layer.
 
 ---
 
-### Pitfall 7: Voice Loop Has No End-to-End Error Recovery
+### Pitfall 7: Command Menu Rendering Overflows 576x288 Display
 
 **What goes wrong:**
-The voice loop (tap -> record -> gateway -> stream -> display) breaks at any point and leaves the system in a stuck state. The gesture FSM is in `sent` state but the gateway request failed, so the user is stuck seeing "Processing..." forever. Or the SSE stream errors mid-response but the display controller never receives `response_end`, so the streaming flush timer runs indefinitely and the icon stays on "thinking."
+The command menu (/new, /reset, /switch, /rename, /delete) needs to render a scrollable list on the 576x288 glasses display, but the display is text-only with absolute positioning and no CSS. A developer renders all 5 menu items at once, exceeding the available vertical space, and the bottom items are clipped or overlap with the hint bar. Or the menu text is too long ("Switch to: Gideon (Coding assistant)") and gets truncated mid-word, making items unreadable.
 
 **Why it happens:**
-Each module handles its own errors independently. The gateway client emits `{ type: 'error' }` chunks, the display controller handles error chunks by calling `endStreaming()` and setting icon to idle. But the gesture FSM does not listen to gateway errors -- it has no input for "error" and no transition from `sent` -> `idle` or `thinking` -> `idle` on error. The FSM only transitions on user gestures. Without an error-driven transition, the FSM is stuck.
+The glasses display is not a DOM -- it is a text-only canvas with SDK-controlled positioning. The existing layout uses 3 containers: status (0-30px), chat (34-288px), and the chat area is 576x254px. The command menu must replace the chat container's content. With the single fixed font and no size control, each line takes approximately 24-28px height. The chat container can fit approximately 9-10 lines. But the menu also needs: a title line ("Commands"), visual focus indicator (e.g., "> " prefix on selected item), and a hint line at the bottom ("Tap to select | Scroll to navigate"). This leaves room for only about 5-7 visible menu items.
+
+The current renderer uses `bridge.textContainerUpgrade(2, text)` to push text to the chat container with a 2000-character limit. Menu rendering must stay within this same constraint.
 
 **How to avoid:**
-- Add an `error` input to the gesture FSM that transitions from any active state (`sent`, `thinking`) back to `idle`. Wire this to `gateway:chunk` events of type `error` and to `gateway:status` events with status `error`.
-- Implement a timeout: if the FSM is in `sent` state for more than 30 seconds without receiving `response_start`, auto-transition to `idle` and show an error message.
-- The display controller should emit a `voice-loop:error` event that the gesture handler listens to, creating a bidirectional error flow.
-- Test the error path explicitly: simulate a gateway 500 error, a network timeout, and an SSE stream that aborts mid-response. Verify the FSM returns to `idle` and the display shows a user-friendly error.
+- Design menu rendering as a viewport window over the items array, identical to the existing `viewport.ts` pattern. Track `selectedIndex` and render only items visible in the current scroll window.
+- Use short, action-oriented labels: `/new`, `/reset`, `/switch`, `/rename`, `/delete`. Show description only for the focused item on a second line.
+- Format menu items as: `> /new  Create session` (focused) vs `  /switch` (unfocused). The `> ` prefix is the selection indicator.
+- Limit item descriptions to 40 characters. Use the existing `truncate()` utility from utils.ts.
+- The menu title and hint text consume 2 lines, leaving 7 lines for items -- more than enough for 5 commands. But /switch needs a sub-menu for session selection, which could have many sessions. Apply the same scrolling viewport pattern for session lists.
+- Test with maximum-length session names (the current Session type has `name: string` with no length limit).
 
 **Warning signs:**
-- App hangs on "Processing..." after a network error -- requires force quit
-- Icon stays on "thinking" animation indefinitely after a gateway timeout
-- Streaming flush timer `setInterval` runs forever after an error (memory/CPU waste)
-- User taps to record again but nothing happens because FSM is stuck in `sent`
+- Menu items are cut off at the bottom of the display
+- Scrolling past the last item shows blank space or wraps to the top unexpectedly
+- Selected item indicator is not visible after scrolling
+- Menu text overlaps with the status bar or extends past the 576px width
 
 **Phase to address:**
-Voice loop integration phase. Error recovery must be designed as part of the orchestration, not retrofitted.
+Command menu rendering phase. Create a `MenuRenderer` that reuses the viewport windowing pattern.
+
+---
+
+### Pitfall 8: Full-Text Search on IndexedDB Is Inherently Slow Without Explicit Index Design
+
+**What goes wrong:**
+A developer implements full-text search by iterating all conversation messages with a cursor and running `text.toLowerCase().includes(query)` on each. This works for 10 conversations but becomes noticeably slow (>500ms) at 100+ conversations with long messages, freezing the hub UI and blocking the main thread.
+
+**Why it happens:**
+IndexedDB has no built-in full-text search. Its indexes only support exact match, range queries, and key-prefix matching. Searching for a substring within a message body requires a full table scan. The IndexedDB cursor API is async and callback-based, adding overhead per record. On the Even App WebView (mobile device), CPU and memory are more constrained than desktop, making this worse.
+
+The existing app has no search functionality. The `viewport.ts` module operates on in-memory arrays. Moving to IndexedDB-backed persistence introduces the first scenario where a query must scan unbounded data.
+
+**How to avoid:**
+- Pre-compute a search index on write, not on query. When saving a message, tokenize the text into lowercase words and store a `words: string[]` field on the message record. Create a multi-entry IndexedDB index on the `words` field. Full-text search becomes: `index.getAll(IDBKeyRange.only(queryWord))` for each query word, then intersect results in memory.
+- For the v1.2 scope, a simpler approach: keep an in-memory search index (Map of word -> messageId[]) that is built on app startup by reading all messages once. Search queries hit the in-memory index. This avoids IndexedDB cursor overhead during search.
+- Cap the number of stored conversations (e.g., 200) with an LRU eviction policy. This bounds scan time regardless of approach.
+- Run search in a debounced handler (300ms after last keystroke) to avoid firing on every character.
+- If search results take >200ms to compute, move the search to a Web Worker (if available in the WebView) to avoid blocking the hub UI thread.
+
+**Warning signs:**
+- Search results take >300ms to appear in the hub
+- Hub UI freezes during search on mobile device
+- Search works fine with 5 conversations but degrades linearly as history grows
+- Tests pass with small fixture data but real-world performance is unacceptable
+
+**Phase to address:**
+Full-text search phase (likely one of the later v1.2 phases). Design the index strategy when building the persistence layer, even if search UI comes later.
+
+---
+
+### Pitfall 9: Synchronous Event Bus Cannot Bridge Two Separate JavaScript Contexts
+
+**What goes wrong:**
+A developer assumes the typed event bus (`createEventBus<AppEventMap>()`) can be used for hub-to-glasses communication because both contexts use the same TypeScript types. They add new events like `hub:text-submitted` or `sync:message-saved` to `AppEventMap` and expect the hub to emit and the glasses to receive. Nothing happens. The bus instances are completely separate -- one in the hub WebView, one in the glasses WebView.
+
+**Why it happens:**
+The `main.ts` router creates completely separate boot paths: `glasses-main.ts` creates its own `createEventBus<AppEventMap>()`, and `hub-main.ts` does not even use the event bus (it is vanilla DOM-event driven). These are two separate JavaScript execution contexts, potentially in two separate WebViews. The bus is an in-memory Map of handlers -- it has no serialization, no network transport, no persistence.
+
+The codebase's clean architecture (typed bus, pure functions, factory pattern) makes it easy to forget that types are compile-time only. At runtime, the hub and glasses have zero shared state.
+
+**How to avoid:**
+- Create a clear conceptual separation: the AppEventMap bus is for intra-context communication ONLY (within glasses-main or within a hypothetical hub-bus). Cross-context communication uses a separate mechanism: the SyncChannel abstraction (see Pitfall 5).
+- Define a separate `SyncEventMap` type for cross-context messages. These messages must be serializable (no Blob, no functions, no circular references). Keep `AppEventMap` for internal events.
+- The bridge between internal bus and sync channel is explicit adapter code: `bus.on('message:saved', (msg) => syncChannel.send({ type: 'message:saved', payload: msg }))`. This makes the boundary visible and testable.
+- Document the architecture boundary clearly: "AppEventMap = same context, SyncEventMap = cross context" in a types file.
+
+**Warning signs:**
+- New event types added to AppEventMap that are only emitted in one context and expected in another
+- Tests mock the bus and pass, but real-device testing shows no cross-context communication
+- Developer adds `bus.on('hub:text-submitted', ...)` in glasses-main.ts and it never fires
+
+**Phase to address:**
+Event bus bridge phase. This architectural decision must be made before any cross-context feature is implemented.
+
+---
+
+### Pitfall 10: IndexedDB Version Upgrade Blocks If Old Connection Is Open in Another Context
+
+**What goes wrong:**
+The glasses WebView has an open IndexedDB connection. The hub WebView tries to open the same database with a higher version number (because a schema migration was added). The upgrade is blocked because the glasses WebView did not close its connection. The hub hangs indefinitely on `indexedDB.open()`, and the `onblocked` event fires but nobody handles it. The hub shows a blank conversation history page.
+
+**Why it happens:**
+IndexedDB requires ALL existing connections to a database to close before a version upgrade can proceed. The spec says: when a higher version is requested, the browser sends a `versionchange` event to all open connections. Those connections must call `db.close()` in response. If they do not, the upgrade request fires a `blocked` event and waits indefinitely. In the Even App, the glasses WebView and hub WebView are separate contexts that may both hold open IndexedDB connections to the same database.
+
+**How to avoid:**
+- Always register a `versionchange` event handler on every `IDBDatabase` instance that immediately closes the connection: `db.onversionchange = () => db.close()`. This is mandatory for any multi-context IndexedDB usage.
+- Handle the `blocked` event on the open request: `request.onblocked = () => { /* retry after delay, or show user message */ }`. Include a timeout (5 seconds) and fallback behavior.
+- Minimize schema migrations. Design the initial IndexedDB schema to be extensible (use generic object stores with flexible value shapes rather than rigid, version-coupled schemas).
+- Use a single, stable database version for v1.2. Only bump the version if absolutely necessary (new indexes, new object stores). Adding data to existing stores does not require a version bump.
+
+**Warning signs:**
+- Hub page loads but conversation list never appears
+- Console shows "blocked" event on IndexedDB open request
+- Works when only one context is open, fails when both are open simultaneously
+- Schema migration works in tests (single context) but blocks on device (dual context)
+
+**Phase to address:**
+IndexedDB persistence layer phase. The `versionchange` handler must be part of the database initialization code from the first implementation.
 
 ---
 
@@ -196,109 +282,118 @@ Voice loop integration phase. Error recovery must be designed as part of the orc
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| No `bridge:audio-frame` subscription | Avoids touching audio-capture.ts | Glasses-mode recording silently produces empty blobs | Never -- this is explicit v1.1 scope and listed as tech debt |
-| Keep orphaned event types in AppEventMap | Avoids touching types.ts | Confusing API surface; developers wire handlers to events that are never emitted | Accept for v1.1 if cleanup is tracked; fix before v1.2 |
-| Hardcode initialization order without comments | Faster to write main.ts | Next developer reorders initialization and breaks hint bar timing | Never -- 3 comment lines prevent hours of debugging |
-| Skip gateway.destroy() on app shutdown | Happy path works fine | Heartbeat timer leaks, status handlers accumulate, stale fetch requests | Never -- `beforeunload` handler is 3 lines of code |
-| Use vite-plugin-singlefile without removing simulator entry | Seems like it should "just work" | Hard build failure, blocks all packaging | Never -- verify build before committing Vite config changes |
-| Skip error-to-idle FSM transition | Simplifies FSM transition table | App gets stuck on any error; requires force quit | First week of integration prototyping only; must fix before testing |
+| Persist only on `response_end`, not per-chunk | Simpler persistence logic, fewer IDB transactions | Long responses lost entirely if app crashes mid-stream | v1.2 MVP only; add periodic flush (every 5s) before release |
+| Skip `navigator.storage.persist()` check | Avoids platform-specific code paths | Data silently evicted under storage pressure on iOS | Never -- 3 lines of code, critical for user trust |
+| Use polling instead of BroadcastChannel for sync | Works everywhere, no feature detection needed | 500ms-1s latency for hub<->glasses updates, battery drain | Acceptable for v1.2; optimize with BroadcastChannel in v1.3 |
+| Full table scan for search | No index maintenance, simpler persistence schema | Search freezes UI at 100+ conversations | Acceptable if conversations capped at 50; not beyond |
+| Single shared database for hub and glasses | Simpler code, single schema file | Version upgrade blocking between contexts (Pitfall 10) | Acceptable with proper `versionchange` handler |
+| Store full message text without tokenization | Simpler write path, no preprocessing | Search requires full scan, grows linearly with data | Acceptable for v1.2 MVP with <50 conversations |
+| Hardcode 5 menu items without extensibility | Faster to build command menu | Adding new commands requires touching FSM, renderer, and handler | Acceptable for v1.2; refactor if >7 commands |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Event bus + gesture handler + display controller | Create display controller before gesture handler | Create gesture handler FIRST. Its subscriptions must fire before display controller reads hint text. Document order with comments. |
-| Bridge init + audio control | Call `bridge.startAudio()` before `bridge.init()` resolves | `await bridge.init()` must complete before ANY gesture handler is created. Use sequential await chain, not parallel init. |
-| Audio capture + bridge events | Forget to wire `bridge:audio-frame -> audioCapture.onFrame()` | Wire this subscription immediately after creating audioCapture, before gesture handler exists. It is passive (guards internally). |
-| Gateway client + display controller | Connect gateway chunk handler but not status handler | Wire BOTH `gateway.onChunk()` AND `gateway.onStatusChange()`. Status changes drive health display. Chunk events drive glasses display. |
-| vite-plugin-singlefile + multi-page config | Enable singlefile plugin with existing multi-page rollup input | Either remove simulator from production build OR do not use singlefile plugin (EvenHub does not require it). |
-| app.json + gateway URL | Hardcode gateway domain in permissions.network | Use wildcard `"*"` for network permissions since gateway URL is user-configurable and could be any domain/IP. |
-| MediaRecorder stop + blob read | Call `.stop()` and immediately access blob | `stopRecording()` returns a Promise. The `onstop` event fires asynchronously. Always `await` the stop. Already handled correctly in audio-capture.ts. |
-| SSE auto-reconnect + duplicate requests | Gateway client retries a failed request while the user has already tapped to start a new one | Call `gateway.abort()` before starting a new voice turn. The current code does this in `sendVoiceTurn()` but the gesture handler should also abort on `START_RECORDING` if a previous turn is in flight. |
+| IndexedDB + synchronous event bus | Open transaction in one event handler, expect it alive in the next | Each event handler opens its own transaction. Write-behind buffer for streaming chunks. |
+| Cross-context sync + AppEventMap | Add hub events to AppEventMap expecting cross-context delivery | Use separate SyncEventMap with serializable payloads. Explicit adapter between bus and sync channel. |
+| Session switch + active voice turn | Change activeSessionId while gateway is streaming | Tag turns with sessionId at initiation time. Use turn-level lock to prevent concurrent requests. |
+| MenuController + gesture handler | Duplicate input handling logic in menu and non-menu code paths | FSM stays at 5 states. MenuController is a separate module activated only when FSM is in `menu` state. |
+| IndexedDB schema upgrade + dual WebView | Bump database version without versionchange handler | Always register `db.onversionchange = () => db.close()`. Handle `blocked` event with timeout. |
+| Hub text input + glasses voice input | Two concurrent gateway requests without coordination | TurnManager with acquire/release pattern. Hub shows "Glasses recording" indicator. |
+| Full-text search + IndexedDB cursors | Iterate all records with `.includes()` on every keystroke | Debounce 300ms, pre-built in-memory index, or tokenized multi-entry index on write. |
+| Persistence + viewport.messages array | Persist from viewport (which trims to MAX_TURNS=8) | Persist from the source of truth (bus events), not from the display buffer. Viewport is a view, not the data model. |
+| Menu rendering + 576x288 display | Render all items at once assuming CSS handles overflow | Use viewport windowing pattern (like viewport.ts). Calculate visible items from pixel budget. |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Streaming flush timer not stopped on error | CPU wakes every 200ms to flush empty buffer, icon animation runs | Always call `stopFlushTimer()` and `endStreaming()` on error events | Immediately on any gateway error -- accumulates over session lifetime |
-| Icon animator runs during hidden state | setInterval fires every 166-333ms to update status container on a blank layout | `glasses-renderer.ts` already stops animator on hide, but verify integration wires `hide()` on all disconnect paths | On bridge disconnect if hide() is not called |
-| Bridge.textContainerUpgrade called with unchanged content | BLE write for identical text wastes radio bandwidth and battery | Add a `lastPushedText` guard in renderAndPush: skip if text unchanged | After ~50 identical updates (e.g., during idle with no new messages) |
-| Gateway heartbeat fires during active SSE stream | Unnecessary /health fetch while the SSE stream itself proves connectivity | Pause heartbeat during active `sendVoiceTurn()`, resume after stream completes | During every voice turn (doubles network requests) |
+| IndexedDB write per streaming chunk | 5-20 IDB transactions per second during streaming, each blocking the main thread | Buffer chunks in memory, persist complete messages only | Immediately during any streaming response; compounds with long responses |
+| Full table scan search on mobile WebView | Hub freezes for 500ms+ during search, unresponsive to touch | Pre-built search index (memory or multi-entry IDB index) | At ~50-100 conversations with average 10 messages each |
+| Cross-context polling at <500ms interval | Battery drain, CPU usage from constant IndexedDB reads | Poll at 1s minimum; use storage events as change notification to avoid unnecessary reads | Visible as battery drain during 30+ minute sessions |
+| Loading entire conversation history into memory on boot | App startup takes 2-5 seconds, memory spike | Load only session list on boot; lazy-load messages per session when accessed | At ~50+ conversations or conversations with 100+ messages |
+| Menu re-render on every scroll event | Bridge receives textContainerUpgrade calls at gesture-repeat rate (~100ms) | Throttle menu renders to 150ms minimum (match streaming flush cadence) | During rapid scroll gesture sequences |
+| Persisting unchanged messages after session load | Redundant IDB writes when switching to a session and re-reading its messages | Track dirty flag per message; only persist messages that changed | Every session switch (reads trigger persistence listener) |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Gateway URL in app.json permissions too specific | App cannot reach gateway on a different domain/IP -- user locked to one server | Use wildcard `"*"` or omit network restrictions during early release |
-| Session key transmitted without HTTPS | Key intercepted on local network (phone to gateway) | Default gateway URL to `https://` in settings validation; warn if user enters `http://` |
-| Blob URL not revoked after audio submission | Audio recording blob persists in browser memory, potentially accessible | Call `URL.revokeObjectURL()` after the gateway client has finished with the blob |
+| Storing conversation content in IndexedDB without considering device access | Anyone with physical access to the iPhone can extract IndexedDB data from the Even App | Acceptable risk for v1.2 (conversations are user's own data); document in privacy notice |
+| Sync channel transmits full message content | If BroadcastChannel or localStorage is used, message content is visible to any same-origin page | Not a risk in practice (Even App controls the origin); but avoid storing sensitive data in localStorage event payloads -- use message IDs only |
+| Session IDs predictable (sequential or timestamp-based) | URL-based session access could be guessable | Use crypto.randomUUID() for session IDs; sessions are local-only so risk is minimal |
+| Full conversation text in search index accessible without auth | Search index exposes all message content in a queryable format | Not an additional risk beyond IndexedDB itself; both are on the same device |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| No feedback during bridge initialization | User taps immediately after app load, nothing happens for 1-2 seconds | Show "Connecting to glasses..." icon/hint during bridge init; only enable gestures after init completes |
-| Error leaves user stuck in "Processing..." state | User must force-quit and restart app | Auto-recover to idle after 30s timeout; show "Connection lost. Tap to retry." on glasses |
-| Recording starts but no audio frames arrive (glasses not connected) | User speaks into nothing, gateway receives empty audio, STT returns empty transcript | Check bridge connection status before starting recording; show "Glasses not connected" if bridge is disconnected |
-| Hint bar shows wrong state after error recovery | Hint says "Tap to stop recording" when actually back in idle after an error | Always update hint text after any FSM state transition, including error-driven transitions |
+| Menu opens during active streaming, hiding the response | User double-taps to "do something" while AI is responding, misses the response | Show truncated live response at top of menu: "AI: The answer is..." (first 40 chars). Or block menu during streaming. |
+| Session switch with no visual confirmation on glasses | User accidentally switches sessions via scroll+tap on menu, loses context | Show "Switched to [name]" confirmation on glasses for 2 seconds before showing new session content |
+| Delete session with no undo | User accidentally deletes a conversation, data is permanently lost | Soft-delete pattern: mark as deleted, actually purge after 24 hours. Show "Undo" option for 5 seconds. |
+| Hub live view lags behind glasses | Hub shows conversation 1-2 seconds behind glasses due to polling sync | Show "Live" indicator with subtle pulse animation; users accept small lag if they know it is live |
+| Search results show raw message text without context | User searches "weather" and sees 10 results with no indication of which conversation they belong to | Show session name + timestamp + highlighted match snippet for each result |
+| Command menu /rename requires text input on glasses | Even G2 has no keyboard -- user cannot type a session name with 4 gestures | /rename on glasses shows "Rename in hub app" message. Rename is hub-only. |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Voice loop:** Often missing error-to-idle FSM transition -- verify by simulating gateway 500 error during recording and confirming FSM returns to idle
-- [ ] **Audio frame wiring:** Often missing `bridge:audio-frame -> audioCapture.onFrame()` subscription -- verify by checking `bus.listenerCount('bridge:audio-frame') >= 1` after init
-- [ ] **Initialization order:** Often has display controller subscribed before gesture handler -- verify by logging subscription order or checking hint text accuracy on first tap
-- [ ] **Bridge readiness:** Often calls startAudio before bridge init completes -- verify by adding a 2-second delay before bridge.init() resolves and confirming first tap still works
-- [ ] **Streaming cleanup:** Often forgets to stop flush timer on error -- verify by triggering a gateway error mid-stream and confirming no interval timer leaks (check with `setInterval` spy)
-- [ ] **Gateway cleanup:** Often missing `destroy()` call on shutdown -- verify by adding `beforeunload` handler and confirming heartbeat stops
-- [ ] **Build output:** Often breaks with multi-page + singlefile plugin -- verify by running `npm run build` before any packaging changes
-- [ ] **app.json:** Often missing gateway domain in network permissions -- verify by testing fetch to gateway URL from inside EvenHub WebView
-- [ ] **Orphaned events:** display:state-change, display:viewport-update, display:hide, display:wake are in AppEventMap but never emitted -- verify these are removed or wired
+- [ ] **IndexedDB persistence:** Often missing `versionchange` handler on db connection -- verify by opening hub and glasses simultaneously, then bumping schema version
+- [ ] **IndexedDB persistence:** Often missing `navigator.storage.persist()` call -- verify by checking `navigator.storage.persisted()` returns true in Even App WebView
+- [ ] **Cross-context sync:** Often assumes BroadcastChannel works -- verify by testing on actual Even App WebView, not Chrome browser
+- [ ] **Session switching:** Often missing turn-in-flight guard -- verify by switching sessions during active streaming and checking persistence integrity
+- [ ] **Command menu:** Often renders all items without viewport windowing -- verify by adding 10+ sessions to /switch sub-menu and scrolling
+- [ ] **Full-text search:** Often missing debounce on search input -- verify by typing rapidly and checking for UI freezes on mobile device
+- [ ] **Hub text input:** Often missing concurrent turn prevention -- verify by typing in hub while recording on glasses simultaneously
+- [ ] **Persistence:** Often persists from viewport.messages (which trims to 8 turns) instead of from source events -- verify by checking IndexedDB contains all messages, not just the last 8
+- [ ] **Menu rendering:** Often forgets the 2000-char SDK text limit -- verify by rendering menu with long session names and checking for truncation
+- [ ] **Data integrity:** Often missing boot-time IndexedDB sentinel check -- verify by manually deleting IndexedDB and checking app handles empty state gracefully
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Wrong subscription ordering | LOW | Reorder 2-3 lines in main.ts initialization; add comments. ~30 minutes. |
-| Bridge init race condition | LOW | Add `await` to bridge init chain; gate gesture handler creation. ~1 hour. |
-| Missing audio frame subscription | LOW | Add one `bus.on()` line in main.ts. ~15 minutes plus test. |
-| Singlefile + multi-page conflict | LOW | Remove singlefile plugin (not needed) or remove simulator from prod build. ~30 minutes. |
-| app.json wrong/missing fields | LOW | Copy from sibling repo, adjust fields. ~30 minutes. |
-| Gateway cleanup leak | LOW | Add `beforeunload` handler calling `gateway.destroy()`. ~30 minutes. |
-| No error recovery in voice loop | MEDIUM | Add error input to FSM, wire gateway error events, add timeout. ~2-3 hours including tests. |
-| Stuck FSM state after error | MEDIUM | Refactor FSM to accept error input; add timeout-based auto-recovery. ~2-3 hours. |
+| IDB transaction auto-commit during streaming | MEDIUM | Refactor to write-behind buffer pattern; change persistence calls to per-message instead of per-chunk. ~4-6 hours including tests. |
+| IDB data loss on WebView lifecycle | LOW | Add `navigator.storage.persist()` call + sentinel check. ~1-2 hours. The lost data cannot be recovered. |
+| Session switch corrupts conversation data | HIGH | Requires adding turn tagging throughout the pipeline (gateway request, chunk handling, persistence). ~1-2 days if not designed in from the start. |
+| FSM state explosion from menu sub-states | MEDIUM | Extract MenuController as separate module. ~4-6 hours refactoring if already embedded in FSM. |
+| BroadcastChannel fails on device | LOW | Swap to localStorage events + polling fallback. ~2-3 hours if sync abstraction exists. HIGH if BroadcastChannel was hardcoded throughout. |
+| Hub/glasses concurrent input race | MEDIUM | Add TurnManager with lock/queue. ~4-6 hours. Requires cross-context sync to be working first. |
+| Menu overflows display | LOW | Apply viewport windowing pattern (already exists in codebase). ~2-3 hours. |
+| Search too slow | MEDIUM | Add in-memory search index built on boot. ~4-6 hours. More if switching to tokenized IDB index. |
+| Cross-context bus confusion | LOW if caught early | Define SyncEventMap, add adapter layer. ~2-3 hours. HIGH if features were built assuming shared bus. |
+| IDB version upgrade blocked | LOW | Add `versionchange` handler and `blocked` timeout. ~1 hour. But the hang may have already frustrated users. |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Event bus subscription ordering | Runtime wiring (main.ts) | Tap on glasses after boot; hint bar shows "Tap to stop recording" (not stale "Tap to record") |
-| Bridge init before audio/display | Runtime wiring (main.ts) | Add 2s delay to bridge.init(); first tap after boot still works correctly |
-| Audio frame subscription gap | Runtime wiring (main.ts) | Record 3-second utterance on glasses; blob size matches expected PCM byte count (~96KB) |
-| vite-plugin-singlefile + multi-page | Build/packaging phase | `npm run build` succeeds without errors; dist/ contains expected files |
-| app.json schema correctness | Build/packaging phase | `evenhub pack app.json dist --check` succeeds; .ehpk file is reasonable size |
-| SSE/heartbeat cleanup | Runtime wiring (main.ts) | Navigate away from app; network tab shows no more /health requests |
-| Voice loop error recovery | Voice loop integration phase | Simulate gateway 500; FSM returns to idle within 5 seconds; glasses display shows error message |
-| Orphaned event types | Tech debt cleanup phase | `AppEventMap` has no event types that are never emitted by any module |
-
-## Key Finding: vite-plugin-singlefile Is Probably Unnecessary
-
-The sibling `even-g2-apps` repo ships standard Vite output (separate JS/CSS in `dist/assets/`) and successfully uses `evenhub pack` to create `.ehpk` packages. The `evenhub pack` command packages the entire `dist/` directory, not a single HTML file. The PROJECT.md's requirement for "self-contained dist/index.html via vite-plugin-singlefile" should be validated against EvenHub's actual acceptance criteria before adding the plugin, which introduces the multi-page build conflict and adds complexity for potentially no benefit.
-
-**Recommendation:** Start without `vite-plugin-singlefile`. Build normally with Vite, run `evenhub pack`, and test the `.ehpk` on glasses. Only add singlefile if EvenHub specifically rejects multi-file submissions (which the sibling repo evidence suggests it does not).
+| IDB transaction auto-commit (P1) | IndexedDB persistence layer | Write 50 streaming chunks; all appear in IDB after response_end |
+| IDB WebView data loss (P2) | IndexedDB persistence layer | Force-quit Even App, reopen; conversations still present |
+| Session switch corruption (P3) | Dynamic sessions | Switch session during active stream; old session has complete response, new session is clean |
+| FSM state explosion (P4) | Command menu design | Menu has 5 commands + session sub-menu; FSM still has exactly 5 states |
+| BroadcastChannel unavailable (P5) | Cross-context sync | Hub receives message updates on actual Even App hardware, not just Chrome |
+| Hub/glasses input race (P6) | Hub text input | Type in hub while recording on glasses; no interleaved responses |
+| Menu display overflow (P7) | Command menu rendering | Add 20 sessions; menu scrolls correctly, no clipping |
+| Search performance (P8) | Full-text search | Search 100 conversations with 10 messages each; results appear in <300ms |
+| Cross-context bus confusion (P9) | Event bus bridge | SyncEventMap is separate from AppEventMap; adapter code has tests |
+| IDB version upgrade blocked (P10) | IndexedDB persistence layer | Bump schema version with both contexts open; upgrade completes within 5s |
 
 ## Sources
 
-- [vite-plugin-singlefile GitHub - Issue #83 (multiple inputs)](https://github.com/richardtallent/vite-plugin-singlefile/issues/83) -- HIGH confidence, confirmed by plugin maintainer
-- [vite-plugin-singlefile GitHub - Issue #69 (assets not included)](https://github.com/richardtallent/vite-plugin-singlefile/issues/69) -- MEDIUM confidence
-- [Even Hub Developer Portal](https://evenhub.evenrealities.com/) -- HIGH confidence, official
-- Sibling repo `even-g2-apps` at `/home/forge/bibele.kingdom.lv/samples/even-g2-apps/` -- HIGH confidence, working code with matching SDK versions, uses `evenhub pack` without singlefile plugin
-- `@evenrealities/evenhub-cli` v0.1.5 README -- HIGH confidence, official CLI documentation for `pack` command
-- Existing codebase analysis: `src/events.ts` (synchronous dispatch), `src/display/display-controller.ts` (ordering note on lines 8-11), `src/audio/audio-capture.ts` (passive onFrame method), `src/api/gateway-client.ts` (lifecycle methods) -- HIGH confidence, primary source
-- [MDN MediaDevices.getUserMedia()](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia) -- HIGH confidence
-- [How to Implement an Event Bus in TypeScript](https://www.thisdot.co/blog/how-to-implement-an-event-bus-in-typescript) -- MEDIUM confidence
-- [SSE Connection Lifecycle (trpc discussion)](https://github.com/trpc/trpc/discussions/5897) -- MEDIUM confidence
-- [SSE Connection Leak (nodejs/undici)](https://github.com/nodejs/undici/issues/4627) -- MEDIUM confidence
+- [IndexedDB transaction auto-commit behavior](https://javascript.info/indexeddb) -- HIGH confidence, comprehensive documentation
+- [The pain and anguish of using IndexedDB](https://gist.github.com/pesterhazy/4de96193af89a6dd5ce682ce2adff49a) -- HIGH confidence, real-world bug catalog
+- [WebKit Bug 144875: WKWebView does not persist IndexedDB after app close](https://bugs.webkit.org/show_bug.cgi?id=144875) -- HIGH confidence, official WebKit bug tracker
+- [Dexie.js PrematureCommitError documentation](https://dexie.org/docs/DexieErrors/Dexie.PrematureCommitError) -- HIGH confidence, library documentation of exact pitfall
+- [BroadcastChannel WebView support status](https://caniwebview.com/features/web-feature-broadcast-channel/) -- MEDIUM confidence, support listed as "unknown" for Android WebView and iOS WKWebView
+- [BroadcastChannel API MDN](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API) -- HIGH confidence, same-origin restriction documented
+- [State machine state explosion](https://statecharts.dev/state-machine-state-explosion.html) -- HIGH confidence, canonical reference
+- [Handling IndexedDB version upgrade conflicts](https://dev.to/ivandotv/handling-indexeddb-upgrade-version-conflict-368a) -- MEDIUM confidence, practical walkthrough
+- [Even G2 architecture notes](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md) -- HIGH confidence, verified: iPhone flutter_inappwebview proxies to glasses via BLE
+- [flutter_inappwebview IndexedDB access issues](https://github.com/pichillilorenzo/flutter_inappwebview/issues/1604) -- MEDIUM confidence, community discussion
+- [IndexedDB slow performance analysis](https://rxdb.info/slow-indexeddb.html) -- MEDIUM confidence, benchmarks from RxDB author
+- [idb library (Jake Archibald)](https://github.com/jakearchibald/idb) -- HIGH confidence, recommended promise wrapper for IndexedDB
+- Existing codebase analysis: `src/events.ts` (synchronous bus, in-memory Map), `src/gestures/gesture-fsm.ts` (5 states x 5 inputs flat table), `src/display/viewport.ts` (windowing pattern reusable for menus), `src/voice-loop-controller.ts` (no turn ID tracking), `src/glasses-main.ts` (Layer 0-5 init, separate bus instance), `src/hub-main.ts` (no event bus, pure DOM) -- HIGH confidence, primary source
 
 ---
-*Pitfalls research for: Even G2 OpenClaw Chat App v1.1 -- voice loop integration and EvenHub submission*
+*Pitfalls research for: Even G2 OpenClaw Chat App v1.2 -- Conversation Intelligence and Hub Interaction*
 *Researched: 2026-02-28*
