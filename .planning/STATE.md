@@ -10,14 +10,14 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 15-write-verification-auto-save-hardening
-Current Plan: 1 of 2
-Status: Plan 15-01 complete, Plan 15-02 pending
-Last activity: 2026-02-28 - Completed 15-01 (write verification, error escalation, partial save)
+Current Plan: 2 of 2
+Status: Phase 15 COMPLETE (all 2 plans executed)
+Last activity: 2026-02-28 - Completed 15-02 (hub error escalation + partial response preservation)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 34 (Phases 1-14 + Phase 13 gap closure + Phase 15 plan 01)
+- Total plans completed: 35 (Phases 1-15 + Phase 13 gap closure)
 - Total tests: 411 (all passing)
 - Total LOC: ~10,600 TypeScript (64 files)
 - Total execution time: ~5.0 hours
@@ -40,7 +40,7 @@ Last activity: 2026-02-28 - Completed 15-01 (write verification, error escalatio
 | 12 | 3/3 (live conversation view + hub text input + history/search) | ~15m | 5m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
 | 14 | 5/5 (event types + onclose + sentinel filtering + integrity checker TDD + storage health + boot wiring + reopenDB wiring + orphan grace period) | ~17m | 3.4m |
-| 15 | 1/2 (write verification + error escalation + partial save) | ~7m | 7m |
+| 15 | 2/2 (write verification + error escalation + partial save + hub error escalation + partial response preservation) | ~19m | 9.5m |
 
 ## Accumulated Context
 
@@ -100,6 +100,9 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - Dual-emit on retry exhaustion: persistence:warning for soft handler + persistence:error for Phase 18 error presenter (15-01)
 - Partial save includes hardcoded English ' [response interrupted]' suffix (per research Open Question 3) (15-01)
 - Verification is async fire-and-forget -- does not block subsequent saves (15-01)
+- Hub uses console.error + showToast for save failures (no event bus per Phase 14 decision) (15-02)
+- pendingHubAssistantText cleared before async save to prevent double-save race (15-02)
+- User message save failure caught without aborting gateway call or UI flow (15-02)
 
 ### Pending Todos
 
@@ -125,5 +128,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 15-01-PLAN.md (write verification + error escalation + partial save)
+Stopped at: Completed 15-02-PLAN.md (hub error escalation + partial response preservation) -- Phase 15 complete
 Resume file: None

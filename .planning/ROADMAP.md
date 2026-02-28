@@ -75,7 +75,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 - **Requirements:** [RES-06, RES-07, RES-08]
 - **Depends on:** Phase 14 (needs persistence:error event type, storage health context)
 - **Key deliverables:** verifyMessage() on ConversationStore, enhanced auto-save error escalation, partial response save on mid-stream failure
-- **Plans:** 1/2 plans executed
+- **Plans:** 2/2 plans complete
   - [ ] 15-01-PLAN.md — Store extensions + auto-save hardening (verification, escalation, partial save) + tests (Wave 1)
   - [ ] 15-02-PLAN.md — Hub-side error escalation + partial response preservation (Wave 1)
 
@@ -126,7 +126,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 | 12. Hub Conversation Features | v1.2 | 3/3 | Complete | 2026-02-28 |
 | 13. Phase 9 Verification & Sync Wiring | v1.2 | 1/1 | Complete | 2026-02-28 |
 | 14. Data Integrity Foundation | 5/5 | Complete    | 2026-02-28 | -- |
-| 15. Write Verification & Auto-Save Hardening | 1/2 | In Progress|  | -- |
+| 15. Write Verification & Auto-Save Hardening | 2/2 | Complete   | 2026-02-28 | -- |
 | 16. Sync Hardening | v1.3 | 0/? | Not Started | -- |
 | 17. FSM & Gateway Resilience | v1.3 | 0/? | Not Started | -- |
 | 18. Error UX | v1.3 | 0/? | Not Started | -- |
