@@ -87,12 +87,16 @@ export function createGestureHandler(opts: {
       }
       case 'STOP_RECORDING': {
         bridge.stopAudio();
-        audioCapture.stopRecording().then((blob) => {
-          bus.emit('audio:recording-stop', {
-            sessionId: activeSessionId(),
-            blob,
+        audioCapture.stopRecording()
+          .then((blob) => {
+            bus.emit('audio:recording-stop', {
+              sessionId: activeSessionId(),
+              blob,
+            });
+          })
+          .catch((err) => {
+            console.error('[GestureHandler] stopRecording failed:', err);
           });
-        });
         break;
       }
       case 'TOGGLE_MENU': {

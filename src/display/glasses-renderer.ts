@@ -88,13 +88,12 @@ export interface GlassesRenderer {
 
 // ── Factory ───────────────────────────────────────────────
 
-let nextMsgId = 1;
-
 export function createGlassesRenderer(opts: {
   bridge: BridgeService;
   bus: EventBus<AppEventMap>;
 }): GlassesRenderer {
   const { bridge } = opts;
+  let nextMsgId = 1;
 
   // ── Internal state ──────────────────────────────────────
   let viewport: ViewportState = {

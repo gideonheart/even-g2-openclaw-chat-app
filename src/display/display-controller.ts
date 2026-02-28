@@ -25,6 +25,7 @@ export function createDisplayController(opts: {
 
   // Collect all unsub functions for cleanup on destroy (same pattern as gesture-handler.ts)
   const unsubs: Array<() => void> = [];
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function init(): Promise<void> {
     await renderer.init();
@@ -47,11 +48,13 @@ export function createDisplayController(opts: {
           case 'response_end':
             renderer.endStreaming();
             // 500ms settle: keep 'thinking' icon visible to discourage premature tap
-            setTimeout(() => renderer.setIconState('idle'), 500);
+            if (settleTimer) clearTimeout(settleTimer);
+            settleTimer = setTimeout(() => { settleTimer = null; renderer.setIconState('idle'); }, 500);
             break;
           case 'error':
             renderer.endStreaming();
-            setTimeout(() => renderer.setIconState('idle'), 500);
+            if (settleTimer) clearTimeout(settleTimer);
+            settleTimer = setTimeout(() => { settleTimer = null; renderer.setIconState('idle'); }, 500);
             break;
         }
       }),
@@ -112,6 +115,7 @@ export function createDisplayController(opts: {
   }
 
   function destroy(): void {
+    if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
     for (const unsub of unsubs) {
       unsub();
     }

@@ -65,7 +65,7 @@ The streaming flow in `display-controller.ts:33-57` maps each chunk type to the 
 
 ## 2. What to Refactor Now (Pre-Phase-7)
 
-### 2.1 Module-level `nextMsgId` counter in glasses-renderer.ts
+### 2.1 Module-level `nextMsgId` counter in glasses-renderer.ts [FIXED in this review]
 
 **File:** `src/display/glasses-renderer.ts:91`
 
@@ -95,7 +95,7 @@ None of the module references (bus, bridge, audioCapture, gestureHandler, displa
 
 Phase 7 will need to restructure this to return or store references to all modules for graceful shutdown. This is an architectural concern (Rule 4), but noting it here as a P1 item for Phase 7 planning.
 
-### 2.4 `display-controller.ts` settle setTimeout leak
+### 2.4 `display-controller.ts` settle setTimeout leak [FIXED in this review]
 
 **File:** `src/display/display-controller.ts:50-51, 54-55`
 
@@ -117,7 +117,7 @@ settleTimer = setTimeout(() => renderer.setIconState('idle'), 500);
 if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
 ```
 
-### 2.5 `gesture-handler.ts` STOP_RECORDING has unhandled promise rejection
+### 2.5 `gesture-handler.ts` STOP_RECORDING has unhandled promise rejection [FIXED in this review]
 
 **File:** `src/gestures/gesture-handler.ts:90-95`
 
@@ -167,9 +167,9 @@ This is in `hub-main.ts` (not a Phase 6 creation), so it's out of Phase 6 review
 |----------|------|---------|----------------|--------|
 | **P1** | boot() has no cleanup path -- no module refs retained | `src/glasses-main.ts:17-84` | Blocks ERR-03 (graceful shutdown on unload). Must restructure boot to return/store module refs. | 1-2h |
 | **P1** | boot() has no error handling | `src/glasses-main.ts:17-84` | Blocks ERR-01 (error recovery). Currently any boot failure is a silent black screen. | 30m |
-| **P1** | display-controller settle setTimeout not tracked | `src/display/display-controller.ts:50,54` | Blocks ERR-03 (cleanup on close). Timer fires after destroy, calling methods on destroyed renderer. | 15m |
-| **P2** | gesture-handler stopRecording has no .catch() | `src/gestures/gesture-handler.ts:90-95` | Should fix during Phase 7 ERR-01. Unhandled rejection leaves FSM stuck in `sent` state. | 15m |
-| **P2** | Module-level nextMsgId in glasses-renderer | `src/display/glasses-renderer.ts:91` | Test isolation issue. Not blocking but creates coupling between test runs. | 5m |
+| ~~P1~~ | ~~display-controller settle setTimeout not tracked~~ | `src/display/display-controller.ts` | **FIXED in this review.** Timer now tracked and cleared in destroy(). | ~~15m~~ |
+| ~~P2~~ | ~~gesture-handler stopRecording has no .catch()~~ | `src/gestures/gesture-handler.ts` | **FIXED in this review.** Added .catch() handler. | ~~15m~~ |
+| ~~P2~~ | ~~Module-level nextMsgId in glasses-renderer~~ | `src/display/glasses-renderer.ts` | **FIXED in this review.** Moved inside factory closure. | ~~5m~~ |
 | **P2** | hub-main.ts $() uses non-null assertion (from 1-REVIEW 2.1) | `src/hub-main.ts:29-31` | Not blocking Phase 7 (hub-main is browser-only). Fix during Phase 8 polish. | 30m |
 | **P3** | hardcoded sessionId 'gideon' in glasses-main | `src/glasses-main.ts:48` | Acceptable for v1.1 -- session selection on glasses deferred. | N/A |
 | **P3** | welcome message shows even if gateway health check fails | `src/glasses-main.ts:59,73-83` | showWelcome() runs before health check. If gateway is down, user sees "Tap to ask" then "Open companion app to configure" in sequence. | 15m |
