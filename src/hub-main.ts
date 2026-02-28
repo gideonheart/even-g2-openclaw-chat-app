@@ -23,7 +23,7 @@ import type { SessionStore, ConversationStore, SearchResult } from './persistenc
 import { createSyncBridge } from './sync/sync-bridge';
 import { createSyncMonitor } from './sync/sync-monitor';
 import { createDriftReconciler } from './sync/drift-reconciler';
-import type { SyncBridge, SyncMonitor as SyncMonitorType } from './sync/sync-types';
+import type { SyncBridge, SyncMonitor as SyncMonitorType, DriftReconciler as DriftReconcilerType } from './sync/sync-types';
 import { createGatewayClient } from './api/gateway-client';
 import type { GatewayClient } from './api/gateway-client';
 
@@ -39,6 +39,7 @@ const logStore = createLogStore();
 let sessionManager: SessionManager | null = null;
 let hubSyncBridge: SyncBridge | null = null;
 let hubSyncMonitor: SyncMonitorType | null = null;
+let hubDriftReconciler: DriftReconcilerType | null = null;
 let hubConversationStore: ConversationStore | null = null;
 
 // ── Hub gateway client for text turns ────────────────────────
@@ -920,6 +921,7 @@ export async function initHub(): Promise<void> {
     sessionManager = persistence.sessionManager;
     hubSyncBridge = persistence.syncBridge;
     hubSyncMonitor = persistence.syncMonitor;
+    hubDriftReconciler = persistence.driftReconciler;
     hubConversationStore = persistence.conversationStore;
     // Set initial active session from IndexedDB
     const activeId = sessionManager.getActiveSessionId();
@@ -952,6 +954,7 @@ export async function initHub(): Promise<void> {
 
   // Clean up sync bridge and gateway on tab close
   window.addEventListener('beforeunload', () => {
+    hubDriftReconciler?.destroy();
     hubSyncMonitor?.destroy();
     hubSyncBridge?.destroy();
     hubGateway?.destroy();
@@ -964,6 +967,7 @@ async function initPersistence(): Promise<{
   syncBridge: SyncBridge;
   conversationStore: ConversationStore;
   syncMonitor: SyncMonitorType;
+  driftReconciler: DriftReconcilerType;
 } | null> {
   try {
     const { isIndexedDBAvailable, openDB } = await import('./persistence/db');
@@ -987,6 +991,8 @@ async function initPersistence(): Promise<{
       const hadPreviousData = localStorage.getItem('openclaw-conversation-count');
       if (hadPreviousData && report.conversationCount === 0) {
         console.warn('[hub] Storage eviction detected');
+        addLog('error', 'Storage eviction detected -- previous conversations were lost');
+        showToast('Previous data was cleared by system');
       }
       await integrityChecker.writeSentinel();
     }
@@ -1031,19 +1037,38 @@ async function initPersistence(): Promise<{
     // Storage health
     const storageHealth = createStorageHealth();
     const quota = await storageHealth.getQuota();
-    if (quota.isAvailable && !quota.isPersisted) {
-      await storageHealth.requestPersistence();
+    if (quota.isAvailable) {
+      if (quota.usagePercent >= 95) {
+        addLog('error', `Storage critical: ${quota.usagePercent.toFixed(1)}% used`);
+      } else if (quota.usagePercent >= 80) {
+        addLog('warn', `Storage warning: ${quota.usagePercent.toFixed(1)}% used`);
+      }
+      if (!quota.isPersisted) {
+        const granted = await storageHealth.requestPersistence();
+        addLog('info', `Persistent storage ${granted ? 'granted' : 'denied'}`);
+      }
     }
 
     // Hook IDB onclose
     setOnUnexpectedClose(() => {
       console.error('[hub] Database connection unexpectedly closed');
+      addLog('error', 'Database connection unexpectedly closed');
 
       // Attempt to reopen the database (RES-15)
-      reopenDB().then(() => {
-        console.log('[hub] Database reconnected successfully');
+      reopenDB().then((newDb) => {
+        // Recreate conversation store from fresh handle
+        const newConversationStore = createConversationStore(newDb);
+
+        // Update module-level reference used by all hub chat/search functions
+        hubConversationStore = newConversationStore;
+
+        addLog('info', 'Database reconnected -- stores refreshed');
+
+        // Reload live conversation from fresh store
+        loadLiveConversation();
       }).catch(() => {
-        console.error('[hub] Database reopen failed after max retries -- restart required');
+        addLog('error', 'Database reopen failed -- restart required');
+        showToast('Database error -- please restart the app');
       });
     });
 
@@ -1108,7 +1133,7 @@ async function initPersistence(): Promise<{
       }
     });
 
-    return { sessionManager: mgr, sessionStore, syncBridge, conversationStore, syncMonitor: monitor };
+    return { sessionManager: mgr, sessionStore, syncBridge, conversationStore, syncMonitor: monitor, driftReconciler };
   } catch {
     return null;
   }
