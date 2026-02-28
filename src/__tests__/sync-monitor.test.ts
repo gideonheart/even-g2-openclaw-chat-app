@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createSyncMonitor } from '../sync/sync-monitor';
 import type { SyncBridge, SyncMessage, SyncOrigin } from '../sync/sync-types';
 
