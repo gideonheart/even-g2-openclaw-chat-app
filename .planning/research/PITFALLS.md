@@ -1,280 +1,340 @@
 # Pitfalls Research
 
-**Domain:** Conversation persistence, cross-context sync, dynamic sessions, and command menu for Even G2 smart glasses app
+**Domain:** Resilience hardening, error UX, data integrity, and sync robustness for Even G2 smart glasses chat app (IndexedDB + BroadcastChannel + SSE architecture)
 **Researched:** 2026-02-28
-**Confidence:** MEDIUM-HIGH (IndexedDB WebView pitfalls verified against multiple sources and codebase constraints; FSM state explosion verified against existing 5x4 transition table; cross-context sync pitfalls verified against architecture -- Even App WebView runs hub and glasses in separate contexts; bus timing verified against synchronous dispatch in events.ts)
+**Confidence:** HIGH for IndexedDB/BC pitfalls (verified against WebKit blog, Chrome DevRel, MDN, codebase analysis); MEDIUM for real-hardware gaps (BC in flutter_inappwebview unverified on device); HIGH for over-engineering traps (bounded by codebase analysis of existing ~10,300 LOC with 372 tests)
 
 ## Critical Pitfalls
 
-### Pitfall 1: IndexedDB Transaction Auto-Commit Kills Async Persistence Patterns
+### Pitfall 1: Write Verification Read-Back Gives False Confidence Under Relaxed Durability
 
 **What goes wrong:**
-A developer writes a natural async pattern: open IndexedDB transaction, await gateway response or bus event, then write to the store. The transaction silently auto-commits before the async operation resolves. The put() call throws "Transaction is already committing or done" -- or worse, succeeds silently because a new implicit transaction is created, breaking atomicity. Messages appear saved but are actually lost after app restart.
+Adding "write verification" (reading back a record immediately after writing it to confirm persistence) appears to work perfectly in development but provides zero actual durability guarantees. Chrome 121+ changed IndexedDB default durability from `strict` to `relaxed`, matching Firefox and Safari. The `oncomplete` event fires when data reaches the OS buffer, not disk. A read-back within the same or next transaction sees the data in memory, but on power loss, app force-kill, or iOS storage pressure, that data is gone. The developer invested time and latency into verification that verified nothing.
 
 **Why it happens:**
-IndexedDB transactions auto-close as soon as the browser finishes processing the current microtask queue with no pending requests. Any `await` that yields to the event loop (even a single `await sleep(0)`) causes the transaction to commit. This is the single most common IndexedDB bug. The existing codebase has zero async storage -- settings use synchronous localStorage. Developers will naturally try the same patterns they use with localStorage but with `await db.put()` inside broader async flows.
+The existing codebase uses `tx.oncomplete = () => resolve(record)` throughout `conversation-store.ts`. This is correct for current usage but can mislead a developer into thinking `oncomplete` guarantees disk persistence. The `auto-save.ts` uses fire-and-forget with 3 retries and 500ms exponential backoff -- the correct pattern for message persistence. A developer tasked with "hardening" might replace this proven pattern with read-after-write verification, believing it to be more rigorous.
 
-The specific danger in this app: the voice loop controller listens for `gateway:chunk` events (synchronous bus dispatch), and a developer will try to persist each chunk inside the event handler. If they open a transaction in `response_start`, accumulate in `response_delta`, and finalize in `response_end`, the transaction dies between the first and second event because each event dispatch is a separate synchronous call stack.
+Additionally, `fake-indexeddb` (used in tests) has no durability concept at all. All 372 existing tests pass regardless of durability mode, making it impossible to catch this issue in CI.
 
 **How to avoid:**
-- Never hold an IndexedDB transaction open across event bus callbacks. Each bus event handler that writes to IndexedDB must open its own transaction, write, and let it auto-commit within that single synchronous call.
-- Use a write-behind buffer pattern: accumulate chat messages in memory (the existing `viewport.messages` array), then persist the complete message to IndexedDB only at `response_end` or on a debounced timer (e.g., every 2 seconds during streaming). One transaction per complete message, not per chunk.
-- Use the `idb` library (Jake Archibald's promise wrapper) which makes transaction scoping explicit and prevents accidental cross-await usage. Avoid raw IndexedDB API.
-- Add a persistence service with a simple API: `saveMessage(msg: ChatMessage): Promise<void>` that internally opens a fresh transaction each call.
+- Do NOT implement read-after-write verification for normal message persistence. The existing fire-and-forget + retry pattern in `auto-save.ts` is the correct approach.
+- For genuinely critical writes (schema migrations, sentinel records), use explicit strict durability: `db.transaction(['store'], 'readwrite', { durability: 'strict' })`.
+- Frame integrity checks as boot-time structural audits (orphan detection, referential consistency), not per-write confirmation.
+- Call `navigator.storage.persist()` at startup to request persistent storage from the OS. This is a one-time call that provides OS-level eviction protection.
+- Audit new code for `.get()` calls immediately following `.put()` calls in the same function -- this is the telltale sign.
 
 **Warning signs:**
-- "InvalidStateError: The transaction has finished" in console during streaming
-- Messages appear in the chat UI but disappear after app restart
-- Persistence works for short responses but fails for long streaming responses
-- Tests pass (fake-indexeddb handles auto-commit differently than real browsers)
+- New code adds `.get()` calls immediately after `.put()` calls "to verify the write worked"
+- Write latency increases 50-100% without any corresponding improvement in data durability
+- Tests pass in `fake-indexeddb` but data loss still occurs on iOS devices
+- Developer cannot explain what read-after-write catches that `tx.oncomplete` does not
 
 **Phase to address:**
-IndexedDB persistence layer phase (first phase of v1.2). Design the transaction strategy before writing any persistence code.
+Data integrity phase. Frame integrity as boot-time audits, not per-write verification. Budget: 0 lines for write verification, all effort toward boot-time checks.
 
 ---
 
-### Pitfall 2: IndexedDB Persistence May Not Survive Even App WebView Lifecycle
+### Pitfall 2: Orphan Detection Deletes Valid Data During Cross-Context Write Races
 
 **What goes wrong:**
-IndexedDB data persists across page loads in a normal browser, but the Even App runs web content in a `flutter_inappwebview` on the iPhone. WebKit (WKWebView, which backs flutter_inappwebview on iOS) has a history of clearing IndexedDB data under storage pressure, on iOS updates, or after the Even App is force-quit. There is a long-standing WebKit bug (Bug 144875) where WKWebView does not persist IndexedDB data after the parent app closes. Conversations the user thought were saved are silently gone.
+A boot-time integrity check scans for "orphaned" messages -- messages whose `conversationId` has no matching conversation record. It finds messages written by the glasses context milliseconds ago for a conversation the hub context has not yet observed (because the BroadcastChannel sync notification is still in flight, or was dropped). The integrity check deletes these "orphaned" messages, destroying valid user data. The glasses context then reads back an empty conversation.
 
 **Why it happens:**
-The Even App architecture is: server -> HTTPS -> iPhone Even App (Flutter) -> flutter_inappwebview -> your web app. On iOS, flutter_inappwebview uses WKWebView, which has historically had storage persistence issues. Safari also has a 7-day data expiry for sites "without user interaction" (Intelligent Tracking Prevention), though this typically affects third-party contexts. Additionally, if the Even App ever clears its WebView cache (some Flutter apps do this on update), all IndexedDB data is wiped.
+IndexedDB is shared between glasses and hub contexts but has no cross-context locking. Looking at `auto-save.ts` lines 64-85: the glasses write a user message to IDB then post a `message:added` sync message. If the hub boots (or runs integrity) between the IDB write and sync delivery -- or if the sync message was lost (BroadcastChannel has no delivery guarantees per MDN docs) -- the hub sees messages pointing to a conversation it has not synced.
 
-The codebase currently uses `localStorage` for settings, which faces the same risks but settings are low-value (easily re-entered). Conversation history is high-value and irreplaceable.
+The `addMessage` function in `conversation-store.ts` operates in a single transaction spanning both `messages` and `conversations` stores. It does `getReq.onsuccess` on the conversation, and if the conversation exists, updates `updatedAt`. But if the conversation was created by the OTHER context and the hub has not yet "seen" it through sync, the IDB read finds the conversation (they share the same IDB) -- so this specific path is actually safe. The REAL orphan scenario is when the glasses create a conversation but it has not yet been committed (the transaction is still in the OS buffer under relaxed durability), and then iOS evicts just the conversations store. This is extremely unlikely but not impossible.
+
+The more realistic race condition: hub runs orphan detection, finds a conversation with zero messages. Decides it is "stale" and deletes it. Meanwhile, glasses are about to write the first message to that conversation. First message arrives but the conversation record is gone.
 
 **How to avoid:**
-- Treat IndexedDB as a cache, not as the single source of truth. Design the persistence layer with an "export to gateway" capability from day one. The gateway backend is the permanent store; IndexedDB is the fast local buffer.
-- Implement `navigator.storage.persist()` at app startup to request durable storage. Check the return value and log whether persistent storage was granted. If denied, show a warning in the hub diagnostics page.
-- Add a `storage:quota-warning` event to the bus when IndexedDB usage exceeds 50% of the available quota (check via `navigator.storage.estimate()`).
-- On every app boot, verify IndexedDB integrity by reading a known sentinel record. If the sentinel is missing, emit a `storage:data-lost` event and show a user-visible warning rather than silently operating with no history.
-- Include conversation count and last-saved timestamp in the hub's health display so users can see if their data survived.
+- Never auto-delete orphaned records on first detection. Mark with a `suspectedOrphanAt` timestamp. Only delete after a grace period (30+ seconds). This allows cross-context sync to catch up.
+- Run orphan detection as a read-only scan first. Log findings. Surface orphan counts in hub diagnostics. Require explicit user action ("Clean up X orphaned messages") to actually delete.
+- Before deletion, re-verify orphan status in a new transaction. If the conversation appeared between detection and deletion, the record is no longer orphaned.
+- Store `lastIntegrityCheck` timestamp in localStorage. Run at most once per boot, not on every hub page navigation.
+- Protect conversations younger than 60 seconds from orphan cleanup regardless of their state. A conversation just created should never be treated as orphaned.
 
 **Warning signs:**
-- Conversation history is empty after iPhone reboot or Even App update
-- `navigator.storage.persisted()` returns `false` on the Even App WebView
-- IndexedDB open() succeeds but the database is empty (data was evicted)
-- Works fine during development (browser has generous storage) but fails on device
+- Messages disappear after the hub boots while glasses are in an active conversation
+- Orphan detection logs show deletions immediately followed by the glasses recreating the same data
+- Data loss correlates with opening the hub app -- glasses-only usage works fine
+- Integrity check runs on every `show('chat')` navigation in `hub-main.ts` instead of once per session
 
 **Phase to address:**
-IndexedDB persistence layer phase. The storage durability check must be part of the initial implementation, not added later.
+Data integrity / orphan detection phase. Cross-context concurrent access must be the primary design constraint.
 
 ---
 
-### Pitfall 3: Session Switch During Active Voice Loop Causes Data Corruption
+### Pitfall 3: BroadcastChannel Silently Unavailable in flutter_inappwebview on Real Hardware
 
 **What goes wrong:**
-The user double-taps to open the command menu and selects /switch while the gateway is streaming a response. The active session ID changes, but the in-flight SSE stream continues delivering chunks for the old session. The display controller writes these chunks to the new session's viewport, and the persistence layer saves them under the new session's ID. The old session loses its final response, and the new session starts with a ghost response from a different conversation.
+Sync hardening features (message loss detection, drift reconciliation, heartbeat) are built on top of BroadcastChannel as the primary transport. Everything works in Chrome dev mode. On real Even G2 hardware, the glasses run inside flutter_inappwebview (wrapping WKWebView on iOS). BroadcastChannel either (a) is unavailable because WKWebView's storage partitioning puts contexts in different partitions, (b) is available but messages are silently dropped because contexts are not same-origin from the WebView perspective, or (c) is available and works (best case, unverified). All sync hardening becomes dead code if (a) or (b). The localStorage fallback has different limitations (no guaranteed delivery, no ordering, limited payload).
 
 **Why it happens:**
-The existing gesture handler receives `activeSessionId` as a getter function: `activeSessionId: () => string`. The voice loop controller reads `settings()` at the time audio is sent. But the display controller and persistence layer read the "current session" at the time they receive bus events. There is no concept of a "turn ID" that binds a gateway response to the session that initiated it. The gateway does return a `turnId` in `VoiceTurnChunk`, but nothing in the current pipeline uses it for session correlation.
+The current `createSyncBridge()` in `sync-bridge.ts` (line 87-92) feature-detects `typeof BroadcastChannel !== 'undefined'` and creates BC transport if available. But availability does not guarantee cross-context reachability. The BC might exist in both contexts but be in different WKWebView partitions, resulting in messages sent to the void with no error.
 
-The FSM has a `menu` state that coexists with `thinking` (double-tap during thinking -> menu), but the transition table currently sends `thinking` + `double-tap` -> `menu` with `TOGGLE_MENU` action. There is no guard preventing session switch while a stream is active.
+BroadcastChannel was added to Safari/WebKit in Safari 15.4 with origin partitioning. Whether two WKWebView instances within the same Flutter app share a BC partition depends on `WKWebViewConfiguration` settings in flutter_inappwebview, which are not documented for this use case. The flutter_inappwebview changelog does not mention BroadcastChannel support explicitly.
+
+The localStorage fallback (`storage` event) has the same partition concern and also lacks delivery guarantees -- it only fires in other tabs/contexts on the same origin.
 
 **How to avoid:**
-- Tag every voice turn with both `sessionId` and `turnId` at the point of `audio:recording-stop`. Carry these IDs through the entire pipeline: gateway request, SSE chunks, display rendering, and persistence writes. Never use the "current session" for writes -- always use the turn's originating session.
-- Add a `turn:active` flag to the voice loop controller. When a turn is in flight, the command menu's /switch and /delete commands are disabled (greyed out on the glasses display, show "Finish current turn first" hint).
-- Alternatively, allow session switch during active turn but drain the in-flight response to the originating session. The display stops showing the old turn's chunks, but persistence completes to the correct session ID.
-- Add a `voiceLoop:turnStart` and `voiceLoop:turnEnd` event pair to the bus so all consumers know when a turn is in flight.
+- Build all sync hardening with IndexedDB as the shared source of truth, not BroadcastChannel messages. Treat BC/localStorage events as optional "hurry up" notifications that trigger immediate IDB re-reads.
+- Implement a sync cursor protocol: each context writes a monotonically increasing `syncVersion` counter to a dedicated IDB store or localStorage key alongside its writes. The other context polls at low frequency (every 2-3 seconds) and compares its local cursor against the stored cursor. If they diverge, it reads new data from IDB. BC/localStorage events trigger an immediate poll.
+- Add a sync health probe on boot: each context writes a probe to BC, listens for echo from the other context (2-second timeout). If no echo, downgrade to poll-only mode. Log a diagnostic to hub health page.
+- Test BC on real hardware BEFORE building hardening features. The result determines architecture. If BC works: use it as optimization. If not: poll-based sync is primary.
+- Design all hardening to work with the poll mechanism disabled (BC-only) AND with BC disabled (poll-only). Both paths must be independently functional.
 
 **Warning signs:**
-- Switching sessions mid-response causes the new session to show a response from the previous conversation
-- The old session is missing its last response after switching back
-- Persistence layer saves a message with mismatched sessionId and content
-- Race conditions in tests that depend on session ID timing
+- Sync hardening tests pass in Vitest (with mock BC) but sync never works on real glasses
+- Hub shows "connected" but conversation updates never appear from glasses
+- `console.log` in BC `onmessage` handler never fires on device
+- Developer assumes BC feature detection passing means cross-context delivery works
+- Sync hardening code references `syncBridge.postMessage` without considering the no-delivery case
 
 **Phase to address:**
-Dynamic sessions phase. Must be resolved before session switching is exposed via the command menu.
+Sync hardening phase. Must begin with real-hardware BC reachability test before designing any hardening protocol.
 
 ---
 
-### Pitfall 4: FSM State Explosion When Adding Command Menu Sub-States
+### Pitfall 4: iOS Storage Eviction Destroys All Data Without Detection or Warning
 
 **What goes wrong:**
-The existing FSM has 5 states (idle, recording, sent, thinking, menu) with 5 inputs (tap, double-tap, scroll-up, scroll-down, reset). Adding command menu items (/new, /reset, /switch, /rename, /delete) means the `menu` state needs to track which item is focused, handle selection (tap), handle scrolling between items, and handle confirmation for destructive actions (delete). A naive approach adds 5+ sub-states (menu-new-focused, menu-reset-focused, etc.) or a parallel "selected item" variable, blowing up the transition table from 25 entries to 50+ entries and making it untestable.
+User has 50+ conversations in IndexedDB. iOS applies storage pressure (low disk, app unused for days, ITP policy), and WebKit silently deletes all IDB data for the Even App's origin. User opens app, sees "New conversation" -- indistinguishable from first-run experience. No error, no warning, no recovery. The `restoreOrCreateConversation` in `boot-restore.ts` handles empty IDB identically to fresh install.
 
 **Why it happens:**
-The existing FSM is a flat transition table -- elegant for 5 states but not designed for hierarchical state. The `menu` state currently only has: double-tap -> idle (close), tap -> idle (dismiss), scroll-up/down -> menu (scroll), reset -> idle. Adding "which menu item is selected" and "is a confirmation dialog showing" requires either nested states or auxiliary data alongside the FSM state.
+WebKit storage policy (webkit.org/blog/14403): WKWebView apps get up to 15% of disk per origin, 20% total. Eviction uses least-recently-used policy. The Even App WebView may not count as "user interaction" from ITP's perspective, accelerating eviction to as little as 7 days of inactivity (documented in Safari ITP policy and confirmed in the Dexie.js issue #739 thread).
 
-The 576x288 display constraint makes this worse: the menu must show items in a scrollable list, but the display can only show ~4-5 lines of text at the menu's y-position range (the status bar takes 30px, leaving 258px for content).
+The current `boot-restore.ts` (line 66-73): if no conversations exist, it creates a new one. There is no way to distinguish "never had data" from "data was evicted." `navigator.storage.persist()` exists in Safari 17+ but is heuristic-based -- WebKit grants persistence based on whether the site is a Home Screen Web App, which the Even App running inside flutter_inappwebview may or may not qualify as.
 
 **How to avoid:**
-- Do NOT expand the flat FSM with per-menu-item states. Instead, keep the FSM's `menu` state as-is and add a separate, independent `MenuController` that manages menu item selection, scrolling, and confirmation as its own internal state. The FSM stays at 5 states. The menu controller activates when FSM enters `menu` and deactivates when FSM leaves `menu`.
-- The MenuController is a pure-function module (like gesture-fsm.ts) with its own state: `{ items: MenuItem[], selectedIndex: number, confirmingAction: string | null }`. It receives scroll-up/scroll-down/tap inputs from the gesture handler when FSM is in `menu` state.
-- Use a hierarchical state pattern: the FSM's `menu` state delegates to the MenuController. The gesture handler checks `if (fsmState === 'menu') menuController.handleInput(input)` before the normal FSM transition.
-- Keep the confirmation flow simple: /delete shows "Delete [name]? Tap to confirm" on the display, double-tap to cancel. One level of nesting maximum, no nested menus.
+- Call `navigator.storage.persist()` on every boot. Log whether granted. If denied, show persistent warning on hub health page: "Storage not guaranteed -- conversations may be lost."
+- Write a sentinel record to IDB on first run: `{ id: '__sentinel__', createdAt: Date.now() }` in the conversations store. On every subsequent boot, check for sentinel. If IDB opens but sentinel is missing, data was evicted. Emit `storage:evicted` event.
+- Use `navigator.storage.estimate()` on boot to check quota usage. If >70% of quota used, warn and suggest cleanup.
+- Store `conversationCount` in localStorage (different eviction characteristics than IDB). Compare localStorage count against actual IDB count on boot. Mismatch indicates eviction.
+- When eviction is detected, show clear message: "Your previous conversations were cleared by the system." NOT just "New conversation."
 
 **Warning signs:**
-- FSM transition table grows beyond 30-35 entries and becomes hard to verify by inspection
-- Test file for gesture-fsm.ts doubles in size
-- Menu selection bugs where scrolling past the last item wraps or gets stuck
-- Gesture inputs are handled differently in menu vs non-menu states with duplicated logic
+- Users report "all my conversations disappeared" after not using the app for a week
+- `navigator.storage.persisted()` returns `false` in Even App WebView
+- `boot-restore.ts` shows `restored: false, storageAvailable: true` (IDB available but empty)
+- Works perfectly in development (macOS Chrome, unlimited storage) but fails on real iPhone
 
 **Phase to address:**
-Command menu phase. Design the MenuController as a separate pure-function module before integrating with the FSM.
+Data integrity / boot verification phase. Sentinel check and `persist()` call must be added early -- they are prerequisites for meaningful error UX.
 
 ---
 
-### Pitfall 5: BroadcastChannel Unavailable or Unreliable in Even App WebView
+### Pitfall 5: Error UX That Blocks the Glasses Display and Traps the User
 
 **What goes wrong:**
-The hub (running in the phone browser or in a hub WebView) and the glasses app (running in the Even App WebView) need real-time sync. A developer uses BroadcastChannel for cross-context communication, but BroadcastChannel support in Android WebView and iOS WKWebView is listed as "unknown" on caniwebview.com. Even if it works in development (Chrome browser), it fails silently on the actual device because the hub and glasses contexts may not share the same browsing context origin, or BroadcastChannel simply is not available in the flutter_inappwebview runtime.
+A developer adds error states appropriate for phone/desktop: modal error dialogs, persistent banners, detailed error messages with retry buttons. On the 576x288 glasses display with 4-bit greyscale and only 4 gesture inputs, these errors consume the entire display, hide the conversation, and cannot be dismissed because tap is already mapped to "retry" and the other 3 gestures (double-tap, scroll-up, scroll-down) do not map to "dismiss." The user is trapped in an error state with no way to return to conversation.
 
 **Why it happens:**
-The Even App architecture loads the web app URL in flutter_inappwebview. The hub might be opened as a separate browser tab on the phone, or as a different WebView context within the Even App. BroadcastChannel only works between browsing contexts of the same origin AND within the same storage partition. Two separate WebView instances (even loading the same URL) may have different storage partitions, making BroadcastChannel invisible across them.
+The glasses display uses `bridge.textContainerUpgrade()` to replace text content. No layering, no z-index, no partial overlays. Container 0 (top strip ~30px) is status. Container 1-2 is chat. An error shown in container 1-2 replaces the conversation entirely. The existing `renderer.showError(message)` uses container 0 (status bar) which is non-blocking. But comprehensive error UX naturally escalates to showing errors in the chat area.
 
-The existing codebase has no cross-context communication -- the hub (`hub-main.ts`) and glasses (`glasses-main.ts`) are completely independent. They share the same source but run as separate entry points with separate state.
+4-bit greyscale: no color for severity distinction. Fixed font: no size emphasis. 4 gestures: no spare input for "dismiss" or "show details." The Google Glimmer design language for AR HUD glasses recommends: "headline + value + action" as the pattern, with transient messages preferred to reduce thermal/battery impact and avoid attention fatigue.
 
 **How to avoid:**
-- Do NOT rely on BroadcastChannel as the primary sync mechanism. Use it as an optimization only, with a fallback.
-- Primary sync mechanism: IndexedDB as the shared state store + polling. The hub polls IndexedDB every 500ms-1s for new messages. The glasses app writes to IndexedDB after each message. This is slow but universally reliable.
-- Enhancement: Use `localStorage` storage events as a lightweight change notification. Write a `lastUpdated` timestamp to localStorage after each IndexedDB write. The hub listens for the `storage` event and re-reads from IndexedDB when it fires. Storage events fire cross-tab on the same origin.
-- Feature-detect BroadcastChannel (`'BroadcastChannel' in self`) and use it when available, fall back to localStorage events + polling when not.
-- Design the sync layer as an abstract interface: `SyncChannel { send(msg): void; onMessage(cb): Unsubscribe }` with BroadcastChannel and localStorage+polling implementations.
+- Define strict error display hierarchy for glasses before implementing:
+  - **Transient** (network blip, save retry): Status bar only (container 0). Auto-clear 3 seconds. No gesture required.
+  - **Recoverable** (gateway timeout, SSE mid-stream failure): Status bar + hint bar. "Tap to retry" using existing tap flow. Auto-clear 10 seconds.
+  - **Fatal** (IDB unavailable, no gateway URL): Full-screen but with escape: "Double-tap for menu." Menu always works.
+- Never occupy chat container (container 1) with error text for >5 seconds.
+- Single-line error messages only: "Save failed" not "Failed to persist message to IndexedDB due to QuotaExceededError."
+- Use Unicode symbols for severity: `!` (warning), `x` (error), checkmark (recovery). These render in the fixed font.
+- Map ALL error recovery to existing gestures. Tap = retry. Double-tap = menu/dismiss. Never add new gesture semantics for errors.
+- Error messages on glasses must be under 40 characters. Details go to hub diagnostics page.
 
 **Warning signs:**
-- Hub shows stale conversation data that never updates
-- Sync works in Chrome dev mode but not on the actual iPhone with Even App
-- `typeof BroadcastChannel` returns `'undefined'` in the Even App WebView console
-- Storage events fire in some contexts but not others
+- Error messages >40 characters on glasses display
+- Error state with no auto-clear timeout and no gesture to dismiss
+- Error text in container 1 (chat area) blocking conversation view
+- New gesture mappings added for error handling (breaks 4-gesture model)
+- Error messages referencing technical concepts ("IndexedDB", "BroadcastChannel") on glasses
+- Error display code calling `bridge.textContainerUpgrade(1, ...)` directly
 
 **Phase to address:**
-Event bus bridge / cross-context sync phase. Must be the first thing prototyped on real hardware before building features that depend on it.
+Error UX phase. Define error display hierarchy as design constraint BEFORE implementing any error states.
 
 ---
 
-### Pitfall 6: Hub Text Input Races with Glasses Voice Input on Same Session
+### Pitfall 6: Sync Drift Reconciliation Creates Duplicate Messages
 
 **What goes wrong:**
-The user types a message in the hub while simultaneously recording a voice message on the glasses. Both inputs target the same session. The gateway receives two overlapping requests. The display shows interleaved responses (hub text response chunks mixed with glasses voice response chunks). The persistence layer saves messages in the wrong order. The conversation becomes incoherent.
+Drift reconciliation detects the hub is "behind" the glasses (comparing message counts or timestamps), pulls all messages from IDB, and appends missing ones. But message identity is UUID-based (`crypto.randomUUID()` at write time in `addMessage`). If both contexts independently saved the same logical message (e.g., hub receives it via sync and also saves it as a resilience measure), two records with different UUIDs exist. Reconciliation sees both as unique and keeps both. The conversation shows duplicate messages that cannot be deduplicated by ID.
 
 **Why it happens:**
-The existing voice loop is single-threaded by gesture: tap starts recording, tap stops, gateway receives one request, streams one response. There is no mechanism to queue or block concurrent requests. Adding hub text input introduces a second input source that has no coordination with the glasses voice loop. The gateway client's `sendVoiceTurn()` already calls `abort()` on the previous request, but a hub text submission would be a separate code path that does not share the same abort controller.
+The current architecture has one writer per message type (which is good):
+1. Glasses: `auto-save.ts` saves voice-originated messages, posts `message:added` via sync
+2. Hub: `hub-main.ts` receives sync message, calls `appendLiveMessage()` to display it but does NOT write to IDB (trusts glasses wrote it)
 
-The event bus is synchronous and single-threaded, which helps with ordering within a single context, but the hub and glasses run in separate contexts with separate event bus instances. There is no global request queue.
+This single-writer pattern is fragile. A "resilience improvement" where the hub ALSO saves incoming sync messages to IDB creates the duplicate problem. The `MessageRecord.id` is `crypto.randomUUID()` at write time, so two independent writes of the same logical message produce two records.
+
+For hub-originated text turns: `hub-main.ts` lines 863-868 save the user message, and lines 799-825 save the assistant response. If the glasses also listen for these sync messages and try to save them, duplicates appear.
 
 **How to avoid:**
-- Add a turn-level lock: a `TurnManager` that tracks whether a turn is in flight. Both the glasses voice input and the hub text input must acquire this lock before sending to the gateway. If a turn is in flight, the second input is queued (not dropped).
-- The TurnManager lives in the persistence layer (IndexedDB) since it must be visible to both contexts. Write a `currentTurn: { sessionId, turnId, status }` record. Before starting a new turn, check this record.
-- For the hub specifically: show a "Glasses is recording..." indicator that disables the send button when a voice turn is in flight. The hub learns about the glasses state via the cross-context sync channel.
-- For the glasses: if a hub text turn is in flight, the gesture handler shows "Hub message pending..." hint and blocks START_RECORDING until the turn completes.
+- Preserve and document the single-writer-per-origin pattern. Glasses write all voice-originated messages. Hub writes all text-originated messages. The other context reads from IDB but NEVER writes duplicates.
+- If drift reconciliation is needed, compare by `(conversationId, role, timestamp)` tuple with a 1-second window, not by UUID. Two messages with same conversation, role, and timestamp within 1 second are the same logical message.
+- If both contexts must write (for offline resilience), use deterministic IDs: `id = hash(conversationId + role + text.substring(0, 100) + Math.floor(timestamp / 1000))`. Same logical message produces same ID regardless of writer.
+- Add a `sourceContext: 'glasses' | 'hub'` field to `MessageRecord` to track which context authored each message. During reconciliation, the non-author context never creates copies.
 
 **Warning signs:**
-- Two responses stream simultaneously on the glasses display, interleaving chunks
-- The conversation log shows a hub message sandwiched inside a voice response
-- Gateway receives abort() followed immediately by a new request from a different source
-- Persistence layer has two messages with nearly identical timestamps from different sources
+- Same message appears twice in conversation after opening hub
+- Message count in IDB is higher than expected visible messages
+- Reconciliation runs on every boot and message count keeps growing
+- Tests creating messages from both contexts show 2x expected count
 
 **Phase to address:**
-Hub text input phase. Must be designed after the TurnManager/turn-level lock is in place, which depends on the persistence layer.
+Sync hardening / drift reconciliation phase. Define and document authoritative write ownership BEFORE implementing reconciliation.
 
 ---
 
-### Pitfall 7: Command Menu Rendering Overflows 576x288 Display
+### Pitfall 7: Mid-Stream SSE Failure Retry Sends Duplicate Requests to Backend
 
 **What goes wrong:**
-The command menu (/new, /reset, /switch, /rename, /delete) needs to render a scrollable list on the 576x288 glasses display, but the display is text-only with absolute positioning and no CSS. A developer renders all 5 menu items at once, exceeding the available vertical space, and the bottom items are clipped or overlap with the hint bar. Or the menu text is too long ("Switch to: Gideon (Coding assistant)") and gets truncated mid-word, making items unreadable.
+Error resilience for mid-stream SSE failures: stream drops (reader throws mid-response), client auto-retries the entire voice/text turn. The backend already received and processed the original request, queried the OpenClaw agent, and started streaming a response. The retry creates a second agent invocation. User sees two responses for one question. If the backend is under load (which caused the original failure), 5 retry attempts compound the problem.
 
 **Why it happens:**
-The glasses display is not a DOM -- it is a text-only canvas with SDK-controlled positioning. The existing layout uses 3 containers: status (0-30px), chat (34-288px), and the chat area is 576x254px. The command menu must replace the chat container's content. With the single fixed font and no size control, each line takes approximately 24-28px height. The chat container can fit approximately 9-10 lines. But the menu also needs: a title line ("Commands"), visual focus indicator (e.g., "> " prefix on selected item), and a hint line at the bottom ("Tap to select | Scroll to navigate"). This leaves room for only about 5-7 visible menu items.
+The existing `gateway-client.ts` retry logic (`handleTurnError` at line 213-244, recursive retry in `sendVoiceTurn` at line 297-304) treats all errors identically. It returns `'retry'` if `reconnectAttempts < maxReconnectAttempts`. The retry recursively calls `sendVoiceTurn` with the same request. There is no distinction between "server never got the request" (connection error, safe to retry) and "server responded partially" (mid-stream error, unsafe to retry).
 
-The current renderer uses `bridge.textContainerUpgrade(2, text)` to push text to the chat container with a 2000-character limit. Menu rendering must stay within this same constraint.
+The `streamSSEResponse` function (line 161-209) reads from the response body reader in a while loop. If `reader.read()` throws after some data was received, the catch block in `sendVoiceTurn` fires and may retry. The `pendingAssistantText` in `auto-save.ts` accumulates text across the partial response, gets discarded on error (line 154-155), and then re-accumulated from the retry's response -- but the backend has created a new, different response.
 
 **How to avoid:**
-- Design menu rendering as a viewport window over the items array, identical to the existing `viewport.ts` pattern. Track `selectedIndex` and render only items visible in the current scroll window.
-- Use short, action-oriented labels: `/new`, `/reset`, `/switch`, `/rename`, `/delete`. Show description only for the focused item on a second line.
-- Format menu items as: `> /new  Create session` (focused) vs `  /switch` (unfocused). The `> ` prefix is the selection indicator.
-- Limit item descriptions to 40 characters. Use the existing `truncate()` utility from utils.ts.
-- The menu title and hint text consume 2 lines, leaving 7 lines for items -- more than enough for 5 commands. But /switch needs a sub-menu for session selection, which could have many sessions. Apply the same scrolling viewport pattern for session lists.
-- Test with maximum-length session names (the current Session type has `name: string` with no length limit).
+- Add a `receivedAnyData` flag in `streamSSEResponse`. If the reader throws after receiving at least one chunk, classify as mid-stream failure. Do NOT auto-retry mid-stream failures.
+- Distinguish three error categories:
+  - **Connection error** (fetch throws before response): safe to auto-retry with backoff
+  - **HTTP error** (response.ok === false): show error to user, prompt "Tap to retry"
+  - **Mid-stream error** (reader throws after partial data): save partial response to conversation, show "Response interrupted -- tap to ask again"
+- For mid-stream failures, save the `pendingAssistantText` accumulated so far to IDB. It has value even if incomplete. Mark with "[interrupted]" suffix.
+- Cap total retries per session: 3 within 60 seconds. After that, stop retrying and surface "Connection unstable" warning.
 
 **Warning signs:**
-- Menu items are cut off at the bottom of the display
-- Scrolling past the last item shows blank space or wraps to the top unexpectedly
-- Selected item indicator is not visible after scrolling
-- Menu text overlaps with the status bar or extends past the 576px width
+- User sees duplicate responses after network hiccups
+- Gateway logs show same request submitted 3-5 times within seconds
+- `pendingAssistantText` in `auto-save.ts` accumulates text from multiple partial responses
+- Battery drain from retry loops when gateway is down
 
 **Phase to address:**
-Command menu rendering phase. Create a `MenuRenderer` that reuses the viewport windowing pattern.
+Error resilience / gateway failure handling phase. Must modify existing `gateway-client.ts` retry logic.
 
 ---
 
-### Pitfall 8: Full-Text Search on IndexedDB Is Inherently Slow Without Explicit Index Design
+### Pitfall 8: Error Recovery Paths That Do Not Reset the FSM, Trapping Users in Thinking State
 
 **What goes wrong:**
-A developer implements full-text search by iterating all conversation messages with a cursor and running `text.toLowerCase().includes(query)` on each. This works for 10 conversations but becomes noticeably slow (>500ms) at 100+ conversations with long messages, freezing the hub UI and blocking the main thread.
+New error recovery code emits error events or manages error states that do not go through the standard voice loop pipeline. The FSM remains in `thinking` state. The display shows an error. The user taps expecting to start a new recording, but `thinking` + `tap` = no action in the FSM transition table. The user is stuck with no visual indication of why tapping does not work. Only double-tap (menu) works in `thinking` state.
 
 **Why it happens:**
-IndexedDB has no built-in full-text search. Its indexes only support exact match, range queries, and key-prefix matching. Searching for a substring within a message body requires a full table scan. The IndexedDB cursor API is async and callback-based, adding overhead per record. On the Even App WebView (mobile device), CPU and memory are more constrained than desktop, making this worse.
+Looking at the FSM transition table in `gesture-fsm.ts`: `thinking` state responds only to `double-tap` (open menu) and `reset` (return to idle). Tap, scroll-up, scroll-down are all ignored. The `gesture-handler.ts` emits `reset` on `gateway:chunk` error events -- but ONLY if the error comes through the standard voice loop pipeline. If error UX code creates new error event types or error paths that bypass the voice loop, the FSM does not get the `reset` signal.
 
-The existing app has no search functionality. The `viewport.ts` module operates on in-memory arrays. Moving to IndexedDB-backed persistence introduces the first scenario where a query must scan unbounded data.
+The existing error flow: gateway error -> `emitChunk({ type: 'error' })` -> `voice-loop-controller.ts` forwards to bus -> `gesture-handler.ts` receives `gateway:chunk` with error type -> emits FSM `reset`. New error recovery code might create errors that do not flow through `emitChunk`, breaking this chain.
 
 **How to avoid:**
-- Pre-compute a search index on write, not on query. When saving a message, tokenize the text into lowercase words and store a `words: string[]` field on the message record. Create a multi-entry IndexedDB index on the `words` field. Full-text search becomes: `index.getAll(IDBKeyRange.only(queryWord))` for each query word, then intersect results in memory.
-- For the v1.2 scope, a simpler approach: keep an in-memory search index (Map of word -> messageId[]) that is built on app startup by reading all messages once. Search queries hit the in-memory index. This avoids IndexedDB cursor overhead during search.
-- Cap the number of stored conversations (e.g., 200) with an LRU eviction policy. This bounds scan time regardless of approach.
-- Run search in a debounced handler (300ms after last keystroke) to avoid firing on every character.
-- If search results take >200ms to compute, move the search to a Web Worker (if available in the WebView) to avoid blocking the hub UI thread.
+- Define a single canonical `returnToIdle()` function that ALL error recovery paths call. This function: (a) emits FSM `reset`, (b) updates display to idle indicator, (c) clears pending state.
+- Add a watchdog timer: if FSM has been in `sent` or `thinking` for >45 seconds (1.5x the 30-second gateway timeout), auto-emit `reset`. Catches any error path that forgot to reset.
+- Never add new FSM states for error conditions. Errors are transient -- they use `idle` state with a temporary status bar indicator. The FSM cycle is idle->recording->sent->thinking->idle. Errors are a fast path back to idle.
+- Test every error scenario end-to-end: inject error, verify FSM returns to `idle`, verify tap starts new recording.
+- All new event types that represent errors MUST be documented as requiring FSM reset.
 
 **Warning signs:**
-- Search results take >300ms to appear in the hub
-- Hub UI freezes during search on mobile device
-- Search works fine with 5 conversations but degrades linearly as history grows
-- Tests pass with small fixture data but real-world performance is unacceptable
+- User reports "glasses stopped responding to taps" after a network error
+- FSM state logged as `thinking` for >30 seconds
+- Tap gesture events fire in bus but produce no FSM transition
+- Error UX shows error message but does not call FSM reset
+- New `gateway:chunk` subtypes that `gesture-handler.ts` does not handle
 
 **Phase to address:**
-Full-text search phase (likely one of the later v1.2 phases). Design the index strategy when building the persistence layer, even if search UI comes later.
+Error resilience phase. Add watchdog timer early. Audit all error paths for FSM reset.
 
 ---
 
-### Pitfall 9: Synchronous Event Bus Cannot Bridge Two Separate JavaScript Contexts
+### Pitfall 9: Over-Engineering Integrity Checks for a Two-Store Schema
 
 **What goes wrong:**
-A developer assumes the typed event bus (`createEventBus<AppEventMap>()`) can be used for hub-to-glasses communication because both contexts use the same TypeScript types. They add new events like `hub:text-submitted` or `sync:message-saved` to `AppEventMap` and expect the hub to emit and the glasses to receive. Nothing happens. The bus instances are completely separate -- one in the hub WebView, one in the glasses WebView.
+A developer builds comprehensive referential integrity: foreign key validation on every write, cascading constraint checks, periodic full-database consistency audits, and a repair mechanism that reconstructs missing records. This adds 300+ lines to what is a two-store schema (`conversations` + `messages`) with one relationship (`message.conversationId -> conversation.id`). Integrity checks add 200-500ms to boot. Writes become 2x slower. The repair mechanism introduces new failure modes (what if repair itself fails mid-transaction?).
 
 **Why it happens:**
-The `main.ts` router creates completely separate boot paths: `glasses-main.ts` creates its own `createEventBus<AppEventMap>()`, and `hub-main.ts` does not even use the event bus (it is vanilla DOM-event driven). These are two separate JavaScript execution contexts, potentially in two separate WebViews. The bus is an in-memory Map of handlers -- it has no serialization, no network transport, no persistence.
+Referential integrity is critical in relational databases with dozens of tables. IndexedDB has two stores. The only integrity violation possible is orphaned messages (pointing to deleted conversation). The existing `deleteSession` in `session-store.ts` already handles cascade delete in a single atomic transaction (line 22-44). Orphans can only appear through cross-context races (Pitfall 2) or IDB corruption (extremely rare).
 
-The codebase's clean architecture (typed bus, pure functions, factory pattern) makes it easy to forget that types are compile-time only. At runtime, the hub and glasses have zero shared state.
+The gold-plating anti-pattern: a developer continues working on integrity past the point of diminishing returns. For this schema, "comprehensive integrity" means checking one foreign key relationship. Everything beyond that is waste.
 
 **How to avoid:**
-- Create a clear conceptual separation: the AppEventMap bus is for intra-context communication ONLY (within glasses-main or within a hypothetical hub-bus). Cross-context communication uses a separate mechanism: the SyncChannel abstraction (see Pitfall 5).
-- Define a separate `SyncEventMap` type for cross-context messages. These messages must be serializable (no Blob, no functions, no circular references). Keep `AppEventMap` for internal events.
-- The bridge between internal bus and sync channel is explicit adapter code: `bus.on('message:saved', (msg) => syncChannel.send({ type: 'message:saved', payload: msg }))`. This makes the boundary visible and testable.
-- Document the architecture boundary clearly: "AppEventMap = same context, SyncEventMap = cross context" in a types file.
+- Scope integrity to exactly two checks: (a) orphaned messages (conversationId -> no conversation), (b) empty conversations (may indicate interrupted creation). Nothing more.
+- Run once per boot in a single read-only transaction. Budget: <50ms for hundreds of records.
+- Do NOT auto-repair. Log findings to hub diagnostics. User-confirmable action for cleanup.
+- Do NOT add foreign key validation on writes. `addMessage` runs in a transaction spanning both stores. If conversation is missing, message is still written (the conversation update simply finds `undefined` and skips). The orphan will be caught on next boot check.
+- Budget: total integrity code under 50 lines. If exceeding 100 lines, stop and reassess.
+- Do NOT build a "repair" function. The only repair needed is deleting orphaned messages, which is a single cursor delete -- it does not need its own retry/recovery logic.
 
 **Warning signs:**
-- New event types added to AppEventMap that are only emitted in one context and expected in another
-- Tests mock the bus and pass, but real-device testing shows no cross-context communication
-- Developer adds `bus.on('hub:text-submitted', ...)` in glasses-main.ts and it never fires
+- Integrity code is larger than the persistence layer it protects
+- Boot time increases by >100ms from integrity checks
+- Integrity checks run on every page navigation, not just boot
+- Repair function has its own error handling and retry logic
+- Foreign key validation on every `addMessage` call
 
 **Phase to address:**
-Event bus bridge phase. This architectural decision must be made before any cross-context feature is implemented.
+Data integrity phase. Define exact checks (two) and budget (50 lines) BEFORE writing code.
 
 ---
 
-### Pitfall 10: IndexedDB Version Upgrade Blocks If Old Connection Is Open in Another Context
+### Pitfall 10: Adding Resilience Layers That Regress Existing Working Flows
 
 **What goes wrong:**
-The glasses WebView has an open IndexedDB connection. The hub WebView tries to open the same database with a higher version number (because a schema migration was added). The upgrade is blocked because the glasses WebView did not close its connection. The hub hangs indefinitely on `indexedDB.open()`, and the `onblocked` event fires but nobody handles it. The hub shows a blank conversation history page.
+A developer adds verification, retry, or error handling wrappers around existing working functions. The wrapper introduces a new async boundary, a new error path, or a new timing dependency. The existing function's contract changes subtly: it now throws where it previously swallowed errors, or resolves at a different time, or emits events in a different order. Existing tests pass because they test the function directly, not through the wrapper. The integration breaks at runtime.
 
 **Why it happens:**
-IndexedDB requires ALL existing connections to a database to close before a version upgrade can proceed. The spec says: when a higher version is requested, the browser sends a `versionchange` event to all open connections. Those connections must call `db.close()` in response. If they do not, the upgrade request fires a `blocked` event and waits indefinitely. In the Even App, the glasses WebView and hub WebView are separate contexts that may both hold open IndexedDB connections to the same database.
+The codebase has 60 files and 372 tests, but integration coverage is limited. Most tests are unit tests for individual modules (e.g., `conversation-store.test.ts` tests CRUD operations, `sync-bridge.test.ts` tests message delivery). The wiring between modules -- `auto-save.ts` subscribing to bus events, `glasses-main.ts` orchestrating init order, `hub-main.ts` handling sync messages -- is tested primarily in `glasses-main.test.ts` and `app-wiring.test.ts`. Adding a verification layer between `auto-save` and `conversation-store` might pass `auto-save.test.ts` but break the timing expectations in `glasses-main.ts`.
+
+Specific regression risks in this codebase:
+- `auto-save.ts` relies on fire-and-forget semantics. Adding `await` to verification changes the timing of `syncBridge.postMessage` relative to the save. The `message:added` sync event might fire before the verification completes, and the hub might try to read the message from IDB before it is verified.
+- `boot-restore.ts` assumes `restoreOrCreateConversation` completes quickly. Adding integrity checks inside boot-restore extends boot time. The bridge init waits for restore, and the "Connecting..." text stays on screen longer.
+- The `switchToSession` function in `glasses-main.ts` (line 117-141) calls `renderer.destroy()` then `renderer.init()`. If a new verification layer runs between these calls (e.g., checking session integrity before loading), the renderer is in a destroyed state during verification. Any event that fires during this window and tries to render will fail silently.
 
 **How to avoid:**
-- Always register a `versionchange` event handler on every `IDBDatabase` instance that immediately closes the connection: `db.onversionchange = () => db.close()`. This is mandatory for any multi-context IndexedDB usage.
-- Handle the `blocked` event on the open request: `request.onblocked = () => { /* retry after delay, or show user message */ }`. Include a timeout (5 seconds) and fallback behavior.
-- Minimize schema migrations. Design the initial IndexedDB schema to be extensible (use generic object stores with flexible value shapes rather than rigid, version-coupled schemas).
-- Use a single, stable database version for v1.2. Only bump the version if absolutely necessary (new indexes, new object stores). Adding data to existing stores does not require a version bump.
+- Add new resilience code as NEW functions alongside existing functions, not as wrappers around them. `verifyIntegrity()` as a separate function called from `boot()`, not as a wrapper around `createConversationStore()`.
+- Never change the async contract of existing functions. If `addMessage` is fire-and-forget today, it stays fire-and-forget. New verification runs in a separate async chain.
+- Run the full test suite after EVERY resilience change, not just the tests for the modified module.
+- Add integration tests for the specific interaction points: auto-save -> IDB -> sync -> hub display. These tests catch timing regressions that unit tests miss.
+- Use the existing event bus as the integration surface. New resilience features should subscribe to existing events, not modify the functions that emit them.
+- Create a "smoke test" that boots the full glasses context, sends a voice turn, and verifies the message appears in IDB and is synced. Run this after every resilience change.
 
 **Warning signs:**
-- Hub page loads but conversation list never appears
-- Console shows "blocked" event on IndexedDB open request
-- Works when only one context is open, fails when both are open simultaneously
-- Schema migration works in tests (single context) but blocks on device (dual context)
+- A resilience change modifies the function signature or return type of an existing public function
+- `async` is added to a function that was previously synchronous
+- Error handling is added to a function that previously swallowed errors (changing the error propagation contract)
+- The Layer 0-5 init sequence in `glasses-main.ts` is modified to accommodate new steps between existing layers
+- Tests for the modified module pass but `glasses-main.test.ts` or `app-wiring.test.ts` fail
 
 **Phase to address:**
-IndexedDB persistence layer phase. The `versionchange` handler must be part of the database initialization code from the first implementation.
+All phases. This is a cross-cutting concern. Every phase that adds resilience must run the full test suite and verify no regressions.
+
+---
+
+### Pitfall 11: Safari/WebKit Transaction Auto-Commit Timing Breaks New Integrity Code
+
+**What goes wrong:**
+New integrity check code opens a read-only transaction, scans for orphans, computes repair actions, and then opens a read-write transaction to apply repairs. The code works in Chrome and in `fake-indexeddb` tests. On Safari/WebKit (the actual runtime via WKWebView), the read-only transaction auto-commits between the scan phase and the repair phase. The repair transaction cannot reference results from the scan transaction. Worse, if the code uses Promises between IDB operations within a single transaction, Safari closes the transaction mid-operation, throwing "TransactionInactiveError."
+
+**Why it happens:**
+Safari closes IDB transactions more aggressively than Chrome/Firefox when nothing is being done to a transaction in a stack frame. The use of `Promise.resolve().then(() => ...)` can prematurely close the transaction in Safari and Firefox. The existing codebase avoids this by completing all IDB operations synchronously within transaction callbacks -- e.g., `conversation-store.ts` uses `tx.oncomplete` and `req.onsuccess` directly, never awaiting Promises between IDB operations within a transaction.
+
+New integrity code written with modern async/await patterns WILL break on Safari because each `await` creates a microtask boundary where Safari may auto-commit the transaction. Firebase had to implement their own Promise for this reason.
+
+**How to avoid:**
+- Follow the existing codebase pattern: use `tx.oncomplete`, `req.onsuccess` callbacks directly. Do NOT use `async/await` within IDB transaction boundaries.
+- If scan + repair requires two transactions, accept that the data may change between them. Re-verify orphan status in the repair transaction before deleting.
+- Test on Safari (or a WebKit-based browser) during development, not just Chrome. Safari's stricter transaction semantics catch bugs that Chrome hides.
+- If using `fake-indexeddb` in tests, be aware it does not replicate Safari's aggressive auto-commit. Consider marking integrity tests as requiring browser-level validation.
+- The existing patterns in `conversation-store.ts` and `session-store.ts` are Safari-safe. Copy them exactly. Do not "improve" them with async/await.
+
+**Warning signs:**
+- "TransactionInactiveError" in console on Safari but not Chrome
+- Integrity checks pass in Vitest (fake-indexeddb) but crash on device
+- Code uses `await` between IDB operations within the same transaction
+- New IDB code uses a different pattern than existing `conversation-store.ts`
+
+**Phase to address:**
+All phases that touch IndexedDB. This is a coding discipline constraint, not a feature.
 
 ---
 
@@ -282,118 +342,147 @@ IndexedDB persistence layer phase. The `versionchange` handler must be part of t
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Persist only on `response_end`, not per-chunk | Simpler persistence logic, fewer IDB transactions | Long responses lost entirely if app crashes mid-stream | v1.2 MVP only; add periodic flush (every 5s) before release |
-| Skip `navigator.storage.persist()` check | Avoids platform-specific code paths | Data silently evicted under storage pressure on iOS | Never -- 3 lines of code, critical for user trust |
-| Use polling instead of BroadcastChannel for sync | Works everywhere, no feature detection needed | 500ms-1s latency for hub<->glasses updates, battery drain | Acceptable for v1.2; optimize with BroadcastChannel in v1.3 |
-| Full table scan for search | No index maintenance, simpler persistence schema | Search freezes UI at 100+ conversations | Acceptable if conversations capped at 50; not beyond |
-| Single shared database for hub and glasses | Simpler code, single schema file | Version upgrade blocking between contexts (Pitfall 10) | Acceptable with proper `versionchange` handler |
-| Store full message text without tokenization | Simpler write path, no preprocessing | Search requires full scan, grows linearly with data | Acceptable for v1.2 MVP with <50 conversations |
-| Hardcode 5 menu items without extensibility | Faster to build command menu | Adding new commands requires touching FSM, renderer, and handler | Acceptable for v1.2; refactor if >7 commands |
+| Skip sentinel record for eviction detection | Saves 10 lines | Users cannot distinguish data eviction from first run | Never -- 10 lines for critical user trust |
+| BC-only sync hardening without IDB fallback | Simpler protocol | Dead code if BC unavailable on device hardware | Never -- BC support unverified |
+| Auto-delete orphans without grace period | Cleaner DB immediately | Deletes valid data during cross-context races | Never -- grace period adds 5 lines |
+| Full error messages on glasses display | Developer can debug from glasses | Display unusable during errors, user trapped | Never -- hub diagnostics is for debugging |
+| Read-after-write verification on every write | Feels rigorous | 50-100% latency increase with no durability gain | Never -- use strict durability for critical writes |
+| Auto-retry mid-stream SSE failures | Automatic recovery | Duplicate responses, backend load amplification | Only for connection errors (no data received) |
+| Run integrity checks on every navigation | Catches corruption faster | 200-500ms per page load, redundant after boot | Never -- boot-only sufficient for single-user app |
+| Add FSM states for error conditions | Explicit error in transition table | FSM grows from 5 to 7+ states; recovery becomes state machine logic | Never -- errors are transient, use idle + visual |
+| Poll IDB for sync at <500ms interval | Near-instant sync | Battery drain, CPU contention, IDB lock pressure | Never -- 2-second poll with event-triggered immediate is sufficient |
+| async/await in IDB transaction callbacks | Cleaner code | Breaks on Safari/WebKit due to aggressive auto-commit | Never in transaction scope -- use callback pattern |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| IndexedDB + synchronous event bus | Open transaction in one event handler, expect it alive in the next | Each event handler opens its own transaction. Write-behind buffer for streaming chunks. |
-| Cross-context sync + AppEventMap | Add hub events to AppEventMap expecting cross-context delivery | Use separate SyncEventMap with serializable payloads. Explicit adapter between bus and sync channel. |
-| Session switch + active voice turn | Change activeSessionId while gateway is streaming | Tag turns with sessionId at initiation time. Use turn-level lock to prevent concurrent requests. |
-| MenuController + gesture handler | Duplicate input handling logic in menu and non-menu code paths | FSM stays at 5 states. MenuController is a separate module activated only when FSM is in `menu` state. |
-| IndexedDB schema upgrade + dual WebView | Bump database version without versionchange handler | Always register `db.onversionchange = () => db.close()`. Handle `blocked` event with timeout. |
-| Hub text input + glasses voice input | Two concurrent gateway requests without coordination | TurnManager with acquire/release pattern. Hub shows "Glasses recording" indicator. |
-| Full-text search + IndexedDB cursors | Iterate all records with `.includes()` on every keystroke | Debounce 300ms, pre-built in-memory index, or tokenized multi-entry index on write. |
-| Persistence + viewport.messages array | Persist from viewport (which trims to MAX_TURNS=8) | Persist from the source of truth (bus events), not from the display buffer. Viewport is a view, not the data model. |
-| Menu rendering + 576x288 display | Render all items at once assuming CSS handles overflow | Use viewport windowing pattern (like viewport.ts). Calculate visible items from pixel budget. |
+| Orphan detection + cross-context writes | Delete orphans immediately | Mark with timestamp, grace period, re-verify before deleting |
+| Strict durability + performance | Use strict for all writes "because safer" | Relaxed (default) for messages; strict only for schema migrations, sentinels |
+| Sync hardening + BroadcastChannel | Assume BC delivery is reliable | Build on IDB-as-truth; BC is optional "hurry up" notification |
+| Error UX + glasses display | Show detailed errors on glasses | Status bar only (container 0); auto-clear 3-5 seconds; details in hub |
+| FSM error recovery + existing reset | Add new error states or gesture mappings | Use existing `reset` input; add watchdog timer; all errors return to idle |
+| Gateway retry + mid-stream failures | Retry all errors identically | Distinguish connection (safe) from mid-stream (show partial, prompt user) |
+| Drift reconciliation + message identity | Deduplicate by UUID | Deduplicate by (conversationId, role, timestamp) or deterministic IDs |
+| New verification layers + existing functions | Wrap existing functions with verification | Add new functions alongside; never change async contract of existing code |
+| Integrity code + Safari IDB | Use async/await in transactions | Use callback pattern (tx.oncomplete, req.onsuccess) matching existing code |
+| Health indicators + glasses | Show all health on both displays | Glasses: actionable/temporary only. Hub: detailed/persistent |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| IndexedDB write per streaming chunk | 5-20 IDB transactions per second during streaming, each blocking the main thread | Buffer chunks in memory, persist complete messages only | Immediately during any streaming response; compounds with long responses |
-| Full table scan search on mobile WebView | Hub freezes for 500ms+ during search, unresponsive to touch | Pre-built search index (memory or multi-entry IDB index) | At ~50-100 conversations with average 10 messages each |
-| Cross-context polling at <500ms interval | Battery drain, CPU usage from constant IndexedDB reads | Poll at 1s minimum; use storage events as change notification to avoid unnecessary reads | Visible as battery drain during 30+ minute sessions |
-| Loading entire conversation history into memory on boot | App startup takes 2-5 seconds, memory spike | Load only session list on boot; lazy-load messages per session when accessed | At ~50+ conversations or conversations with 100+ messages |
-| Menu re-render on every scroll event | Bridge receives textContainerUpgrade calls at gesture-repeat rate (~100ms) | Throttle menu renders to 150ms minimum (match streaming flush cadence) | During rapid scroll gesture sequences |
-| Persisting unchanged messages after session load | Redundant IDB writes when switching to a session and re-reading its messages | Track dirty flag per message; only persist messages that changed | Every session switch (reads trigger persistence listener) |
+| Read-after-write verification on every save | Write latency doubles; 200ms+ per streaming message | Boot-time integrity instead of per-write | Immediately -- every save adds unnecessary read |
+| Strict durability for all IDB transactions | Write throughput drops 3-10x (waits for disk flush) | Default relaxed for messages; strict only for migrations | Immediately -- noticeable latency on every save |
+| Full integrity audit on every page navigation | Hub feels sluggish; 200-500ms per tab click | Boot-only; cache results; explicit user action for re-scan | At 50+ conversations with messages |
+| Sync heartbeat at sub-second intervals | Battery drain, CPU contention, IDB lock pressure | 2-second poll minimum; BC/LS events as immediate trigger | Extended sessions (30+ minutes) |
+| Reconciliation reading all messages from both contexts | Memory spike on boot; 500ms+ for large histories | Incremental: only messages newer than last sync cursor | At 100+ conversations |
+| Error UX animations on glasses display | Flicker, 150-300ms update cadence violated | Static text only for errors on glasses | Immediately -- glasses display is not a DOM |
+| Full-table scan orphan detection | Boot time proportional to total message count | Index-based scan using `by-conversation` index + conversation ID set | At 1000+ messages across many conversations |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Storing conversation content in IndexedDB without considering device access | Anyone with physical access to the iPhone can extract IndexedDB data from the Even App | Acceptable risk for v1.2 (conversations are user's own data); document in privacy notice |
-| Sync channel transmits full message content | If BroadcastChannel or localStorage is used, message content is visible to any same-origin page | Not a risk in practice (Even App controls the origin); but avoid storing sensitive data in localStorage event payloads -- use message IDs only |
-| Session IDs predictable (sequential or timestamp-based) | URL-based session access could be guessable | Use crypto.randomUUID() for session IDs; sessions are local-only so risk is minimal |
-| Full conversation text in search index accessible without auth | Search index exposes all message content in a queryable format | Not an additional risk beyond IndexedDB itself; both are on the same device |
+| Logging conversation content in error diagnostics | Private conversations visible in exported diagnostics JSON | Log message IDs and metadata only; never log text in error reports |
+| Sync heartbeat messages containing conversation content | Full text transits through BC/localStorage | Heartbeat: cursor positions and counts only; content reads from IDB |
+| Integrity results exposing orphaned message content in hub UI | User text shown in integrity report | Show counts only ("3 orphaned messages"), not content |
+| Storing sync cursor state with conversation content | Sync debugging data includes message text | Separate sync metadata from content data in IDB |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| Menu opens during active streaming, hiding the response | User double-taps to "do something" while AI is responding, misses the response | Show truncated live response at top of menu: "AI: The answer is..." (first 40 chars). Or block menu during streaming. |
-| Session switch with no visual confirmation on glasses | User accidentally switches sessions via scroll+tap on menu, loses context | Show "Switched to [name]" confirmation on glasses for 2 seconds before showing new session content |
-| Delete session with no undo | User accidentally deletes a conversation, data is permanently lost | Soft-delete pattern: mark as deleted, actually purge after 24 hours. Show "Undo" option for 5 seconds. |
-| Hub live view lags behind glasses | Hub shows conversation 1-2 seconds behind glasses due to polling sync | Show "Live" indicator with subtle pulse animation; users accept small lag if they know it is live |
-| Search results show raw message text without context | User searches "weather" and sees 10 results with no indication of which conversation they belong to | Show session name + timestamp + highlighted match snippet for each result |
-| Command menu /rename requires text input on glasses | Even G2 has no keyboard -- user cannot type a session name with 4 gestures | /rename on glasses shows "Rename in hub app" message. Rename is hub-only. |
+| Error modal on glasses with no dismiss path | User trapped, cannot return to conversation | Auto-clear 3-5 seconds; tap = retry; double-tap = menu (escape hatch) |
+| Technical error terms on glasses ("IDB quota exceeded") | Confused by jargon on consumer device | "Storage full" not "QuotaExceededError"; "Connection lost" not "SSE stream terminated" |
+| Persistent health bar consuming display space | Less conversation space; visual noise | Show only when something is wrong, and only temporarily |
+| Error state preventing new recordings | Cannot recover by starting fresh; feels broken | FSM always returns to idle after error; tap always starts recording |
+| "Data may be lost" without explanation on hub | User panics, no action available | "Some messages may not have been saved. Check connection and try again." |
+| Sync indicator showing real-time status on glasses | Distracting; user does not care about sync mechanism | Sync invisible when working; "Not synced" only after 30+ seconds of failure |
+| Silent data eviction appearing as first-run | User thinks app reset itself; loses trust | Sentinel detection + clear "System cleared your data" message |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **IndexedDB persistence:** Often missing `versionchange` handler on db connection -- verify by opening hub and glasses simultaneously, then bumping schema version
-- [ ] **IndexedDB persistence:** Often missing `navigator.storage.persist()` call -- verify by checking `navigator.storage.persisted()` returns true in Even App WebView
-- [ ] **Cross-context sync:** Often assumes BroadcastChannel works -- verify by testing on actual Even App WebView, not Chrome browser
-- [ ] **Session switching:** Often missing turn-in-flight guard -- verify by switching sessions during active streaming and checking persistence integrity
-- [ ] **Command menu:** Often renders all items without viewport windowing -- verify by adding 10+ sessions to /switch sub-menu and scrolling
-- [ ] **Full-text search:** Often missing debounce on search input -- verify by typing rapidly and checking for UI freezes on mobile device
-- [ ] **Hub text input:** Often missing concurrent turn prevention -- verify by typing in hub while recording on glasses simultaneously
-- [ ] **Persistence:** Often persists from viewport.messages (which trims to 8 turns) instead of from source events -- verify by checking IndexedDB contains all messages, not just the last 8
-- [ ] **Menu rendering:** Often forgets the 2000-char SDK text limit -- verify by rendering menu with long session names and checking for truncation
-- [ ] **Data integrity:** Often missing boot-time IndexedDB sentinel check -- verify by manually deleting IndexedDB and checking app handles empty state gracefully
+- [ ] **Eviction detection:** Often missing sentinel record -- verify by clearing IDB and confirming app shows "Previous data was cleared" not first-run experience
+- [ ] **Orphan cleanup:** Often deletes valid data during races -- verify by running detection while glasses are actively writing messages
+- [ ] **BC reachability:** Often tested only in Chrome dev mode -- verify BC messages cross contexts on real Even App hardware
+- [ ] **Error UX on glasses:** Often uses chat container for errors -- verify errors only in status bar (container 0), auto-clear within 5 seconds
+- [ ] **FSM recovery:** Often missing watchdog -- verify FSM returns to idle within 45 seconds of any error
+- [ ] **Mid-stream retry:** Often retries partial responses -- verify mid-stream failure shows partial text, prompts user
+- [ ] **Integrity checks:** Often run on every page load -- verify boot-only, <50ms for hundreds of records
+- [ ] **Drift reconciliation:** Often creates duplicates -- verify reconciling from both contexts produces exactly N messages
+- [ ] **Health indicators on glasses:** Often show non-actionable status -- verify every glasses health message has auto-clear or user action
+- [ ] **Safari IDB compatibility:** Often uses async/await in transactions -- verify new IDB code uses callback pattern matching existing code
+- [ ] **Regression coverage:** Often only tests modified module -- verify full 372-test suite passes after every resilience change
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| IDB transaction auto-commit during streaming | MEDIUM | Refactor to write-behind buffer pattern; change persistence calls to per-message instead of per-chunk. ~4-6 hours including tests. |
-| IDB data loss on WebView lifecycle | LOW | Add `navigator.storage.persist()` call + sentinel check. ~1-2 hours. The lost data cannot be recovered. |
-| Session switch corrupts conversation data | HIGH | Requires adding turn tagging throughout the pipeline (gateway request, chunk handling, persistence). ~1-2 days if not designed in from the start. |
-| FSM state explosion from menu sub-states | MEDIUM | Extract MenuController as separate module. ~4-6 hours refactoring if already embedded in FSM. |
-| BroadcastChannel fails on device | LOW | Swap to localStorage events + polling fallback. ~2-3 hours if sync abstraction exists. HIGH if BroadcastChannel was hardcoded throughout. |
-| Hub/glasses concurrent input race | MEDIUM | Add TurnManager with lock/queue. ~4-6 hours. Requires cross-context sync to be working first. |
-| Menu overflows display | LOW | Apply viewport windowing pattern (already exists in codebase). ~2-3 hours. |
-| Search too slow | MEDIUM | Add in-memory search index built on boot. ~4-6 hours. More if switching to tokenized IDB index. |
-| Cross-context bus confusion | LOW if caught early | Define SyncEventMap, add adapter layer. ~2-3 hours. HIGH if features were built assuming shared bus. |
-| IDB version upgrade blocked | LOW | Add `versionchange` handler and `blocked` timeout. ~1 hour. But the hang may have already frustrated users. |
+| Read-after-write verification (P1) | LOW | Remove verification reads. No behavioral change. ~1 hour. |
+| Orphan cleanup deletes valid data (P2) | HIGH | Data unrecoverable. Add grace period retroactively. ~2 hours for fix. |
+| BC unavailable on hardware (P3) | MEDIUM | Refactor to IDB-as-truth. ~4-6 hours if BC-dependent, LOW if designed with fallback. |
+| iOS storage eviction (P4) | LOW for code | Add sentinel + persist(). ~2 hours. Lost data unrecoverable. |
+| Glasses display blocked by errors (P5) | LOW | Add auto-clear timeouts, move to status bar. ~2-3 hours. |
+| Duplicate messages from reconciliation (P6) | MEDIUM | Add deduplication, clean existing duplicates. ~3-4 hours. |
+| Mid-stream retry hammering backend (P7) | LOW | Add `receivedAnyData` flag, classify error types. ~2-3 hours. |
+| Stuck FSM after error (P8) | LOW | Add watchdog timer, audit error paths. ~2-3 hours. |
+| Over-engineered integrity (P9) | MEDIUM | Simplify to 2 checks, <50 lines. ~3-4 hours to strip over-engineering. |
+| Regression from resilience changes (P10) | VARIES | Depends on what broke. Integration tests prevent this. ~1-8 hours. |
+| Safari transaction timing (P11) | MEDIUM | Rewrite async code to callback pattern. ~2-4 hours per function. |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| IDB transaction auto-commit (P1) | IndexedDB persistence layer | Write 50 streaming chunks; all appear in IDB after response_end |
-| IDB WebView data loss (P2) | IndexedDB persistence layer | Force-quit Even App, reopen; conversations still present |
-| Session switch corruption (P3) | Dynamic sessions | Switch session during active stream; old session has complete response, new session is clean |
-| FSM state explosion (P4) | Command menu design | Menu has 5 commands + session sub-menu; FSM still has exactly 5 states |
-| BroadcastChannel unavailable (P5) | Cross-context sync | Hub receives message updates on actual Even App hardware, not just Chrome |
-| Hub/glasses input race (P6) | Hub text input | Type in hub while recording on glasses; no interleaved responses |
-| Menu display overflow (P7) | Command menu rendering | Add 20 sessions; menu scrolls correctly, no clipping |
-| Search performance (P8) | Full-text search | Search 100 conversations with 10 messages each; results appear in <300ms |
-| Cross-context bus confusion (P9) | Event bus bridge | SyncEventMap is separate from AppEventMap; adapter code has tests |
-| IDB version upgrade blocked (P10) | IndexedDB persistence layer | Bump schema version with both contexts open; upgrade completes within 5s |
+| Write verification false confidence (P1) | Data integrity | No read-after-write in save path; strict durability only on migrations/sentinels |
+| Orphan cleanup race condition (P2) | Data integrity / orphan detection | Run detection during active cross-context writes; no valid data deleted |
+| BroadcastChannel unavailability (P3) | Sync hardening | Hardening works with BC disabled; test on real Even App hardware |
+| iOS storage eviction (P4) | Data integrity / boot verification | Clear IDB manually; app shows eviction warning, not first-run |
+| Glasses error UX blocking (P5) | Error UX | Inject every error type; all auto-clear within 5 seconds; tap always works |
+| Drift reconciliation duplicates (P6) | Sync hardening / drift | Write same message from both contexts; IDB has exactly 1 copy |
+| Gateway retry amplification (P7) | Error resilience / gateway | Mid-stream: partial shown, no retry. Connection: auto-retry with backoff |
+| Stuck FSM states (P8) | Error resilience | Inject error in every state; all return to idle <45 seconds; tap works |
+| Over-engineered integrity (P9) | Data integrity | Code under 50 lines; boot check <50ms |
+| Regression from resilience (P10) | All phases | Full 372-test suite passes after every change; integration tests added |
+| Safari transaction timing (P11) | All IDB phases | No async/await in transaction scope; callback pattern only |
+
+## Over-Engineering Boundaries: What NOT to Build
+
+These are explicit boundaries to prevent gold-plating in v1.3:
+
+| DO NOT Build | Why | What to Do Instead |
+|-------------|-----|-------------------|
+| Per-write read-after-write verification | False confidence, latency cost, no actual durability gain | Boot-time integrity scan |
+| Referential integrity enforcement on every write | Two-store schema, single FK, cascade delete already exists | Two-check boot audit |
+| Automatic orphan repair without user confirmation | Risk of deleting valid data during races | Log + user-confirmable cleanup |
+| Custom retry/recovery framework | Over-abstraction for 2 retry sites (auto-save, gateway) | Extend existing retry patterns |
+| Sync protocol with acknowledgments and sequence numbers | BC has no delivery guarantee anyway; adds massive complexity | IDB-as-truth + cursor polling |
+| Persistent health dashboard on glasses | Not actionable, consumes display, user does not care | Transient status bar only |
+| More than 2 integrity checks | Only 2 things can break (orphan messages, empty conversations) | Stop at 2 |
+| Error states in FSM transition table | Errors are transient, not states | Reset to idle + visual indicator |
+| Sub-second sync polling | Battery drain, no user-perceivable benefit over 2-second | 2-second poll + event trigger |
+| Conversation export/backup | Out of scope for v1.3; adds significant complexity | Eviction detection + warning only |
 
 ## Sources
 
-- [IndexedDB transaction auto-commit behavior](https://javascript.info/indexeddb) -- HIGH confidence, comprehensive documentation
-- [The pain and anguish of using IndexedDB](https://gist.github.com/pesterhazy/4de96193af89a6dd5ce682ce2adff49a) -- HIGH confidence, real-world bug catalog
+- [Chrome IndexedDB durability mode change (Chrome 121)](https://developer.chrome.com/blog/indexeddb-durability-mode-now-defaults-to-relaxed) -- HIGH confidence, official Chrome DevRel
+- [WebKit storage policy updates (Safari 17+)](https://webkit.org/blog/14403/updates-to-storage-policy/) -- HIGH confidence, official WebKit blog; WKWebView apps get 15% per origin, 20% total; navigator.storage.persist() available but heuristic-based
+- [MDN: Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria) -- HIGH confidence, authoritative web platform docs
 - [WebKit Bug 144875: WKWebView does not persist IndexedDB after app close](https://bugs.webkit.org/show_bug.cgi?id=144875) -- HIGH confidence, official WebKit bug tracker
-- [Dexie.js PrematureCommitError documentation](https://dexie.org/docs/DexieErrors/Dexie.PrematureCommitError) -- HIGH confidence, library documentation of exact pitfall
-- [BroadcastChannel WebView support status](https://caniwebview.com/features/web-feature-broadcast-channel/) -- MEDIUM confidence, support listed as "unknown" for Android WebView and iOS WKWebView
-- [BroadcastChannel API MDN](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API) -- HIGH confidence, same-origin restriction documented
-- [State machine state explosion](https://statecharts.dev/state-machine-state-explosion.html) -- HIGH confidence, canonical reference
-- [Handling IndexedDB version upgrade conflicts](https://dev.to/ivandotv/handling-indexeddb-upgrade-version-conflict-368a) -- MEDIUM confidence, practical walkthrough
-- [Even G2 architecture notes](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md) -- HIGH confidence, verified: iPhone flutter_inappwebview proxies to glasses via BLE
-- [flutter_inappwebview IndexedDB access issues](https://github.com/pichillilorenzo/flutter_inappwebview/issues/1604) -- MEDIUM confidence, community discussion
-- [IndexedDB slow performance analysis](https://rxdb.info/slow-indexeddb.html) -- MEDIUM confidence, benchmarks from RxDB author
-- [idb library (Jake Archibald)](https://github.com/jakearchibald/idb) -- HIGH confidence, recommended promise wrapper for IndexedDB
-- Existing codebase analysis: `src/events.ts` (synchronous bus, in-memory Map), `src/gestures/gesture-fsm.ts` (5 states x 5 inputs flat table), `src/display/viewport.ts` (windowing pattern reusable for menus), `src/voice-loop-controller.ts` (no turn ID tracking), `src/glasses-main.ts` (Layer 0-5 init, separate bus instance), `src/hub-main.ts` (no event bus, pure DOM) -- HIGH confidence, primary source
+- [The pain and anguish of using IndexedDB (pesterhazy)](https://gist.github.com/pesterhazy/4de96193af89a6dd5ce682ce2adff49a) -- HIGH confidence, comprehensive real-world bug catalog; Safari transaction auto-commit, WAL file bloat, 7-day data deletion
+- [MDN: BroadcastChannel API](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API) -- HIGH confidence; documents no delivery guarantee, no message history
+- [MDN Blog: Exploring BroadcastChannel for cross-tab communication](https://developer.mozilla.org/en-US/blog/exploring-the-broadcast-channel-api-for-cross-tab-communication/) -- HIGH confidence; messages lost if no listeners, no ordering guarantee
+- [SSE production pitfalls](https://dev.to/miketalbot/server-sent-events-are-still-not-production-ready-after-a-decade-a-lesson-for-me-a-warning-for-you-2gie) -- MEDIUM confidence, practitioner experience; buffering by proxies, connection pool exhaustion
+- [Google Glimmer: UI design language for HUD AR glasses](https://www.uploadvr.com/google-details-glimmer-its-ui-design-language-for-hud-ar-glasses/) -- MEDIUM confidence; headline+value+action pattern, transient messages preferred
+- [Dexie.js data loss on iOS 11.3/11.4](https://github.com/dfahlander/Dexie.js/issues/739) -- HIGH confidence, documented IDB data loss in WKWebView
+- [Apple Developer Forums: losing data from IndexedDB](https://developer.apple.com/forums/thread/730023) -- MEDIUM confidence, community reports of IDB eviction
+- [flutter_inappwebview changelog](https://pub.dev/packages/flutter_inappwebview/changelog) -- MEDIUM confidence; no specific BroadcastChannel documentation found
+- [web.dev: Best practices for IndexedDB](https://web.dev/articles/indexeddb-best-practices) -- HIGH confidence, official Google web platform guidance
+- [Longhorn orphaned data cleanup design](https://github.com/longhorn/longhorn/blob/master/enhancements/20220324-orphaned-data-cleanup.md) -- MEDIUM confidence; demonstrates grace period pattern for orphan cleanup
+- [Gold plating anti-pattern](https://exceptionnotfound.net/gold-plating-the-daily-software-anti-pattern/) -- MEDIUM confidence; stop when product functions well
+- Codebase analysis: `src/sync/sync-bridge.ts`, `src/persistence/conversation-store.ts`, `src/persistence/auto-save.ts`, `src/persistence/boot-restore.ts`, `src/api/gateway-client.ts`, `src/gestures/gesture-fsm.ts`, `src/glasses-main.ts`, `src/hub-main.ts`, `src/persistence/session-store.ts` -- HIGH confidence, primary source
 
 ---
-*Pitfalls research for: Even G2 OpenClaw Chat App v1.2 -- Conversation Intelligence and Hub Interaction*
+*Pitfalls research for: Even G2 OpenClaw Chat App v1.3 -- Resilience & Error UX*
 *Researched: 2026-02-28*

@@ -1,867 +1,861 @@
-# Architecture Research: v1.2 Conversation Intelligence & Hub Interaction
+# Architecture Research: v1.3 Resilience & Error UX Integration
 
-**Domain:** Integration architecture for persistence, cross-context sync, dynamic sessions, and command menu into existing Even G2 OpenClaw Chat App
+**Domain:** Resilience hardening (write verification, orphan detection, integrity checks, sync drift detection, error propagation, error UX) integrated into existing Even G2 OpenClaw Chat App
 **Researched:** 2026-02-28
-**Confidence:** HIGH (based on full codebase analysis of all 43 source files + verified platform constraints)
+**Confidence:** HIGH (based on line-by-line source analysis of all 60 source files, full understanding of existing module boundaries, event flow, and boot sequence)
 
-## Critical Architectural Insight: Same-Context Model
+---
 
-The existing codebase has an environment router in `main.ts` that branches to either `glasses-main.ts` (Even App WebView) or `hub-main.ts` (browser). Research confirms the Even App loads a single WebView instance -- the web app renders both the glasses display (via SDK bridge over BLE) and the companion phone UI (standard DOM) in the **same JavaScript context**.
+## Existing Error Surface Analysis
 
-**What this means for v1.2:**
+Before designing resilience architecture, every existing failure mode must be catalogued. The v1.2 codebase has seven distinct failure surfaces:
 
-| Scenario | Context Model | Sync Mechanism |
-|----------|--------------|----------------|
-| Production (Even App) | Single WebView, single JS context | Shared in-memory event bus -- no cross-context bridging needed |
-| Dev mode: hub in browser | Separate tab from glasses simulator | BroadcastChannel for real-time sync between index.html and preview-glasses.html |
-| Dev mode: hub only | Single tab, no glasses | Direct function calls, no sync needed |
+| # | Failure Surface | Current Code Location | Current Behavior | Consequence |
+|---|----------------|----------------------|-----------------|-------------|
+| 1 | IndexedDB write (addMessage) | `auto-save.ts` line 36-52: `saveWithRetry()` with MAX_RETRIES=3 | Retries 3x with 500ms backoff, emits `persistence:warning` on final failure | Messages silently lost. User sees "Messages may not be saved" once, then never again (`warningShown` guard in `glasses-main.ts` line 218-223) |
+| 2 | IndexedDB read (boot-restore) | `boot-restore.ts` line 75: catch-all returns empty result | Creates new conversation with random UUID, sets `error` field | User sees "Previous conversation couldn't be restored" for 2s, then boots clean. Old data is unreachable but still in IDB |
+| 3 | BroadcastChannel delivery | `sync-bridge.ts` line 25-27: `postMessage()` is fire-and-forget | No ACK, no sequence tracking, no retry | Hub and glasses DOM state drift apart silently. Both still write to same IDB, so ground truth is fine, but display diverges |
+| 4 | SSE mid-stream failure | `gateway-client.ts` line 213-244: `handleTurnError()` | Emits error chunk, which auto-save discards pending text (line 153-163) and FSM resets (gesture-handler.ts line 127-131) | Partial assistant response is lost. User gets error message via `renderer.showError()` but no recovery option |
+| 5 | Cascade delete failure | `session-store.ts` line 22-44: cursor-based delete in single tx | If WebView closes mid-transaction, tx rolls back (IDB guarantees atomicity) | No orphans from partial deletes. But if the conversation record is manually deleted outside the app, messages become orphaned |
+| 6 | Session pointer (localStorage) | `boot-restore.ts` line 44-47: reads `ACTIVE_CONVERSATION_KEY` | Points to conversation ID. If conversation was deleted by other context, `getConversation` returns undefined | Falls through to `getLastConversation()` (line 51), which works. But wastes one IDB read. Not truly broken, just wasteful |
+| 7 | Hub persistence silent failure | `hub-main.ts` line 823: `.catch(() => {})` on addMessage | Silent swallow of save errors | Hub user thinks message is persisted, but it may not be. No `persistence:warning` emitted on hub side |
 
-The "hub <-> glasses real-time communication" requirement is already solved in production by the shared event bus. Cross-context bridging (BroadcastChannel) is needed only for the **dev mode simulator** scenario where the glasses preview opens in a separate tab.
+**Key insight:** The existing architecture is fundamentally sound because IDB transaction atomicity prevents data corruption. The real problems are (a) silent data loss when writes fail without user notification, (b) DOM/display drift when sync messages are lost, and (c) no proactive detection of accumulated problems (orphans, dangling pointers, quota pressure).
 
-This simplifies the architecture dramatically. The main.ts router currently runs EITHER glasses OR hub code. In production, it needs to run BOTH in the same context, sharing a single bus instance.
+**Key architectural advantage:** Both glasses and hub contexts share the same IDB database (same origin). This means sync drift is purely a presentation-layer problem -- the ground truth in IDB is always consistent. Resilience features wrap existing operations, not replace them.
 
-## System Overview: v1.2 Integration Map
+---
 
-```
-+---------------------------------------------------------------------+
-|                    EXISTING: Layer 0-5 Boot (glasses-main.ts)       |
-|  L0: EventBus + Settings                                           |
-|  L1: Bridge (SDK/Mock)                                              |
-|  L2: AudioCapture + PCM wiring                                      |
-|  L3: GestureHandler + FSM                                           |
-|  L4: DisplayController + GlassesRenderer                            |
-|  L5: GatewayClient + VoiceLoopController                            |
-+---------------------------------------------------------------------+
-|                    NEW: Layer 2.5 -- Persistence                    |
-|  +--------------+  +------------------+  +---------------+          |
-|  | ConvoStore   |  | SessionManager   |  | SearchIndex   |          |
-|  | (IndexedDB)  |  | (CRUD + active)  |  | (in-memory)   |          |
-|  +------+-------+  +--------+---------+  +------+--------+          |
-|         |                   |                    |                   |
-+---------+-------------------+--------------------+-------------------+
-|                    NEW: Layer 3.5 -- Command Menu                   |
-|  +--------------------+  +-----------------------------+            |
-|  | CommandMenuFSM      |  | CommandMenuRenderer         |            |
-|  | (pure function)     |  | (glasses text containers)   |            |
-|  +--------------------+  +-----------------------------+            |
-+---------------------------------------------------------------------+
-|                    NEW: Layer 5.5 -- Hub Integration                |
-|  +------------------+  +------------------+  +--------------+       |
-|  | HubLiveView      |  | HubTextInput     |  | HistoryBrowse|       |
-|  | (DOM rendering)  |  | (input -> bus)   |  | (IDB queries)|       |
-|  +------------------+  +------------------+  +--------------+       |
-+---------------------------------------------------------------------+
-|                    NEW: DevSync (dev mode only)                     |
-|  +--------------------------------------------------------------+   |
-|  | BroadcastChannelBridge -- mirrors bus events across tabs      |   |
-|  | Only instantiated when devMode=true AND hub/simulator split   |   |
-|  +--------------------------------------------------------------+   |
-+---------------------------------------------------------------------+
-```
-
-## New Component Responsibilities
-
-| Component | Responsibility | Module Type | New File |
-|-----------|---------------|-------------|----------|
-| ConvoStore | IndexedDB CRUD for conversations and messages | Side-effect (I/O) | `src/persistence/convo-store.ts` |
-| SessionManager | Dynamic session lifecycle (create/rename/delete/switch/list), replaces static SESSIONS array | Pure logic + ConvoStore delegate | `src/sessions/session-manager.ts` |
-| SearchIndex | In-memory token index built on load, queried for full-text search | Pure function | `src/persistence/search-index.ts` |
-| CommandMenuFSM | Pure state machine for menu item navigation (selected index, items list) | Pure function (zero imports) | `src/gestures/command-menu-fsm.ts` |
-| CommandMenuRenderer | Renders command menu items to glasses text container when menu state is active | Side-effect (bridge calls) | `src/display/command-menu-renderer.ts` |
-| CommandMenu | Orchestrator connecting FSM + renderer + session actions | Glue module | `src/gestures/command-menu.ts` |
-| PersistenceTap | Bus listener that persists messages to IndexedDB as they flow | Side-effect (bus subscriber) | `src/persistence/persistence-tap.ts` |
-| HubLiveView | Renders current glasses conversation in hub DOM, subscribes to bus events | DOM + bus subscriber | `src/hub/hub-live-view.ts` |
-| HubTextInput | Text input field in hub that sends typed messages into the conversation | DOM + bus emitter | `src/hub/hub-text-input.ts` |
-| HistoryBrowser | Hub UI for browsing past conversations with search | DOM + ConvoStore queries | `src/hub/history-browser.ts` |
-| BroadcastChannelBridge | Dev-only: mirrors selected bus events across BroadcastChannel for simulator sync | Side-effect (BroadcastChannel) | `src/bridge/broadcast-bridge.ts` |
-
-## Recommended Project Structure (v1.2 additions)
+## System Overview: v1.3 Resilience Integration Map
 
 ```
-src/
-  persistence/                # NEW: IndexedDB layer
-    convo-store.ts            # IndexedDB wrapper for conversations + messages
-    search-index.ts           # In-memory full-text search index
-    persistence-tap.ts        # Bus subscriber that writes to IndexedDB
-    db-schema.ts              # Database schema version constants + types
-  sessions/                   # REFACTORED: replaces flat sessions.ts
-    session-manager.ts        # Dynamic session CRUD (was: static SESSIONS array)
-    session-types.ts          # Session-related types
-  gestures/                   # EXISTING + additions
-    gesture-fsm.ts            # UNCHANGED
-    gesture-handler.ts        # MODIFIED: delegate to command-menu on menu state
-    command-menu-fsm.ts       # NEW: pure FSM for menu item selection
-    command-menu.ts           # NEW: orchestrator connecting FSM + renderer + actions
-  display/                    # EXISTING + additions
-    glasses-renderer.ts       # MODIFIED: add loadConversation() + getLastAssistantMessage()
-    command-menu-renderer.ts  # NEW: renders menu overlay on glasses
-    display-controller.ts     # MODIFIED: wire command menu events
-    viewport.ts               # UNCHANGED
-    icon-animator.ts          # UNCHANGED
-  hub/                        # NEW: hub-specific UI modules
-    hub-live-view.ts          # Real-time mirror of glasses conversation
-    hub-text-input.ts         # Text input -> conversation
-    history-browser.ts        # Conversation history UI + search
-  bridge/                     # EXISTING + additions
-    even-bridge.ts            # UNCHANGED
-    bridge-mock.ts            # UNCHANGED
-    bridge-types.ts           # UNCHANGED
-    broadcast-bridge.ts       # NEW: dev-mode cross-tab event mirroring
-  events.ts                   # UNCHANGED (bus factory)
-  types.ts                    # MODIFIED: add new event types to AppEventMap
-  main.ts                     # MODIFIED: production boots both glasses + hub
-  glasses-main.ts             # MODIFIED: integrate persistence + command menu layers
-  hub-main.ts                 # MODIFIED: integrate live view, text input, history
-  settings.ts                 # UNCHANGED
-  voice-loop-controller.ts    # MODIFIED: add text turn support for hub input
++-------------------------------------------------------------------------+
+|                    EXISTING LAYERS (Unchanged)                          |
+|  L0: EventBus + Settings                                               |
+|  L1: Bridge (SDK/Mock)                                                  |
+|  L2: AudioCapture + PCM wiring                                          |
+|  L3: GestureHandler + FSM                                               |
+|  L4: DisplayController + GlassesRenderer                                |
+|  L5: GatewayClient + VoiceLoopController                                |
++-------------------------------------------------------------------------+
+|                                                                         |
+|  MODIFIED: Persistence Layer                                            |
+|  +------------------------+   +--------------------+                    |
+|  | ConversationStore      |   | SessionStore       |                    |
+|  |  + verifyMessage()     |   |  (unchanged)       |                    |
+|  |  + countMessages()     |   +--------------------+                    |
+|  |  + getOrphanMessages() |                                             |
+|  +------------------------+                                             |
+|                                                                         |
+|  MODIFIED: Auto-save + Boot                                             |
+|  +------------------------+   +--------------------+                    |
+|  | AutoSave               |   | boot-restore       |                    |
+|  |  + verify first write  |   |  + integrity param |                    |
+|  |  + error escalation    |   |  + pointer validate |                   |
+|  +------------------------+   +--------------------+                    |
+|                                                                         |
+|  NEW: Integrity Layer                                                   |
+|  +------------------------+   +--------------------+                    |
+|  | IntegrityChecker       |   | StorageHealth      |                    |
+|  |  check() -> report     |   |  getQuota()        |                    |
+|  |  repairOrphans(ids)    |   |  requestPersist()  |                    |
+|  +------------------------+   +--------------------+                    |
+|                                                                         |
+|  NEW: Sync Hardening Layer                                              |
+|  +------------------------+   +--------------------+                    |
+|  | SyncMonitor            |   | DriftReconciler    |                    |
+|  |  trackSend/Receive     |   |  detectDrift()     |                    |
+|  |  getStats()            |   |  reconcile()       |                    |
+|  |  isAlive(timeout)      |   |  (re-reads from    |                   |
+|  +------------------------+   |   IDB, not CRDT)   |                    |
+|                               +--------------------+                    |
+|                                                                         |
+|  NEW: Error UX Layer                                                    |
+|  +------------------------+   +--------------------+                    |
+|  | ErrorPresenter         |   | HealthIndicator    |                    |
+|  |  glasses: hint bar     |   |  computeHealth()   |                    |
+|  |  hub: toast + banner   |   |  (pure function)   |                    |
+|  +------------------------+   +--------------------+                    |
++-------------------------------------------------------------------------+
 ```
 
-### Structure Rationale
+---
 
-- **persistence/:** Isolates all IndexedDB I/O into one folder. Matches the existing pattern of side-effect isolation (bridge/ for SDK, api/ for gateway). The convo-store module is the ONLY module that touches IndexedDB, same as even-bridge.ts is the ONLY module that touches the SDK.
-- **sessions/:** Promotes sessions from a flat constant file to a proper module with CRUD. The static `SESSIONS` array in `sessions.ts` becomes the seed data for first-run, then IndexedDB owns session storage.
-- **hub/:** Groups all hub-specific DOM rendering modules. Keeps the hub-main.ts file thin (wiring only) by extracting component logic into dedicated modules.
-- **gestures/command-menu-fsm.ts:** Follows the exact pattern of gesture-fsm.ts -- pure function, zero imports, record-based transition table. This is the proven pattern in the codebase.
+## Component Boundaries: New vs Modified
 
-## Architectural Patterns
+### New Components (6 modules)
 
-### Pattern 1: Persistence Tap (Bus Listener Pattern)
+| Component | File | Responsibility | Pattern | Dependencies |
+|-----------|------|---------------|---------|--------------|
+| IntegrityChecker | `persistence/integrity-checker.ts` | Referential integrity validation + orphan detection/cleanup | Factory/closure, side-effect (IDB) | IDBDatabase |
+| StorageHealth | `persistence/storage-health.ts` | Quota monitoring, eviction detection, persistence requests | Factory/closure, side-effect (Storage API) | None (browser APIs only) |
+| SyncMonitor | `sync/sync-monitor.ts` | Track message delivery, detect loss via sequence numbers | Factory/closure, mixed | SyncBridge |
+| DriftReconciler | `sync/drift-reconciler.ts` | Detect state divergence via message count, full-sync recovery | Factory/closure, side-effect | ConversationStore, SyncBridge, EventBus |
+| ErrorPresenter | `errors/error-presenter.ts` | Map error events to user-visible feedback per context | Factory/closure, side-effect (DOM/renderer) | EventBus, GlassesRenderer (glasses) or DOM callbacks (hub) |
+| HealthIndicator | `errors/health-indicator.ts` | Aggregate health from storage/sync/gateway into status model | Pure function (no closure state needed) | None (receives data as args) |
 
-**What:** ConvoStore subscribes to existing bus events (`gateway:chunk`, `audio:recording-stop`) and persists messages as they flow through the system. No existing modules need to know about persistence.
-**When to use:** Adding persistence to an existing event-driven system without modifying producers.
-**Trade-offs:** PRO: zero coupling to existing modules. CON: persistence becomes a "silent subscriber" that could fail without visible feedback.
+### Modified Components (6 modules)
+
+| Component | File | What Changes | Backward Compatible |
+|-----------|------|-------------|-------------------|
+| ConversationStore | `persistence/conversation-store.ts` | Add `verifyMessage()`, `getOrphanMessages()`, `countMessages()` to factory return | YES -- additive only, no existing method signatures change |
+| ConversationStore interface | `persistence/types.ts` | Add 3 new methods to `ConversationStore` interface | YES -- additive union extension |
+| AutoSave | `persistence/auto-save.ts` | Verify first write, escalate errors to `persistence:error` | YES -- existing save flow preserved, new behavior opt-in via `verifyFirstWrite` option |
+| boot-restore | `persistence/boot-restore.ts` | Accept optional `IntegrityReport`, use it to skip dangling pointer | YES -- new param is optional |
+| AppEventMap | `types.ts` | Add 4 new event types for resilience | YES -- additive to existing union |
+| SyncMessage | `sync/sync-types.ts` | Add `sync:heartbeat` variant, optional `seq` field on all variants | YES -- optional field, new variant |
+
+### Unchanged Components
+
+EventBus, SyncBridge, SessionStore, SessionManager, GatewayClient, VoiceLoopController, GestureFSM, GestureHandler, Viewport, GlassesRenderer, DisplayController, MenuController, AudioCapture, BridgeMock, EvenBridge, IconAnimator, CommandMenu, Settings, Logs, Utils.
+
+These modules already emit the events and expose the interfaces needed. Resilience features observe and wrap them.
+
+---
+
+## Detailed Component Design
+
+### 1. IntegrityChecker (`persistence/integrity-checker.ts`)
+
+**Purpose:** Detect and repair referential integrity violations in IndexedDB.
+
+**Integration point:** Called from `boot-restore.ts` during the existing restore flow, after `openDB()` succeeds but before `restoreOrCreateConversation()` runs.
 
 ```typescript
-// persistence-tap.ts -- subscribes to bus, writes to IndexedDB
-export function createPersistenceTap(opts: {
+export interface IntegrityReport {
+  orphanMessageIds: string[];       // Messages whose conversationId has no matching conversation
+  danglingPointer: boolean;         // localStorage active session points to non-existent conversation
+  conversationCount: number;
+  messageCount: number;
+  checkedAt: number;
+}
+
+export interface IntegrityChecker {
+  /** Read-only scan. Does not modify data. */
+  check(): Promise<IntegrityReport>;
+  /** Delete orphan messages by ID. Returns count deleted. */
+  repairOrphans(orphanIds: string[]): Promise<number>;
+}
+
+export function createIntegrityChecker(db: IDBDatabase): IntegrityChecker;
+```
+
+**Implementation approach:**
+
+1. `check()` opens a single read-only transaction across both `conversations` and `messages` object stores.
+2. Loads all conversation keys into a `Set<string>`.
+3. Iterates all messages via cursor, checking if `conversationId` exists in the set.
+4. Reads `localStorage.getItem('openclaw-active-conversation')` and checks against conversation set.
+5. Returns report without modifying anything.
+
+`repairOrphans()` opens a read-write transaction and deletes messages by ID using `store.delete(id)`.
+
+**Why separate check/repair:**
+- Read-only detection is safe to run every boot with zero risk
+- Repair requires explicit opt-in to avoid accidental data deletion
+- Report object is consumed by boot-restore (dangling pointer) and health UI (orphan count)
+- Makes testing deterministic: inject known orphans, assert detection, then test repair separately
+
+**Boot latency:** Single transaction, two `getAllKeys()` calls + one cursor scan. At typical data sizes (< 1000 messages), completes in < 10ms. Runs during the existing "Connecting..." splash.
+
+### 2. StorageHealth (`persistence/storage-health.ts`)
+
+**Purpose:** Monitor IndexedDB storage quota and eviction risk. Request persistent storage.
+
+**Integration point:** Called during boot after IntegrityChecker, and on-demand from hub health page.
+
+```typescript
+export interface StorageQuota {
+  usageBytes: number;
+  quotaBytes: number;
+  percentUsed: number;
+  isPersisted: boolean;
+  isAvailable: boolean;       // false if Storage API is unavailable
+}
+
+export interface StorageHealthService {
+  getQuota(): Promise<StorageQuota>;
+  requestPersistence(): Promise<boolean>;
+}
+
+export function createStorageHealth(): StorageHealthService;
+```
+
+**Implementation:**
+- `getQuota()` uses `navigator.storage.estimate()` + `navigator.storage.persisted()`.
+- Falls back to `{ isAvailable: false }` when Storage API is unavailable (flutter_inappwebview may not expose it).
+- `requestPersistence()` calls `navigator.storage.persist()`. WebKit grants persistence automatically for installed web apps; Android requires user gesture or has heuristics based on engagement.
+
+**Why this exists:** IndexedDB eviction is the most catastrophic silent failure. On iOS Safari, "best effort" storage can be evicted after 7 days of inactivity. Requesting persistent storage is the only browser-native protection. Quota monitoring enables proactive warnings before eviction pressure triggers data loss.
+
+### 3. ConversationStore Extensions
+
+**Purpose:** Add verification and counting capabilities to the existing store.
+
+**Integration point:** Three new methods added to the factory return in `conversation-store.ts`. Three new method signatures added to `ConversationStore` interface in `persistence/types.ts`.
+
+```typescript
+// Added to ConversationStore interface:
+verifyMessage(messageId: string): Promise<boolean>;
+countMessages(conversationId: string): Promise<number>;
+getOrphanMessages(): Promise<string[]>;
+```
+
+**Critical design decision -- why verification is a separate method, not inline in `addMessage()`:**
+
+The existing `addMessage()` (line 169-196) uses a single IDB transaction that writes both the message and updates the conversation's `updatedAt`. The transaction's `oncomplete` handler already provides the IDB guarantee that the write is durable. Adding a read-back inside the same transaction is redundant.
+
+Instead, `verifyMessage()` is a separate read-only transaction. Its purpose is to detect a different failure class: when `addMessage` resolved successfully (oncomplete fired) but the data was subsequently evicted or corrupted. This catches:
+- Storage eviction between oncomplete and verify
+- IDB corruption (extremely rare but devastating)
+- Browser bugs where oncomplete fires prematurely
+
+**When to verify:** Only the first message in each conversation session. This confirms storage is working at the start. Subsequent saves skip verification for performance.
+
+### 4. Auto-Save Resilience Enhancement
+
+**Purpose:** Upgrade fire-and-forget saves with verification and escalating error feedback.
+
+**Integration point:** Modifies `persistence/auto-save.ts`. The existing `saveWithRetry()` gets enhanced error reporting.
+
+**Changes to existing code:**
+
+1. New optional `verifyFirstWrite` field in `AutoSaveOptions` (default: `true`).
+2. After the first successful `addMessage()`, call `store.verifyMessage(id)`. If verify fails, emit `persistence:error` with `{ type: 'verify-failed', recoverable: false }`.
+3. On final retry exhaustion, emit `persistence:error` instead of `persistence:warning`.
+
+**Error escalation model:**
+
+```
+Save attempt 1 fails -> retry (existing behavior, silent)
+Save attempt 2 fails -> retry (existing behavior, silent)
+Save attempt 3 fails -> retry (existing behavior, silent)
+Save attempt 4 fails -> emit 'persistence:error' { type: 'write-failed', recoverable: false }
+
+First write verify fails -> emit 'persistence:error' { type: 'verify-failed', recoverable: false }
+                          -> skip verification for rest of session (storage is suspect)
+```
+
+**Fix for hub persistence silence (Error Surface #7):** The hub's `handleHubChunk` and `handleTextSubmit` in `hub-main.ts` currently swallow save errors silently. The enhanced auto-save pattern should be reused in hub context, or at minimum, hub should emit `persistence:warning` on its `.catch()` paths.
+
+### 5. New Event Types (AppEventMap)
+
+```typescript
+// Added to AppEventMap in types.ts:
+
+'persistence:error': {
+  type: 'write-failed' | 'verify-failed' | 'integrity-violation' | 'quota-warning';
+  message: string;
+  conversationId?: string;
+  recoverable: boolean;
+};
+
+'sync:drift-detected': {
+  localCount: number;
+  remoteCount: number;
+  conversationId: string;
+};
+
+'sync:reconciled': {
+  conversationId: string;
+  action: 'full-reload' | 'noop';
+};
+
+'health:status-change': {
+  component: 'storage' | 'sync' | 'gateway';
+  status: 'ok' | 'degraded' | 'error';
+  detail: string;
+};
+```
+
+All additive. Existing event subscribers are unaffected.
+
+### 6. SyncMonitor (`sync/sync-monitor.ts`)
+
+**Purpose:** Track cross-context message delivery and detect message loss.
+
+**Integration point:** Observes SyncBridge traffic without modifying it. Wraps `postMessage` and `onMessage` with tracking.
+
+```typescript
+export interface SyncStats {
+  messagesSent: number;
+  messagesReceived: number;
+  lastSentAt: number | null;
+  lastReceivedAt: number | null;
+  sequenceGaps: number;
+  transportType: 'broadcast-channel' | 'localstorage';
+}
+
+export interface SyncMonitor {
+  trackSend(msg: SyncMessage): void;
+  trackReceive(msg: SyncMessage): void;
+  getStats(): SyncStats;
+  isAlive(timeoutMs: number): boolean;
+  destroy(): void;
+}
+
+export function createSyncMonitor(bridge: SyncBridge): SyncMonitor;
+```
+
+**Sequence numbering approach:**
+
+Add optional `seq?: number` field to all existing SyncMessage variants (backward-compatible). Both contexts maintain a monotonically increasing counter. When a receiver sees a gap (receives seq 5 then seq 8), it increments `sequenceGaps` and knows messages 6-7 were lost.
+
+**New SyncMessage variant -- heartbeat:**
+
+```typescript
+| { type: 'sync:heartbeat'; origin: SyncOrigin; seq?: number;
+    messageCount: number; conversationId: string }
+```
+
+Sent every 10s. Includes total message count for the active conversation. The receiver compares against its own `countMessages()` -- mismatch triggers drift detection.
+
+**Why NOT an ACK protocol:** ACK-based delivery adds round-trip latency to every sync message. Since both contexts share the same IDB, lost sync messages don't cause data loss -- only stale DOM. A 10s heartbeat comparison is sufficient to catch drift within an acceptable window.
+
+**Same-context detection:** In production Even App, glasses and hub run in the same WebView (single JavaScript runtime). BroadcastChannel is only needed for dev-mode (separate browser tabs). SyncMonitor should detect same-context mode (check if `window.__evenGlassesContext` or similar flag is set) and skip heartbeat-based drift detection, since the shared event bus already provides reliable delivery.
+
+### 7. DriftReconciler (`sync/drift-reconciler.ts`)
+
+**Purpose:** When sync drift is detected, reconcile by re-reading from IDB (the single source of truth).
+
+```typescript
+export interface DriftReconciler {
+  detectDrift(conversationId: string, remoteCount: number): Promise<boolean>;
+  reconcile(conversationId: string): Promise<void>;
+  destroy(): void;
+}
+
+export function createDriftReconciler(opts: {
+  store: ConversationStore;
+  syncBridge: SyncBridge;
   bus: EventBus<AppEventMap>;
-  convoStore: ConvoStore;
-  sessionManager: SessionManager;
+  origin: SyncOrigin;
+}): DriftReconciler;
+```
+
+**Reconciliation strategy:**
+
+1. Detecting context calls `store.countMessages(conversationId)` and compares with remote count from heartbeat.
+2. If counts differ, `reconcile()` re-reads all messages from IDB for the conversation.
+3. Emits `sync:reconciled` on the bus with `{ action: 'full-reload' }`.
+4. The UI layer (glasses-main's `switchToSession` or hub's `loadLiveConversation`) re-renders from fresh IDB data.
+
+**Why NOT CRDT or vector clocks:**
+- Both contexts write to the same IDB instance (same origin) -- there are no true conflicts.
+- Messages are append-only (no edits, no out-of-order).
+- Session operations are idempotent.
+- The actual failure mode is "DOM doesn't reflect IDB" -- solved by re-read, not conflict resolution.
+
+### 8. ErrorPresenter (`errors/error-presenter.ts`)
+
+**Purpose:** Map error events to user-visible feedback appropriate for each context.
+
+**Two factory variants:**
+
+```typescript
+// Glasses context -- uses renderer's existing showError() + hint bar
+export function createGlassesErrorPresenter(opts: {
+  bus: EventBus<AppEventMap>;
   renderer: GlassesRenderer;
-}): { destroy(): void } {
-  const { bus, convoStore, sessionManager, renderer } = opts;
-  const unsubs: Array<() => void> = [];
+}): ErrorPresenter;
 
-  // Persist user messages when transcript arrives
-  unsubs.push(bus.on('gateway:chunk', async (chunk) => {
-    if (chunk.type === 'transcript' && chunk.text) {
-      await convoStore.addMessage(sessionManager.activeSessionId(), {
-        role: 'user',
-        text: chunk.text,
-        timestamp: Date.now(),
-      });
-    }
-    if (chunk.type === 'response_end') {
-      const lastMsg = renderer.getLastAssistantMessage();
-      if (lastMsg) {
-        await convoStore.addMessage(sessionManager.activeSessionId(), {
-          role: 'assistant',
-          text: lastMsg.text,
-          timestamp: lastMsg.timestamp,
-        });
-      }
-    }
-  }));
-
-  return {
-    destroy() {
-      for (const unsub of unsubs) unsub();
-      unsubs.length = 0;
-    },
-  };
-}
+// Hub context -- uses toast for transient, banner for persistent
+export function createHubErrorPresenter(opts: {
+  bus: EventBus<AppEventMap>;
+  showToast: (msg: string) => void;
+  showBanner: (msg: string, action?: { label: string; handler: () => void }) => void;
+  hideBanner: () => void;
+}): ErrorPresenter;
 ```
 
-**Why this pattern:** The existing architecture already uses the bus as the central nervous system. Persistence is just another subscriber. This avoids the anti-pattern of threading a `saveMessage()` call through every module that touches messages.
+**Error-to-UX mapping table:**
 
-### Pattern 2: Pure FSM for Command Menu (Matches Existing gesture-fsm.ts)
+| Error Event | Glasses Display | Hub Display | Duration |
+|------------|----------------|-------------|----------|
+| `persistence:error` (write-failed) | `renderer.showError("Save failed")` | Toast: "Message may not be saved" | 3s / 5s |
+| `persistence:error` (verify-failed) | `renderer.showError("Storage issue")` | Banner: "Storage issue detected" + "Check" action button | Until dismissed |
+| `persistence:error` (quota-warning) | `renderer.showError("Storage full")` | Banner: "Storage 90%+ full" + "Manage" action | Until dismissed |
+| `persistence:error` (integrity-violation) | (silent -- auto-repair on glasses) | Banner: "Data repair in progress" | Until repair completes |
+| `sync:drift-detected` | (silent -- auto-reconcile) | Toast: "Syncing with glasses..." | 3s |
+| `gateway:status` error | Existing: icon state + showError | Toast: "Connection lost" | 5s |
+| `health:status-change` | (glasses don't show health) | Health page status dots update | Persistent |
 
-**What:** The command menu is a separate pure FSM that the gesture handler delegates to when `state === 'menu'`. Menu items are a static array; scroll-up/scroll-down move selection; tap executes the selected command.
-**When to use:** Any new UI state machine in this codebase should follow the pure-function FSM pattern.
-**Trade-offs:** PRO: fully testable, zero dependencies, self-documenting. CON: requires an orchestrator module to wire FSM output to side effects.
+**Design constraints for glasses error UX:**
+1. **576x288 display** -- no room for error dialogs. Only the chat container (256px height) or status bar (30px) available.
+2. **Gesture-only input** -- no "dismiss" button possible. Auto-clear is mandatory.
+3. **Never block voice loop** -- user must always be able to tap-to-talk regardless of errors.
+4. **One error at a time** -- `renderer.showError()` appends as assistant-role message. New errors push old ones up via viewport scrolling.
+5. **Existing `showError` reuse** -- the renderer already has `showError(message)` (line 284-298) that creates a `[Error] ${message}` chat bubble. This is the right UX for glasses.
+
+### 9. HealthIndicator (`errors/health-indicator.ts`)
+
+**Purpose:** Aggregate health signals into a unified status model for the hub health page.
+
+**This is a pure function, not a service:**
 
 ```typescript
-// command-menu-fsm.ts -- zero imports, pure function
-export type MenuCommand = '/new' | '/reset' | '/switch' | '/rename' | '/delete';
+export type HealthLevel = 'ok' | 'degraded' | 'error';
 
-export interface MenuState {
-  items: MenuCommand[];
-  selectedIndex: number;
+export interface SystemHealth {
+  storage: { level: HealthLevel; detail: string; quota?: StorageQuota };
+  sync: { level: HealthLevel; detail: string; stats?: SyncStats };
+  gateway: { level: HealthLevel; detail: string };
+  overall: HealthLevel;  // worst of the three
+  lastChecked: number;
 }
 
-export type MenuInput = 'scroll-up' | 'scroll-down' | 'tap' | 'close';
-
-export interface MenuTransition {
-  nextState: MenuState;
-  action: { type: 'EXECUTE'; command: MenuCommand } | { type: 'CLOSE' } | null;
-}
-
-export function menuTransition(state: MenuState, input: MenuInput): MenuTransition {
-  switch (input) {
-    case 'scroll-up':
-      return {
-        nextState: {
-          ...state,
-          selectedIndex: Math.max(0, state.selectedIndex - 1),
-        },
-        action: null,
-      };
-    case 'scroll-down':
-      return {
-        nextState: {
-          ...state,
-          selectedIndex: Math.min(state.items.length - 1, state.selectedIndex + 1),
-        },
-        action: null,
-      };
-    case 'tap':
-      return {
-        nextState: state,
-        action: { type: 'EXECUTE', command: state.items[state.selectedIndex] },
-      };
-    case 'close':
-      return {
-        nextState: { ...state, selectedIndex: 0 },
-        action: { type: 'CLOSE' },
-      };
-  }
-}
+export function computeSystemHealth(opts: {
+  storageQuota: StorageQuota | null;
+  integrityReport: IntegrityReport | null;
+  syncStats: SyncStats | null;
+  gatewayHealth: GatewayHealthState;
+}): SystemHealth;
 ```
 
-### Pattern 3: Thin IndexedDB Wrapper (No Library)
+**Health level logic:**
 
-**What:** A hand-rolled IndexedDB wrapper using raw `IDBDatabase` with promise helpers. No Dexie, no idb-keyval.
-**When to use:** When the app has simple schema needs (2 object stores, 3 indexes) and bundle size is critical (42KB .ehpk target).
-**Trade-offs:** PRO: zero dependency added, full control, minimal bundle impact. CON: more boilerplate than Dexie, must handle upgrade events manually.
+| Component | OK | Degraded | Error |
+|-----------|-----|---------|-------|
+| Storage | quota < 80%, no orphans, persisted | quota 80-95%, orphans found, or not persisted | quota > 95%, verify failed, IDB unavailable |
+| Sync | Message received in last 30s, no sequence gaps | No message in 30-60s, or gaps detected | No message in > 60s (if glasses should be connected) |
+| Gateway | `status === 'connected'`, heartbeat recent | `status === 'connecting'` or reconnecting | `status === 'error'` with max reconnects exhausted |
 
-**Rationale for raw IndexedDB over Dexie:**
-- Dexie adds 22-26KB gzipped to the bundle. The entire app is currently 42KB packaged. This would be a 50%+ size increase.
-- The schema is trivial: 2 object stores (`sessions`, `messages`), 3 indexes (`sessionId`, `timestamp`, compound `[sessionId, timestamp]`). Dexie's query builder and schema migration system are overkill.
-- The existing codebase uses zero external runtime dependencies beyond the Even SDK. Adding Dexie would break this pattern.
+Overall = worst(storage, sync, gateway).
+
+**Integration with existing health page:** The hub already has `buildHealthViewModel()` in `app-wiring.ts` (line 111-135) that produces `HealthDotState` ('ok' | 'off'). The new `computeSystemHealth` replaces this with a richer model that includes 'degraded'. The existing health page DOM structure (dot + label per row) supports this with an additional CSS class.
+
+---
+
+## Data Flow Changes
+
+### Enhanced Boot Flow (glasses-main.ts)
+
+```
+EXISTING:                              WITH v1.3 ADDITIONS:
+
+L0: createEventBus()                   L0: createEventBus()
+    loadSettings()                         loadSettings()
+    |                                      |
+    v                                      v
+openDB()                              openDB()
+createConversationStore(db)            createConversationStore(db)
+createSessionStore(db, store)          createSessionStore(db, store)
+    |                                      |
+    |                                      v
+    |                                  createIntegrityChecker(db)          <-- NEW
+    |                                  integrityChecker.check()            <-- NEW
+    |                                      |
+    |                                      v
+    |                                  createStorageHealth()               <-- NEW
+    |                                  storageHealth.getQuota()            <-- NEW
+    |                                  storageHealth.requestPersistence()  <-- NEW (if not persisted)
+    |                                      |
+    v                                      v
+restoreOrCreateConversation({store})   restoreOrCreateConversation({store, integrityReport})
+    |                                      |
+    v                                      v
+createSyncBridge()                     createSyncBridge()
+    |                                      |
+    |                                      v
+    |                                  createSyncMonitor(syncBridge)       <-- NEW
+    |                                  createDriftReconciler(...)          <-- NEW
+    |                                      |
+    v                                      v
+L1: bridge.init()                      L1: bridge.init()
+    ...                                    ...
+L4: renderer.init()                    L4: renderer.init()
+    |                                      |
+    |                                      v
+    |                                  createGlassesErrorPresenter(...)    <-- NEW (after renderer ready)
+    |                                      |
+    v                                      v
+L5: createGatewayClient()             L5: createGatewayClient()
+    createVoiceLoopController()            createVoiceLoopController()
+    createAutoSave()                       createAutoSave({verifyFirstWrite: true})
+    |                                      |
+    |                                      v
+    |                                  Start sync heartbeat interval       <-- NEW
+    v                                      v
+    gateway.checkHealth()                  gateway.checkHealth()
+```
+
+**Boot latency impact:** IntegrityChecker.check() takes < 10ms for < 1000 messages. StorageHealth.getQuota() is < 5ms. Total added: < 20ms. This runs during the existing "Connecting..." splash phase which already has ~1s of visible activity.
+
+**Cleanup extension:** The `cleanup()` function in glasses-main.ts (line 248-264) needs to destroy the new modules in reverse order:
+```
+// Added to cleanup() in reverse init order:
+syncMonitor.destroy();      // after syncBridge.destroy()
+driftReconciler.destroy();  // after syncMonitor
+errorPresenter.destroy();   // after displayController
+// IntegrityChecker and StorageHealth have no destroy() -- they're one-shot
+```
+
+### Enhanced Hub Boot Flow (hub-main.ts)
+
+The `initPersistence()` function (line 932-986) gains:
+- IntegrityChecker run
+- StorageHealth check
+- SyncMonitor creation
+- DriftReconciler creation
+- Returns additional objects for health page consumption
+
+The `initHub()` function (line 889-930) gains:
+- `createHubErrorPresenter(bus, showToast, showBanner, hideBanner)`
+- Health page enhancement with storage/sync/integrity indicators
+- Fix for silent hub persistence failures (Error Surface #7)
+
+### Message Save Flow Enhancement
+
+```
+EXISTING (auto-save.ts):                    WITH v1.3:
+
+gateway:chunk 'transcript'                  gateway:chunk 'transcript'
+    |                                           |
+    v                                           v
+saveWithRetry(addMessage())                 saveWithRetry(addMessage())
+    |                                           |
+    +-- success:                                +-- success:
+    |     postMessage to sync                   |     |
+    |                                           |     +-- if firstMessage && verifyFirstWrite:
+    |                                           |     |     verifyMessage(id)
+    |                                           |     |       +-- pass: postMessage to sync
+    |                                           |     |       +-- fail: emit persistence:error
+    |                                           |     |              {type:'verify-failed'}
+    |                                           |     +-- else: postMessage to sync
+    |                                           |
+    +-- fail after retries:                     +-- fail after retries:
+          emit persistence:warning                    emit persistence:error          <-- ESCALATED
+                                                      {type:'write-failed',
+                                                       recoverable:false}
+```
+
+### Sync Heartbeat Flow (New)
+
+```
+Every 10 seconds (both contexts, if sync bridge active):
+
+SyncMonitor
+    |
+    +-- store.countMessages(activeConversationId)
+    |
+    +-- syncBridge.postMessage({ type: 'sync:heartbeat',
+    |       origin, seq: nextSeq++, messageCount,
+    |       conversationId: activeConversationId })
+    |
+    +-- (other context receives heartbeat)
+          |
+          +-- syncMonitor.trackReceive(msg)
+          |
+          +-- driftReconciler.detectDrift(msg.conversationId, msg.messageCount)
+          |
+          +-- If drift detected:
+                |
+                +-- bus.emit('sync:drift-detected', {...})
+                |
+                +-- driftReconciler.reconcile(conversationId)
+                |     (re-reads all messages from IDB)
+                |
+                +-- bus.emit('sync:reconciled', { action: 'full-reload' })
+                |
+                +-- UI subscribes to sync:reconciled and re-renders
+```
+
+### Error Event Propagation Flow (New)
+
+```
+Error originates at:
+    persistence:error    --+
+    sync:drift-detected  --+--> EventBus
+    gateway:status       --+        |
+    health:status-change --+        |
+                                    v
+                            ErrorPresenter.onBusEvent()
+                                    |
+                          +-------- +--------+
+                          |                  |
+                     Glasses ctx         Hub ctx
+                          |                  |
+                  renderer.showError()   showToast() or
+                  (chat bubble,          showBanner()
+                   auto-scrolls up)      (with action btn)
+                          |                  |
+                  3s auto-clear          5s auto-clear
+                  (only for transient)   (toast) or
+                                         persistent (banner)
+```
+
+---
+
+## SyncMessage Extensions (sync-types.ts)
 
 ```typescript
-// convo-store.ts -- raw IndexedDB with promise wrapper
-const DB_NAME = 'even-openclaw';
-const DB_VERSION = 1;
-
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains('sessions')) {
-        const sessions = db.createObjectStore('sessions', { keyPath: 'id' });
-        sessions.createIndex('createdAt', 'createdAt');
-      }
-      if (!db.objectStoreNames.contains('messages')) {
-        const messages = db.createObjectStore('messages', {
-          keyPath: 'id',
-          autoIncrement: true,
-        });
-        messages.createIndex('sessionId', 'sessionId');
-        messages.createIndex('timestamp', 'timestamp');
-        messages.createIndex('sessionId_timestamp', ['sessionId', 'timestamp']);
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
+// All existing variants gain optional seq field:
+export type SyncMessage =
+  | { type: 'session:created'; origin: SyncOrigin;
+      session: { id: string; name: string }; seq?: number }
+  | { type: 'session:renamed'; origin: SyncOrigin;
+      sessionId: string; name: string; seq?: number }
+  | { type: 'session:deleted'; origin: SyncOrigin;
+      sessionId: string; seq?: number }
+  | { type: 'session:switched'; origin: SyncOrigin;
+      sessionId: string; seq?: number }
+  | { type: 'message:added'; origin: SyncOrigin;
+      conversationId: string; role: string; text: string; seq?: number }
+  | { type: 'conversation:named'; origin: SyncOrigin;
+      conversationId: string; name: string; seq?: number }
+  | { type: 'streaming:start'; origin: SyncOrigin;
+      conversationId: string; seq?: number }
+  | { type: 'streaming:end'; origin: SyncOrigin;
+      conversationId: string; seq?: number }
+  // NEW:
+  | { type: 'sync:heartbeat'; origin: SyncOrigin;
+      seq?: number; messageCount: number; conversationId: string };
 ```
 
-### Pattern 4: BroadcastChannel as Dev-Only Event Mirror
+Backward-compatible: `seq` is optional, new `sync:heartbeat` type is ignored by existing handlers that use `switch` with no `default` case.
 
-**What:** In dev mode, a thin bridge subscribes to selected bus events and forwards them over BroadcastChannel. The receiving tab (glasses simulator) subscribes to the channel and re-emits into its local bus.
-**When to use:** Only in dev mode when hub and glasses simulator run in separate browser tabs.
-**Trade-offs:** PRO: enables dev testing of the full hub-glasses flow. CON: adds a code path that only runs in development.
+---
 
-**BroadcastChannel compatibility:** Supported in Android WebView since v54, iOS WKWebView since v15.4. Since the Even App uses flutter_inappwebview which delegates to native WebView, BroadcastChannel is available. However, this bridge is only needed in dev mode (browser tabs), NOT in production (single WebView context).
+## Patterns to Follow
+
+### Pattern 1: Observer-Wrapper for Monitoring
+
+SyncMonitor observes SyncBridge traffic without modifying the bridge itself:
 
 ```typescript
-// broadcast-bridge.ts -- dev-mode only, conditional instantiation
-const CHANNEL_NAME = 'even-openclaw-sync';
+// Wrap postMessage to track sends
+const originalPost = syncBridge.postMessage;
+syncBridge.postMessage = (msg: SyncMessage) => {
+  syncMonitor.trackSend(msg);
+  originalPost.call(syncBridge, msg);
+};
 
-// Events worth mirroring (skip high-frequency audio frames)
-const MIRROR_EVENTS: (keyof AppEventMap)[] = [
-  'gateway:chunk',
-  'gateway:status',
-  'audio:recording-start',
-  'audio:recording-stop',
-  'gesture:menu-toggle',
-  'session:switched',
-  'hub:text-message',
-];
-
-export function createBroadcastBridge(
-  bus: EventBus<AppEventMap>,
-): { destroy(): void } {
-  const channel = new BroadcastChannel(CHANNEL_NAME);
-  const unsubs: Array<() => void> = [];
-
-  // Outbound: bus -> channel (skip re-emits to prevent loops)
-  let suppressReEmit = false;
-  for (const eventName of MIRROR_EVENTS) {
-    unsubs.push(bus.on(eventName, (payload: unknown) => {
-      if (!suppressReEmit) {
-        channel.postMessage({ event: eventName, payload });
-      }
-    }));
-  }
-
-  // Inbound: channel -> bus
-  channel.onmessage = (msg) => {
-    const { event, payload } = msg.data;
-    if (MIRROR_EVENTS.includes(event)) {
-      suppressReEmit = true;
-      bus.emit(event, payload);
-      suppressReEmit = false;
-    }
-  };
-
-  return {
-    destroy() {
-      for (const unsub of unsubs) unsub();
-      unsubs.length = 0;
-      channel.close();
-    },
-  };
-}
-```
-
-## Data Flow
-
-### Conversation Persistence Flow
-
-```
-[Voice Turn Completes]
-    |
-    v
-bus.emit('gateway:chunk', { type: 'transcript', text })
-    |
-    +---> GlassesRenderer.addUserMessage(text)          [existing: display]
-    +---> PersistenceTap -> ConvoStore.addMessage(...)   [NEW: persist]
-    +---> HubLiveView.renderMessage(msg)                 [NEW: hub mirror]
-    |
-bus.emit('gateway:chunk', { type: 'response_end' })
-    |
-    +---> GlassesRenderer.endStreaming()                 [existing: display]
-    +---> PersistenceTap -> ConvoStore.addMessage(...)   [NEW: persist]
-    +---> SearchIndex.index(sessionId, assistantMsg)      [NEW: search]
-```
-
-### Command Menu Flow
-
-```
-[Double-tap while idle/thinking]
-    |
-    v
-GestureHandler: gestureTransition(state, 'double-tap')
-  -> state = 'menu', action = TOGGLE_MENU
-    |
-    v
-bus.emit('gesture:menu-toggle', { active: true })
-    |
-    +---> DisplayController: renderer.hide()              [existing]
-    +---> CommandMenu: activate, render items to glasses   [NEW]
-    |
-[Scroll-up / Scroll-down while state === 'menu']
-    |
-    v
-GestureHandler delegates to CommandMenuFSM:
-  menuTransition(menuState, 'scroll-down')
-    |
-    v
-CommandMenuRenderer: bridge.textContainerUpgrade(2, formattedMenu)
-  e.g. "  /new\n> /reset\n  /switch\n  /rename\n  /delete"
-    |
-[Tap while state === 'menu']
-    |
-    v
-CommandMenuFSM -> action: { type: 'EXECUTE', command: '/new' }
-    |
-    v
-CommandMenu orchestrator -> SessionManager.createSession()
-    |
-    v
-GestureHandler: gestureTransition('menu', 'tap') -> state = 'idle'
-bus.emit('gesture:menu-toggle', { active: false })  -> wake display
-```
-
-### Hub Text Input Flow
-
-```
-[User types in hub text input, presses Enter]
-    |
-    v
-HubTextInput: validate non-empty
-    |
-    v
-bus.emit('hub:text-message', { text, sessionId })      [NEW event type]
-    |
-    +---> GlassesRenderer.addUserMessage(text)           [glasses display]
-    +---> PersistenceTap -> ConvoStore.addMessage(...)    [persist]
-    +---> VoiceLoopController -> gateway.sendTextTurn()   [NEW: text API]
-```
-
-### Session Switch Flow
-
-```
-[Command menu: /switch OR Hub session picker]
-    |
-    v
-SessionManager.switchSession(newSessionId)
-    |
-    +---> ConvoStore.getMessages(newSessionId)            [load history]
-    +---> GlassesRenderer.loadConversation(messages)      [render on glasses]
-    +---> bus.emit('session:switched', { sessionId })     [notify all]
-    |
-    v
-HubLiveView hears 'session:switched'
-    +---> Load and render new session's messages
-```
-
-## Modified Boot Sequence: Layer 0-5 + New Layers
-
-The existing Layer 0-5 boot in `glasses-main.ts` needs surgical insertions, not restructuring. New layers slot between existing ones:
-
-```typescript
-export async function boot(): Promise<EventBus<AppEventMap>> {
-  // Layer 0: Foundation (UNCHANGED)
-  const bus = createEventBus<AppEventMap>();
-  const settings = loadSettings();
-  const devMode = typeof (window as any).flutter_inappwebview === 'undefined';
-
-  // Layer 1: Hardware boundary (UNCHANGED)
-  const bridge = devMode ? createBridgeMock(bus) : createEvenBridgeService(bus);
-  await bridge.init();
-  bridge.textContainerUpgrade(1, 'Connecting...');
-
-  // Layer 2: Audio capture (UNCHANGED)
-  const mockAudio = devMode || new URLSearchParams(location.search).has('mock-audio');
-  const audioCapture = createAudioCapture(mockAudio);
-  bus.on('bridge:audio-frame', ({ pcm }) => audioCapture.onFrame(pcm));
-
-  // === NEW: Layer 2.5 -- Persistence + Session Management ===
-  const convoStore = await createConvoStore();  // opens IndexedDB
-  const sessionManager = createSessionManager({ convoStore, bus });
-  await sessionManager.init();  // loads sessions from IDB, seeds defaults if empty
-
-  // Layer 3: Gesture handling (MODIFIED: dynamic session ID)
-  const gestureHandler = createGestureHandler({
-    bus,
-    bridge,
-    audioCapture,
-    activeSessionId: () => sessionManager.activeSessionId(),  // was: () => 'gideon'
-  });
-
-  // === NEW: Layer 3.5 -- Command Menu ===
-  const commandMenu = createCommandMenu({
-    bus, bridge, sessionManager, gestureHandler,
-  });
-
-  // Layer 4: Display pipeline (MODIFIED: load persisted conversation)
-  const renderer = createGlassesRenderer({ bridge, bus });
-  const displayController = createDisplayController({ bus, renderer });
-  await displayController.init();
-
-  const lastMessages = await convoStore.getMessages(sessionManager.activeSessionId());
-  if (lastMessages.length > 0) {
-    renderer.loadConversation(lastMessages);  // NEW method on renderer
-  } else {
-    renderer.showWelcome();
-  }
-
-  // Layer 5: Gateway + voice loop (UNCHANGED creation)
-  const gateway = createGatewayClient();
-  const voiceLoopController = createVoiceLoopController({
-    bus, gateway, settings: () => settings,
-  });
-
-  // === NEW: Layer 5.5 -- Persistence Tap ===
-  const persistenceTap = createPersistenceTap({
-    bus, convoStore, sessionManager, renderer,
-  });
-
-  // === NEW: Dev-mode cross-tab sync ===
-  let broadcastBridge: { destroy(): void } | null = null;
-  if (devMode) {
-    broadcastBridge = createBroadcastBridge(bus);
-  }
-
-  // Gateway health check (UNCHANGED)
-  if (settings.gatewayUrl) {
-    const healthy = await gateway.checkHealth(settings.gatewayUrl);
-    if (healthy) {
-      gateway.startHeartbeat(settings.gatewayUrl);
-      bus.emit('gateway:status', { status: 'connected' });
-    }
-  } else {
-    renderer.showConfigRequired();
-  }
-
-  // Cleanup (MODIFIED: add new modules in reverse order)
-  let cleaned = false;
-  function cleanup(): void {
-    if (cleaned) return;
-    cleaned = true;
-    broadcastBridge?.destroy();
-    persistenceTap.destroy();
-    voiceLoopController.destroy();
-    gateway.destroy();
-    displayController.destroy();
-    commandMenu.destroy();
-    gestureHandler.destroy();
-    audioCapture.stopRecording().catch(() => {});
-    bridge.destroy();
-    bus.clear();
-  }
-
-  if (!devMode) {
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') cleanup();
-    });
-    window.addEventListener('pagehide', cleanup);
-  }
-
-  // NEW: return bus so hub code can share it in production
-  return bus;
-}
-```
-
-## Production main.ts: Shared Context Architecture
-
-The critical change for v1.2 is that the production path must run BOTH glasses and hub code in the same context, sharing the event bus:
-
-```typescript
-// main.ts -- v1.2
-async function main() {
-  const isEvenApp =
-    typeof (window as any).flutter_inappwebview !== 'undefined' ||
-    new URLSearchParams(location.search).has('even');
-
-  if (isEvenApp) {
-    // Production: boot glasses AND hub in same context, sharing bus
-    const { boot } = await import('./glasses-main');
-    const bus = await boot();  // boot() now returns the shared bus
-    const { initHub } = await import('./hub-main');
-    initHub(bus);  // hub receives the same bus instance
-  } else {
-    // Dev mode: hub only (glasses simulator in separate tab)
-    const { initHub } = await import('./hub-main');
-    initHub();  // no shared bus; BroadcastChannel bridge if simulator open
-  }
-}
-
-main().catch((err) => {
-  console.error('[main] Fatal boot error:', err);
+// Use onMessage to track receives (already a subscribe pattern)
+syncBridge.onMessage((msg) => {
+  syncMonitor.trackReceive(msg);
+  // existing handlers continue to work
 });
 ```
 
-**Why boot() must return the bus:** In production, the hub DOM and glasses bridge coexist in the same WebView. The hub's live view, text input, and session management must emit/subscribe to the same bus instance that the glasses pipeline uses. Passing the bus from boot() to initHub() makes this explicit.
+This follows the existing codebase pattern of wrapping without replacing (similar to how VoiceLoopController wraps GatewayClient events onto the bus).
 
-## Hub-Main Integration
-
-The hub-main.ts currently does pure DOM manipulation with no bus. For v1.2, it accepts an optional shared bus:
-
-```typescript
-// hub-main.ts -- v1.2 signature change
-export async function initHub(sharedBus?: EventBus<AppEventMap>): Promise<void> {
-  // Existing DOM setup (unchanged)...
-  init();
-
-  // NEW: Persistence access (IndexedDB is same-origin, works in both contexts)
-  const convoStore = await createConvoStore();  // reuses same IDB database
-  const sessionManager = createSessionManager({ convoStore });
-  await sessionManager.init();
-
-  // NEW: Create local bus with optional BroadcastChannel bridge for dev mode
-  let bus: EventBus<AppEventMap>;
-  if (sharedBus) {
-    bus = sharedBus;  // Production: shared with glasses
-  } else {
-    bus = createEventBus<AppEventMap>();
-    // Dev mode: bridge to simulator tab if open
-    createBroadcastBridge(bus);
-  }
-
-  // NEW: Hub-specific features
-  createHubLiveView({ bus, convoStore, sessionManager, /* DOM container */ });
-  createHubTextInput({ bus, sessionManager, /* DOM container */ });
-  createHistoryBrowser({ convoStore, sessionManager, /* DOM container */ });
-}
-```
-
-## AppEventMap Additions
-
-New event types needed for v1.2 features:
-
-```typescript
-export interface AppEventMap {
-  // EXISTING (unchanged)
-  'bridge:connected': { deviceName: string };
-  'bridge:disconnected': { reason: string };
-  'bridge:audio-frame': { pcm: Uint8Array; timestamp: number };
-  'gesture:tap': { timestamp: number };
-  'gesture:double-tap': { timestamp: number };
-  'gesture:scroll-up': { timestamp: number };
-  'gesture:scroll-down': { timestamp: number };
-  'audio:recording-start': { sessionId: string };
-  'audio:recording-stop': { sessionId: string; blob: Blob };
-  'gesture:menu-toggle': { active: boolean };
-  'gateway:status': { status: ConnectionStatus };
-  'gateway:chunk': VoiceTurnChunk;
-  'log': { level: LogLevel; msg: string; cid?: string };
-
-  // NEW: Session lifecycle
-  'session:switched': { sessionId: string; sessionName: string };
-  'session:created': { sessionId: string; sessionName: string };
-  'session:renamed': { sessionId: string; newName: string };
-  'session:deleted': { sessionId: string };
-
-  // NEW: Command menu
-  'command:execute': { command: MenuCommand };
-  'menu:selection-changed': { selectedIndex: number; command: MenuCommand };
-
-  // NEW: Hub text input
-  'hub:text-message': { text: string; sessionId: string };
-
-  // NEW: Persistence acknowledgment
-  'message:persisted': { sessionId: string; messageId: number };
-}
-```
-
-## IndexedDB Schema
-
-```typescript
-// db-schema.ts
-export const DB_NAME = 'even-openclaw';
-export const DB_VERSION = 1;
-
-export interface StoredSession {
-  id: string;           // UUID or slug, keyPath
-  name: string;
-  desc: string;
-  createdAt: number;    // Date.now()
-  updatedAt: number;
-  messageCount: number; // denormalized for fast list rendering
-}
-
-export interface StoredMessage {
-  id?: number;          // auto-increment keyPath
-  sessionId: string;    // foreign key -> sessions.id
-  role: 'user' | 'assistant';
-  text: string;
-  timestamp: number;
-  turnId?: string;      // groups user+assistant pair
-}
-
-// Object stores and indexes:
-// sessions: keyPath 'id', index on 'createdAt'
-// messages: autoIncrement 'id', indexes on:
-//   'sessionId'            -- get all messages for a session
-//   'timestamp'            -- global time ordering
-//   ['sessionId', 'timestamp']  -- messages for a session in time order (primary query)
-```
-
-## Full-Text Search Strategy
-
-IndexedDB has no native full-text search. For v1.2, use an **in-memory token index** built at startup:
-
-1. On app boot, load all message text from IndexedDB (`getAll` on messages store)
-2. Build a reverse index: `Map<string, Set<number>>` mapping lowercased tokens to message IDs
-3. On search query, tokenize the query, intersect the ID sets, fetch matching messages from IDB
-4. On new message persist, add its tokens to the in-memory index
-
-**Why not a persistent search index in IndexedDB:** The token-to-ID map would be complex to maintain across schema versions. The message corpus for a single user on glasses is small (hundreds to low thousands of messages). Loading all message text into memory at boot is fast (~1ms per 1000 messages) and the in-memory index provides sub-millisecond search.
-
-**Scaling concern:** If message count exceeds ~10K, switch to cursor-based loading and paginated search. This is unlikely for v1.2 given the voice-first interaction model (each turn takes 10-30 seconds).
-
-```typescript
-// search-index.ts -- pure function, zero side effects
-export interface SearchIndex {
-  add(messageId: number, text: string): void;
-  search(query: string): number[];  // returns matching message IDs
-}
-
-export function createSearchIndex(): SearchIndex {
-  const index = new Map<string, Set<number>>();
-
-  function tokenize(text: string): string[] {
-    return text.toLowerCase().split(/\s+/).filter((t) => t.length > 1);
-  }
-
-  function add(messageId: number, text: string): void {
-    for (const token of tokenize(text)) {
-      let set = index.get(token);
-      if (!set) { set = new Set(); index.set(token, set); }
-      set.add(messageId);
-    }
-  }
-
-  function search(query: string): number[] {
-    const tokens = tokenize(query);
-    if (tokens.length === 0) return [];
-
-    const sets = tokens
-      .map((t) => index.get(t))
-      .filter((s): s is Set<number> => s !== undefined);
-
-    if (sets.length === 0) return [];
-    if (sets.length === 1) return [...sets[0]];
-
-    // Intersect all token sets
-    const smallest = sets.reduce((a, b) => (a.size < b.size ? a : b));
-    return [...smallest].filter((id) =>
-      sets.every((s) => s.has(id)),
-    );
-  }
-
-  return { add, search };
-}
-```
-
-## Modules That Need Modification
-
-| Module | Change | Scope |
-|--------|--------|-------|
-| `types.ts` | Add new event types to AppEventMap, import MenuCommand type | Small: ~20 lines added |
-| `main.ts` | Production path boots both glasses and hub; passes shared bus | Small: ~8 lines changed |
-| `glasses-main.ts` | Insert Layer 2.5 (persistence), 3.5 (command menu), 5.5 (persistence tap); boot() returns bus; modify cleanup | Medium: ~35 lines added |
-| `hub-main.ts` | Accept optional shared bus; initialize hub modules (live view, text input, history) | Medium: ~40 lines added |
-| `gesture-handler.ts` | Delegate to command-menu orchestrator when `state === 'menu'`; add commandMenu dependency | Small: ~15 lines in dispatchAction() |
-| `glasses-renderer.ts` | Add `loadConversation(messages)` and `getLastAssistantMessage()` methods | Small: ~20 lines |
-| `voice-loop-controller.ts` | Add text turn support for hub:text-message events | Small: ~10 lines |
-| `sessions.ts` | Deprecate -- replaced by sessions/session-manager.ts backed by IndexedDB | Full replacement |
-| `index.html` | Add hub live view container, text input, history page, conversations nav | Medium: new HTML sections |
-
-## Modules That Stay Unchanged
-
-| Module | Why Unchanged |
-|--------|--------------|
-| `events.ts` | Event bus factory is generic; new events just need type entries |
-| `gesture-fsm.ts` | Already handles menu state transitions correctly via TOGGLE_MENU |
-| `display-controller.ts` | Already handles menu-toggle and all gateway:chunk events |
-| `even-bridge.ts` | SDK wrapper unchanged; command menu uses existing textContainerUpgrade |
-| `bridge-mock.ts` | Mock interface unchanged |
-| `bridge-types.ts` | BridgeService interface unchanged |
-| `viewport.ts` | Pure viewport windowing unchanged |
-| `icon-animator.ts` | Animation system unchanged |
-| `audio-capture.ts` | Audio pipeline unchanged |
-| `gateway-client.ts` | May need sendTextTurn() method but existing voice turn unchanged |
-| `settings.ts` | Settings schema unchanged for v1.2 |
-| `app-wiring.ts` | Pure hub logic functions unchanged |
-| `logs.ts` | Log store unchanged |
-
-## Anti-Patterns
-
-### Anti-Pattern 1: Splitting Bus Across Contexts Unnecessarily
-
-**What people do:** Create a separate event bus for hub and glasses, then build complex sync infrastructure between them.
-**Why it's wrong:** In production, glasses and hub share the same WebView and JavaScript context. Building cross-context sync for production adds latency, complexity, and failure modes to something that is already a shared memory space.
-**Do this instead:** Use the SAME bus instance for both glasses and hub code in production. Reserve BroadcastChannel bridging for dev-mode simulator only.
-
-### Anti-Pattern 2: Persisting Inside Display Modules
-
-**What people do:** Add `convoStore.addMessage()` calls inside `GlassesRenderer.addUserMessage()` or `endStreaming()`.
-**Why it's wrong:** Couples display rendering to storage I/O. The renderer becomes untestable without IndexedDB mocks. Violates the existing architecture where pure-function modules have zero side-effect imports.
-**Do this instead:** Persistence subscribes to bus events as a separate listener (PersistenceTap). The renderer never knows IndexedDB exists.
-
-### Anti-Pattern 3: Making Command Menu a DOM Overlay
-
-**What people do:** Render the command menu as HTML elements overlaid on the glasses display.
-**Why it's wrong:** The glasses display is NOT DOM. It is a set of text containers pushed to the G2 hardware via SDK bridge calls. HTML overlays are invisible on the physical glasses. The "display" is `bridge.textContainerUpgrade()` calls, not CSS.
-**Do this instead:** Render the command menu by calling `bridge.textContainerUpgrade()` with formatted text showing the menu items and a selection indicator (e.g., `"  /new\n> /reset\n  /switch"`).
-
-### Anti-Pattern 4: Eager-Loading Full Conversation History
-
-**What people do:** Load all messages for all sessions into memory at boot.
-**Why it's wrong:** Adds boot latency proportional to total message count. The glasses boot sequence already shows a "Connecting..." indicator; adding I/O here extends the time before the user can interact.
-**Do this instead:** Load only the active session's messages at boot. Lazy-load other sessions when the user switches or browses history in the hub.
-
-### Anti-Pattern 5: Using SharedWorker for Cross-Context Sync
-
-**What people do:** Reach for SharedWorker as the cross-context communication mechanism.
-**Why it's wrong:** SharedWorker support in Android WebView is inconsistent. BroadcastChannel is simpler, lighter, and has confirmed support in Android WebView since v54. SharedWorker adds unnecessary complexity for what amounts to event forwarding.
-**Do this instead:** BroadcastChannel for dev-mode tab sync. In production, no sync mechanism needed at all.
-
-## Build Order (Dependency Chain)
-
-The dependency chain dictates this build order:
+### Pattern 2: Progressive Error Escalation
 
 ```
-Phase 1: Foundation (no dependencies on other new modules)
-   1. db-schema.ts           -- types only, no logic
-   2. convo-store.ts         -- depends on db-schema, IndexedDB
-   3. search-index.ts        -- pure function, no dependencies
-
-Phase 2: Session Management (depends on Phase 1)
-   4. session-types.ts       -- types for session-manager
-   5. session-manager.ts     -- depends on convo-store
-   6. types.ts updates       -- add new event types to AppEventMap
-
-Phase 3: Glasses Features (depends on Phase 2)
-   7. command-menu-fsm.ts    -- pure function, no dependencies
-   8. command-menu-renderer.ts -- depends on bridge-types
-   9. command-menu.ts         -- depends on 7, 8, session-manager, bus
-  10. gesture-handler.ts mod  -- wire command menu delegation
-  11. glasses-renderer.ts mod -- add loadConversation, getLastAssistantMessage
-  12. persistence-tap.ts      -- depends on convo-store, bus, renderer
-  13. glasses-main.ts mod     -- integrate all new layers
-
-Phase 4: Hub Features (depends on Phase 1, 2)
-  14. hub-live-view.ts       -- depends on bus, convo-store
-  15. hub-text-input.ts      -- depends on bus, session-manager
-  16. history-browser.ts     -- depends on convo-store, search-index
-  17. hub-main.ts mod        -- integrate hub modules, accept shared bus
-  18. main.ts mod            -- shared bus in production path
-
-Phase 5: Dev Sync (depends on Phase 3, 4)
-  19. broadcast-bridge.ts    -- depends on bus, BroadcastChannel API
-  20. Wire into glasses-main + hub-main for dev mode
+Attempt 1 fail -> silent retry
+Attempt 2 fail -> silent retry
+Attempt 3 fail -> silent retry
+Attempt 4 fail -> emit 'persistence:error' { type: 'write-failed', recoverable: false }
 ```
 
-**Phase ordering rationale:**
-- Phase 1 has zero dependencies on other new modules; everything else depends on it
-- Phase 2 (SessionManager) depends on ConvoStore from Phase 1
-- Phase 3 (glasses features) can be built and tested independently of hub features
-- Phase 4 (hub features) can be built and tested independently of glasses features
-- Phase 5 (dev sync) is the lowest priority -- production works without it
+The existing `persistence:warning` event remains for backward compatibility but `persistence:error` carries structured context (`type`, `recoverable`, `conversationId`).
 
-## Integration Points
+### Pattern 3: Boot-time Detection, On-demand Repair
 
-### Internal Boundaries
+IntegrityChecker.check() runs every boot (read-only, fast). Repair runs only when:
+- Glasses: auto-repair if orphan count > 0 (no UI to ask for confirmation)
+- Hub: show in health page with "Repair" action button
 
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| ConvoStore <-> SessionManager | Direct method calls | SessionManager delegates all IDB operations to ConvoStore |
-| PersistenceTap <-> ConvoStore | Direct method calls | PersistenceTap is the only writer outside SessionManager |
-| CommandMenu <-> GestureHandler | Bus events + direct delegation | GestureHandler calls commandMenu methods when state='menu' |
-| HubLiveView <-> GlassesRenderer | Bus events (indirect) | Both subscribe to gateway:chunk; no direct coupling |
-| HubTextInput <-> VoiceLoopController | Bus events (hub:text-message) | Hub emits, voice loop subscribes and sends to gateway |
-| SearchIndex <-> ConvoStore | ConvoStore feeds data, SearchIndex is independent | SearchIndex has no dependency on ConvoStore |
+### Pattern 4: Separate Detection from Action
 
-### External Services
+All integrity/health checks produce report objects. Report consumers decide what to do:
+- `IntegrityReport` -> boot-restore (skip dangling pointer), ErrorPresenter (show warning), HealthIndicator (compute status)
+- `StorageQuota` -> ErrorPresenter (show quota warning), HealthIndicator (compute status)
+- `SyncStats` -> DriftReconciler (trigger reconcile), HealthIndicator (compute status)
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| IndexedDB | ConvoStore wraps all access | Only convo-store.ts touches IDB |
-| BroadcastChannel | BroadcastBridge wraps all access | Only broadcast-bridge.ts touches BroadcastChannel; dev mode only |
-| Even Hub SDK | even-bridge.ts wraps all access | Unchanged from v1.1 |
-| Gateway API | gateway-client.ts wraps all access | May need new sendTextTurn() endpoint |
+This enables testing each layer independently.
+
+---
+
+## Anti-Patterns to Avoid
+
+### Anti-Pattern 1: Blocking Voice Loop on Verification
+
+**What:** Making `addMessage()` wait for read-after-write verification before resolving.
+**Why bad:** Adds latency to every message save. Streaming response chunks are batched at 200ms -- a verification round-trip would double effective save latency and could cause perceptible stuttering.
+**Instead:** Verify asynchronously after save. If verify fails, emit error event. Never block the save pipeline.
+
+### Anti-Pattern 2: Complex Sync Protocols (CRDT/Vector Clocks)
+
+**What:** Implementing conflict resolution between glasses and hub state.
+**Why bad:** Both contexts share the same IndexedDB (same origin). There are no real conflicts. Messages are append-only. Session operations are idempotent.
+**Instead:** IDB is the single source of truth. Drift = stale DOM. Solution = re-read from IDB and re-render. Zero conflict resolution needed.
+
+### Anti-Pattern 3: Aggressive Auto-cleanup Without User Awareness
+
+**What:** Automatically deleting orphan messages without any feedback.
+**Why bad:** If a bug creates false-positive orphan detection, auto-cleanup destroys valid data. Evidence of bugs is destroyed.
+**Instead:** Detect on boot, log to health report. On glasses, auto-repair (no UI for orphan management). On hub, show count in health page with explicit "Repair" action.
+
+### Anti-Pattern 4: Retry Storms on Permanent Storage Failure
+
+**What:** Endlessly retrying writes when IDB is genuinely unavailable.
+**Why bad:** CPU spin, battery drain on mobile, console noise.
+**Instead:** Existing 3-retry with exponential backoff is appropriate. After exhausting retries, emit `persistence:error` with `recoverable: false`. Stop retrying. Only resume if a subsequent `storageHealth.getQuota()` confirms storage is available.
+
+### Anti-Pattern 5: Error Modals on 576x288 Glasses Display
+
+**What:** Showing a dialog or multi-line error UI on the glasses.
+**Why bad:** Display fits ~3 lines. Error dialog would obscure conversation. No way to dismiss with 4-gesture input model.
+**Instead:** Single-line messages via `renderer.showError()` which creates a chat-bubble-style error. Auto-clears by being scrolled up by subsequent messages. Non-blocking.
+
+### Anti-Pattern 6: Polling IDB for Changes
+
+**What:** Setting up intervals to re-read IDB looking for changes.
+**Why bad:** IDB has no change notification API. Polling wastes battery and CPU.
+**Instead:** Trust the event bus. Both contexts already emit events when they write. Use sync heartbeat (10s interval) for drift detection, not IDB polling.
+
+---
+
+## BroadcastChannel in flutter_inappwebview
+
+**Finding:** BroadcastChannel is supported in Android WebView 54+ (2016) and WKWebView 15.4+ (2022). flutter_inappwebview delegates to native WebView engines.
+
+**Confidence:** MEDIUM. Support depends on the device's WebView version. Even G2 targets modern devices, so BC is likely available.
+
+**Existing fallback:** `createSyncBridge()` already feature-detects BC and falls back to localStorage `storage` events. The resilience layer should verify this fallback path works correctly under test.
+
+**Production context nuance:** In the real Even App, glasses and hub contexts may run in the same WebView (single JS runtime). If so, BroadcastChannel is unnecessary -- the shared event bus handles everything. SyncMonitor should detect same-context mode and adjust heartbeat behavior accordingly.
+
+---
+
+## File Organization
+
+```
+src/
+  persistence/
+    conversation-store.ts     # MODIFIED: +3 methods (verifyMessage, countMessages, getOrphanMessages)
+    auto-save.ts              # MODIFIED: verify first write, escalate errors
+    boot-restore.ts           # MODIFIED: accept optional IntegrityReport
+    integrity-checker.ts      # NEW: referential integrity scan + repair
+    storage-health.ts         # NEW: quota monitoring + persistence request
+    types.ts                  # MODIFIED: +3 methods on ConversationStore interface
+    db.ts                     # UNCHANGED
+    session-store.ts          # UNCHANGED
+  sync/
+    sync-bridge.ts            # UNCHANGED
+    sync-types.ts             # MODIFIED: +heartbeat variant, +optional seq
+    sync-monitor.ts           # NEW: delivery tracking + sequence gap detection
+    drift-reconciler.ts       # NEW: IDB-based state reconciliation
+  errors/                     # NEW DIRECTORY
+    error-presenter.ts        # NEW: glasses + hub error UX mapping
+    health-indicator.ts       # NEW: pure function health aggregation
+  types.ts                    # MODIFIED: +4 AppEventMap events
+  glasses-main.ts             # MODIFIED: boot sequence additions + cleanup
+  hub-main.ts                 # MODIFIED: initPersistence + error UX + fix silent failures
+  __tests__/
+    integrity-checker.test.ts # NEW
+    storage-health.test.ts    # NEW
+    sync-monitor.test.ts      # NEW
+    drift-reconciler.test.ts  # NEW
+    error-presenter.test.ts   # NEW
+    health-indicator.test.ts  # NEW
+    auto-save-resilience.test.ts  # NEW (failure scenarios for enhanced auto-save)
+    boot-resilience.test.ts   # NEW (corrupt data boot scenarios)
+```
+
+**New files:** 6 source modules + 8 test files = 14 files.
+**Modified files:** 6 existing source modules.
+**New directory:** `src/errors/`
+
+---
+
+## Suggested Build Order
+
+The build order follows the dependency chain between new components. Each phase produces testable, independently shippable increments.
+
+### Phase 1: Foundation -- Integrity & Storage Health
+
+**Build:** IntegrityChecker, StorageHealth, ConversationStore extensions (3 new methods)
+**Rationale:** Zero dependencies on other new components. These are detection-only modules that produce report objects. Every subsequent phase depends on "is storage healthy?"
+**Test:** Unit tests with fake-indexeddb. Inject known orphans, verify detection. Mock Storage API for quota tests. Test repair separately from detection.
+
+### Phase 2: Write Verification & Auto-Save Hardening
+
+**Build:** ConversationStore.verifyMessage() integration into auto-save, enhanced error events in AppEventMap, persistence:error escalation
+**Depends on:** Phase 1 (needs ConversationStore.verifyMessage, persistence:error event type)
+**Rationale:** Write verification is the most critical resilience feature -- prevents silent data loss on the primary write path.
+**Test:** Unit tests for verify flow. Integration test: write + verify + simulated failure. Test escalation from warning to error.
+
+### Phase 3: Boot Integration
+
+**Build:** Enhanced boot-restore.ts with integrity report, glasses-main.ts boot sequence additions, hub-main.ts initPersistence enhancement
+**Depends on:** Phase 1 (IntegrityChecker), Phase 2 (enhanced auto-save)
+**Rationale:** Wires phases 1-2 into the real boot lifecycle. Detection meets application startup.
+**Test:** Integration: corrupt IDB before boot, verify detection and graceful recovery. Test dangling pointer handling.
+
+### Phase 4: Sync Hardening (parallel with Phase 3)
+
+**Build:** SyncMonitor, DriftReconciler, sync heartbeat, SyncMessage extensions
+**Depends on:** Phase 1 (ConversationStore.countMessages for drift comparison)
+**Rationale:** Independent from boot integration. Can be built in parallel with Phase 3.
+**Test:** Unit tests for sequence gap detection. Integration: simulate message loss via intercepted postMessage, verify drift detection and IDB-based reconciliation.
+
+### Phase 5: Error UX
+
+**Build:** ErrorPresenter (glasses + hub variants), HealthIndicator, hub health page enhancements, hub banner DOM
+**Depends on:** Phases 1-4 (consumes all error events emitted by prior phases)
+**Rationale:** Presentation layer -- build last so it maps all error signals from phases 1-4 to user-visible feedback.
+**Test:** Unit tests for error-to-UX mapping logic. Manual testing on glasses simulator for hint bar behavior. Test one-error-at-a-time constraint.
+
+### Phase 6: Test Coverage & CI
+
+**Build:** Integration test suite for failure scenarios, E2E resilience tests across contexts, CI pipeline configuration
+**Depends on:** Phases 1-5 (exercises all resilience features together)
+**Rationale:** Comprehensive test coverage comes last because it needs all components. Each prior phase has its own unit tests.
+**Test targets:** IDB eviction simulation, BroadcastChannel failure fallback, SSE mid-stream disconnection recovery, boot with corrupted state, sync drift + reconciliation end-to-end.
+
+### Dependency Graph
+
+```
+Phase 1: IntegrityChecker, StorageHealth, ConversationStore extensions
+    |
+    v
+Phase 2: Write verification, Auto-save hardening, AppEventMap events
+    |
+    +-----------+
+    |           |
+    v           v
+Phase 3      Phase 4           <-- CAN RUN IN PARALLEL
+Boot         Sync hardening
+integration  (SyncMonitor,
+             DriftReconciler)
+    |           |
+    +-----------+
+         |
+         v
+Phase 5: Error UX (ErrorPresenter, HealthIndicator)
+         |
+         v
+Phase 6: Test coverage & CI
+```
+
+---
+
+## Scalability Considerations
+
+| Concern | Current (~50 convs) | At 500 conversations | At 5000+ conversations |
+|---------|--------------------|--------------------|----------------------|
+| Integrity check (boot) | < 10ms | < 50ms | Consider sampling or 24h cache |
+| Orphan scan (cursor) | < 10ms | < 100ms | Index on conversationId exists; still fast |
+| Sync heartbeat count | IDB `count()`, < 1ms | < 1ms (O(1) on index) | Still fine |
+| Storage quota check | Storage API, < 5ms | Same | Same |
+| Message verify | Single `get()` by key, < 1ms | Same | Same |
+| Drift reconciliation | Re-read one conversation | Same complexity | Same (scoped to one conversation) |
+
+At 5000+ conversations, integrity check full-scan becomes the bottleneck. Mitigation: cache `IntegrityReport.checkedAt` and skip if checked within 24 hours. For v1.3, full scan on every boot is fine.
+
+---
 
 ## Sources
 
-- [MDN: BroadcastChannel API](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API) -- HIGH confidence, official documentation
-- [MDN: Using IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB) -- HIGH confidence, official documentation
-- [Can I WebView: BroadcastChannel](https://caniwebview.com/features/mdn-broadcastchannel/) -- Android WebView support since v54, iOS WKWebView since v15.4 -- HIGH confidence
-- [Even G2 Developer Notes](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md) -- Single WebView architecture for glasses + hub -- MEDIUM confidence (community notes, verified against codebase patterns)
-- [Dexie.js Bundle Size Issue #1585](https://github.com/dexie/Dexie.js/issues/1585) -- 22-26KB gzipped -- HIGH confidence
-- [Speeding up IndexedDB reads and writes](https://nolanlawson.com/2021/08/22/speeding-up-indexeddb-reads-and-writes/) -- batched cursor patterns -- MEDIUM confidence
-- [Cross-Tab Communication patterns](https://dev.to/naismith/cross-tab-communication-with-javascript-1hc9) -- localStorage fallback for BroadcastChannel -- MEDIUM confidence
-- [LogRocket: Offline-first frontend apps in 2025](https://blog.logrocket.com/offline-first-frontend-apps-2025-indexeddb-sqlite/) -- IndexedDB best practices -- MEDIUM confidence
-- [npm-compare: idb vs dexie vs localforage](https://npm-compare.com/dexie,idb,localforage) -- Library comparison -- MEDIUM confidence
-- Direct codebase analysis of all 43 source files across 6,336 LOC -- HIGH confidence
+- Full line-by-line source analysis of all 60 TypeScript files in the existing v1.2 codebase
+- [MDN: Using IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB) -- transaction atomicity guarantees, oncomplete semantics
+- [MDN: Storage quotas and eviction](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria) -- quota limits, navigator.storage.persist()
+- [web.dev: Persistent storage](https://web.dev/articles/persistent-storage) -- persist() API patterns and browser behavior differences
+- [WebKit: Updates to Storage Policy](https://webkit.org/blog/14403/updates-to-storage-policy/) -- WebKit eviction behavior, 7-day inactivity threshold
+- [CanIWebView: BroadcastChannel](https://caniwebview.com/features/mdn-broadcastchannel/) -- WebView support matrix for BC
 
 ---
-*Architecture research for: Even G2 OpenClaw Chat App v1.2 -- Conversation Intelligence & Hub Interaction*
+*Architecture research for: v1.3 Resilience & Error UX*
 *Researched: 2026-02-28*
