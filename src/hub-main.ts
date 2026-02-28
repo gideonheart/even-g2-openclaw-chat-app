@@ -19,7 +19,7 @@ import {
 } from './app-wiring';
 import { createSessionStore } from './persistence/session-store';
 import { createConversationStore } from './persistence/conversation-store';
-import type { SessionStore } from './persistence/types';
+import type { SessionStore, ConversationStore } from './persistence/types';
 import { createSyncBridge } from './sync/sync-bridge';
 import type { SyncBridge } from './sync/sync-types';
 
@@ -34,6 +34,7 @@ const logStore = createLogStore();
 
 let sessionManager: SessionManager | null = null;
 let hubSyncBridge: SyncBridge | null = null;
+let hubConversationStore: ConversationStore | null = null;
 
 // ── DOM helpers ──────────────────────────────────────────────
 
@@ -522,18 +523,61 @@ function init(): void {
   renderLogs();
 }
 
+// ── Live conversation view ──────────────────────────────────
+
+function appendLiveMessage(role: string, text: string): void {
+  const container = $('liveConversation');
+  const empty = document.getElementById('liveEmpty');
+  if (empty) empty.remove();
+
+  const div = document.createElement('div');
+  div.className = `chat-msg chat-msg--${role}`;
+  div.textContent = text;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function clearLiveView(): void {
+  const container = $('liveConversation');
+  container.innerHTML = '<div class="u-type-body-base u-tc-2nd" style="text-align: center;" id="liveEmpty">No active conversation</div>';
+}
+
+function showStreamingIndicator(): void {
+  $('streamingIndicator').classList.remove('hidden');
+}
+
+function hideStreamingIndicator(): void {
+  $('streamingIndicator').classList.add('hidden');
+}
+
+async function loadLiveConversation(): Promise<void> {
+  if (!sessionManager || !hubConversationStore) return;
+  const activeId = sessionManager.getActiveSessionId();
+  if (!activeId) return;
+
+  const messages = await hubConversationStore.getMessages(activeId);
+  clearLiveView();
+  for (const msg of messages) {
+    appendLiveMessage(msg.role, msg.text);
+  }
+  hideStreamingIndicator();
+}
+
 export async function initHub(): Promise<void> {
   init();
   const persistence = await initPersistence();
   if (persistence) {
     sessionManager = persistence.sessionManager;
     hubSyncBridge = persistence.syncBridge;
+    hubConversationStore = persistence.conversationStore;
     // Set initial active session from IndexedDB
     const activeId = sessionManager.getActiveSessionId();
     if (activeId) {
       appState.activeSession = activeId;
       refreshHealthDisplay();
     }
+    // Load existing messages from IndexedDB into live view
+    await loadLiveConversation();
   }
 
   // Clean up sync bridge on tab close
@@ -546,6 +590,7 @@ async function initPersistence(): Promise<{
   sessionManager: SessionManager;
   sessionStore: SessionStore;
   syncBridge: SyncBridge;
+  conversationStore: ConversationStore;
 } | null> {
   try {
     const { isIndexedDBAvailable, openDB } = await import('./persistence/db');
@@ -570,18 +615,28 @@ async function initPersistence(): Promise<{
         case 'session:created':
         case 'session:renamed':
         case 'session:deleted':
-        case 'session:switched':
         case 'conversation:named':
           // Session list shows conversation names -- refresh to show new name
           refreshSessionList();
           break;
+        case 'session:switched':
+          refreshSessionList();
+          loadLiveConversation();
+          break;
         case 'message:added':
-          // Phase 12 will use this for live conversation view (HUB-01)
+          appendLiveMessage(msg.role, msg.text);
+          if (msg.role === 'assistant') hideStreamingIndicator();
+          break;
+        case 'streaming:start':
+          showStreamingIndicator();
+          break;
+        case 'streaming:end':
+          hideStreamingIndicator();
           break;
       }
     });
 
-    return { sessionManager: mgr, sessionStore, syncBridge };
+    return { sessionManager: mgr, sessionStore, syncBridge, conversationStore };
   } catch {
     return null;
   }
