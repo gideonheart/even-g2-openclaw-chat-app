@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 14-data-integrity-foundation
-Current Plan: 4 of 5
-Status: Executing gap-closure plans (14-04 complete, 14-05 remaining)
-Last activity: 2026-02-28 - Completed 14-04 (reopenDB wiring into IDB onclose callbacks)
+Current Plan: 5 of 5
+Status: Phase 14 COMPLETE (all 5 plans executed)
+Last activity: 2026-02-28 - Completed 14-05 (orphan grace period + diagnostics surface)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 32 (Phases 1-11 + Phase 13 gap closure + Phase 12 complete + Phase 14 plans 01-04)
+- Total plans completed: 33 (Phases 1-11 + Phase 13 gap closure + Phase 12 complete + Phase 14 complete)
 - Total tests: 398 (all passing)
 - Total LOC: ~10,600 TypeScript (64 files)
-- Total execution time: ~4.95 hours
+- Total execution time: ~5.0 hours
 
 **By Phase:**
 
@@ -39,7 +39,7 @@ Last activity: 2026-02-28 - Completed 14-04 (reopenDB wiring into IDB onclose ca
 | 11 | 2/2 (command menu state + FSM extension, controller + boot wiring) | ~8m | 4m |
 | 12 | 3/3 (live conversation view + hub text input + history/search) | ~15m | 5m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
-| 14 | 4/5 (event types + onclose + sentinel filtering + integrity checker TDD + storage health + boot wiring + reopenDB wiring) | ~13m | 3.3m |
+| 14 | 5/5 (event types + onclose + sentinel filtering + integrity checker TDD + storage health + boot wiring + reopenDB wiring + orphan grace period) | ~17m | 3.4m |
 
 ## Accumulated Context
 
@@ -90,6 +90,9 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - Glasses emits bus events for persistence:health and storage:evicted; hub uses console logging (no bus) (14-03)
 - reopenDB() uses .then()/.catch() in onclose callback (synchronous fire-and-forget, not async/await) (14-04)
 - Initial recoverable:true error kept before reopenDB call; recoverable:false only on max retry exhaustion (14-04)
+- Both boot files share localStorage orphan keys for cross-context cleanup (glasses detects, hub cleans or vice versa) (14-05)
+- staleOrphans filter (intersection of previous + current) provides scheduling-layer re-verification before IDB-layer re-verification (14-05)
+- orphanCount uses conditional spread to omit field entirely when no orphans present (clean payload) (14-05)
 
 ### Pending Todos
 
@@ -115,5 +118,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 14-04-PLAN.md (reopenDB wiring into IDB onclose callbacks)
+Stopped at: Completed 14-05-PLAN.md (orphan grace period + diagnostics surface) -- Phase 14 complete
 Resume file: None

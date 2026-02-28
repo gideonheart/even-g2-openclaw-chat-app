@@ -63,7 +63,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 - **Goal:** Boot-time integrity checking, storage health monitoring, eviction detection, and persistent storage -- the foundation all other resilience features depend on.
 - **Requirements:** [RES-01, RES-02, RES-03, RES-04, RES-05, RES-15, RES-20 (persistence events only), RES-22]
 - **Key deliverables:** integrity-checker.ts, storage-health.ts, sentinel record, IDB onclose handler, persistence event types in AppEventMap
-- **Plans:** 4/5 plans executed
+- **Plans:** 5/5 plans complete
   - [x] 14-01-PLAN.md — Event types, IDB onclose handler, sentinel filtering (Wave 1)
   - [x] 14-02-PLAN.md — IntegrityChecker module with TDD (Wave 2)
   - [x] 14-03-PLAN.md — StorageHealth module + boot wiring (Wave 2)
@@ -123,7 +123,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 | 11. Glasses Command Menu | v1.2 | 2/2 | Complete | 2026-02-28 |
 | 12. Hub Conversation Features | v1.2 | 3/3 | Complete | 2026-02-28 |
 | 13. Phase 9 Verification & Sync Wiring | v1.2 | 1/1 | Complete | 2026-02-28 |
-| 14. Data Integrity Foundation | 4/5 | In Progress|  | -- |
+| 14. Data Integrity Foundation | 5/5 | Complete   | 2026-02-28 | -- |
 | 15. Write Verification & Auto-Save Hardening | v1.3 | 0/? | Not Started | -- |
 | 16. Sync Hardening | v1.3 | 0/? | Not Started | -- |
 | 17. FSM & Gateway Resilience | v1.3 | 0/? | Not Started | -- |
