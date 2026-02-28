@@ -21,7 +21,9 @@ import { createSessionStore } from './persistence/session-store';
 import { createConversationStore } from './persistence/conversation-store';
 import type { SessionStore, ConversationStore, SearchResult } from './persistence/types';
 import { createSyncBridge } from './sync/sync-bridge';
-import type { SyncBridge } from './sync/sync-types';
+import { createSyncMonitor } from './sync/sync-monitor';
+import { createDriftReconciler } from './sync/drift-reconciler';
+import type { SyncBridge, SyncMonitor as SyncMonitorType } from './sync/sync-types';
 import { createGatewayClient } from './api/gateway-client';
 import type { GatewayClient } from './api/gateway-client';
 
@@ -36,6 +38,7 @@ const logStore = createLogStore();
 
 let sessionManager: SessionManager | null = null;
 let hubSyncBridge: SyncBridge | null = null;
+let hubSyncMonitor: SyncMonitorType | null = null;
 let hubConversationStore: ConversationStore | null = null;
 
 // ── Hub gateway client for text turns ────────────────────────
@@ -916,6 +919,7 @@ export async function initHub(): Promise<void> {
   if (persistence) {
     sessionManager = persistence.sessionManager;
     hubSyncBridge = persistence.syncBridge;
+    hubSyncMonitor = persistence.syncMonitor;
     hubConversationStore = persistence.conversationStore;
     // Set initial active session from IndexedDB
     const activeId = sessionManager.getActiveSessionId();
@@ -948,6 +952,7 @@ export async function initHub(): Promise<void> {
 
   // Clean up sync bridge and gateway on tab close
   window.addEventListener('beforeunload', () => {
+    hubSyncMonitor?.destroy();
     hubSyncBridge?.destroy();
     hubGateway?.destroy();
   });
@@ -958,6 +963,7 @@ async function initPersistence(): Promise<{
   sessionStore: SessionStore;
   syncBridge: SyncBridge;
   conversationStore: ConversationStore;
+  syncMonitor: SyncMonitorType;
 } | null> {
   try {
     const { isIndexedDBAvailable, openDB } = await import('./persistence/db');
@@ -1049,6 +1055,30 @@ async function initPersistence(): Promise<{
       origin: 'hub',
     });
 
+    // ── Sync hardening: SyncMonitor + DriftReconciler (Phase 16) ──
+    const driftReconciler = createDriftReconciler({
+      store: conversationStore,
+      onDriftDetected: (info) => {
+        console.warn(`[hub] Sync drift: local=${info.localCount} remote=${info.remoteCount}`);
+      },
+      onReconciled: () => {
+        // Re-read from IDB and re-render live view
+        loadLiveConversation();
+      },
+    });
+
+    const monitor = createSyncMonitor({
+      bridge: syncBridge,
+      store: conversationStore,
+      origin: 'hub',
+      getActiveConversationId: () => mgr.getActiveSessionId() ?? '',
+      onHeartbeat: (conversationId, remoteCount) => {
+        driftReconciler.handleHeartbeat(conversationId, remoteCount);
+      },
+    });
+
+    monitor.startHeartbeat();
+
     // Listen for sync messages from glasses context
     syncBridge.onMessage((msg) => {
       if (msg.origin === 'hub') return; // ignore own echoes
@@ -1078,7 +1108,7 @@ async function initPersistence(): Promise<{
       }
     });
 
-    return { sessionManager: mgr, sessionStore, syncBridge, conversationStore };
+    return { sessionManager: mgr, sessionStore, syncBridge, conversationStore, syncMonitor: monitor };
   } catch {
     return null;
   }
