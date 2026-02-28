@@ -28,6 +28,7 @@ function createMockGateway() {
       return () => { statusCb = null; };
     }),
     sendVoiceTurn: vi.fn(),
+    sendTextTurn: vi.fn(),
     // Test helpers
     simulateChunk(chunk: VoiceTurnChunk) { chunkCb?.(chunk); },
     simulateStatus(status: ConnectionStatus) { statusCb?.(status); },

@@ -1,4 +1,4 @@
-import type { AppSettings, LogLevel } from './types';
+import type { AppSettings, LogLevel, VoiceTurnChunk } from './types';
 import {
   loadSettings,
   saveSettings as persistSettings,
@@ -22,6 +22,8 @@ import { createConversationStore } from './persistence/conversation-store';
 import type { SessionStore, ConversationStore } from './persistence/types';
 import { createSyncBridge } from './sync/sync-bridge';
 import type { SyncBridge } from './sync/sync-types';
+import { createGatewayClient } from './api/gateway-client';
+import type { GatewayClient } from './api/gateway-client';
 
 // ── App state ────────────────────────────────────────────────
 
@@ -35,6 +37,12 @@ const logStore = createLogStore();
 let sessionManager: SessionManager | null = null;
 let hubSyncBridge: SyncBridge | null = null;
 let hubConversationStore: ConversationStore | null = null;
+
+// ── Hub gateway client for text turns ────────────────────────
+
+let hubGateway: GatewayClient | null = null;
+let pendingHubAssistantText = '';
+let streamingMsgEl: HTMLElement | null = null;
 
 // ── DOM helpers ──────────────────────────────────────────────
 
@@ -563,6 +571,140 @@ async function loadLiveConversation(): Promise<void> {
   hideStreamingIndicator();
 }
 
+// ── Hub text input ──────────────────────────────────────────
+
+function handleHubChunk(chunk: VoiceTurnChunk): void {
+  const sendBtn = document.getElementById('hubSendBtn') as HTMLButtonElement | null;
+
+  switch (chunk.type) {
+    case 'response_start': {
+      showStreamingIndicator();
+      if (hubSyncBridge && sessionManager) {
+        const convId = sessionManager.getActiveSessionId();
+        if (convId) {
+          hubSyncBridge.postMessage({
+            type: 'streaming:start',
+            origin: 'hub',
+            conversationId: convId,
+          });
+        }
+      }
+      // Create streaming assistant message div
+      const container = $('liveConversation');
+      const empty = document.getElementById('liveEmpty');
+      if (empty) empty.remove();
+      streamingMsgEl = document.createElement('div');
+      streamingMsgEl.className = 'chat-msg chat-msg--assistant';
+      streamingMsgEl.textContent = '';
+      container.appendChild(streamingMsgEl);
+      container.scrollTop = container.scrollHeight;
+      break;
+    }
+
+    case 'response_delta':
+      pendingHubAssistantText += chunk.text ?? '';
+      if (streamingMsgEl) {
+        streamingMsgEl.textContent = pendingHubAssistantText;
+        const container = $('liveConversation');
+        container.scrollTop = container.scrollHeight;
+      }
+      break;
+
+    case 'response_end': {
+      hideStreamingIndicator();
+      streamingMsgEl = null;
+      if (sendBtn) sendBtn.disabled = false;
+
+      if (pendingHubAssistantText && hubConversationStore && sessionManager) {
+        const convId = sessionManager.getActiveSessionId();
+        const text = pendingHubAssistantText;
+        pendingHubAssistantText = '';
+        if (convId) {
+          hubConversationStore.addMessage(convId, {
+            role: 'assistant',
+            text,
+            timestamp: Date.now(),
+          }).then(() => {
+            if (hubSyncBridge) {
+              hubSyncBridge.postMessage({
+                type: 'message:added',
+                origin: 'hub',
+                conversationId: convId,
+                role: 'assistant',
+                text,
+              });
+              hubSyncBridge.postMessage({
+                type: 'streaming:end',
+                origin: 'hub',
+                conversationId: convId,
+              });
+            }
+          }).catch(() => {
+            // Silent failure on persistence -- message is displayed locally
+          });
+        }
+      } else {
+        pendingHubAssistantText = '';
+      }
+      break;
+    }
+
+    case 'error': {
+      hideStreamingIndicator();
+      streamingMsgEl = null;
+      pendingHubAssistantText = '';
+      if (sendBtn) sendBtn.disabled = false;
+      showToast(chunk.error ?? 'Gateway error');
+      if (hubSyncBridge && sessionManager) {
+        const convId = sessionManager.getActiveSessionId();
+        if (convId) {
+          hubSyncBridge.postMessage({
+            type: 'streaming:end',
+            origin: 'hub',
+            conversationId: convId,
+          });
+        }
+      }
+      break;
+    }
+  }
+}
+
+async function handleTextSubmit(text: string): Promise<void> {
+  if (!sessionManager || !hubGateway) return;
+  const activeId = sessionManager.getActiveSessionId();
+  if (!activeId) {
+    showToast('No active session');
+    return;
+  }
+
+  // Save user message to IndexedDB
+  if (hubConversationStore) {
+    await hubConversationStore.addMessage(activeId, {
+      role: 'user',
+      text,
+      timestamp: Date.now(),
+    });
+  }
+
+  // Sync user message to glasses
+  if (hubSyncBridge) {
+    hubSyncBridge.postMessage({
+      type: 'message:added',
+      origin: 'hub',
+      conversationId: activeId,
+      role: 'user',
+      text,
+    });
+  }
+
+  // Show in hub live view
+  appendLiveMessage('user', text);
+
+  // Send to gateway
+  hubGateway.sendTextTurn(appState.settings, { sessionId: activeId, text });
+}
+
 export async function initHub(): Promise<void> {
   init();
   const persistence = await initPersistence();
@@ -580,9 +722,29 @@ export async function initHub(): Promise<void> {
     await loadLiveConversation();
   }
 
-  // Clean up sync bridge on tab close
+  // Create hub gateway client for text turns
+  hubGateway = createGatewayClient();
+  hubGateway.onChunk(handleHubChunk);
+
+  // Wire text input form
+  const textForm = document.getElementById('hubTextForm');
+  if (textForm) {
+    textForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('hubTextInput') as HTMLInputElement;
+      const value = input.value.trim();
+      if (!value) return;
+      input.value = '';
+      const sendBtn = document.getElementById('hubSendBtn') as HTMLButtonElement;
+      if (sendBtn) sendBtn.disabled = true;
+      handleTextSubmit(value);
+    });
+  }
+
+  // Clean up sync bridge and gateway on tab close
   window.addEventListener('beforeunload', () => {
     hubSyncBridge?.destroy();
+    hubGateway?.destroy();
   });
 }
 
