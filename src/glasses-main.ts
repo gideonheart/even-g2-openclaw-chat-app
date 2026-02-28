@@ -22,6 +22,8 @@ import { createSessionStore } from './persistence/session-store';
 import { createIntegrityChecker } from './persistence/integrity-checker';
 import { createStorageHealth } from './persistence/storage-health';
 import { createSyncBridge } from './sync/sync-bridge';
+import { createSyncMonitor } from './sync/sync-monitor';
+import { createDriftReconciler } from './sync/drift-reconciler';
 import { createSessionManager } from './sessions';
 import { createMenuController } from './menu/menu-controller';
 
@@ -151,6 +153,34 @@ export async function boot(): Promise<void> {
   // ── Cross-context sync: initialize bridge for hub <-> glasses messaging ──
   const syncBridge = createSyncBridge();
 
+  // ── Sync hardening: SyncMonitor + DriftReconciler (Phase 16) ──
+  const driftReconciler = store ? createDriftReconciler({
+    store,
+    onDriftDetected: (info) => {
+      bus.emit('sync:drift-detected', info);
+      bus.emit('log', {
+        level: 'warn',
+        msg: `Sync drift: local=${info.localCount} remote=${info.remoteCount} conv=${info.conversationId}`,
+      });
+    },
+    onReconciled: (info) => {
+      bus.emit('sync:reconciled', info);
+      bus.emit('log', { level: 'info', msg: `Sync reconciled: ${info.conversationId}` });
+    },
+  }) : null;
+
+  const syncMonitor = store ? createSyncMonitor({
+    bridge: syncBridge,
+    store,
+    origin: 'glasses',
+    getActiveConversationId: () => activeConversationId,
+    onHeartbeat: driftReconciler
+      ? (conversationId, remoteCount) => {
+          driftReconciler.handleHeartbeat(conversationId, remoteCount);
+        }
+      : undefined,
+  }) : null;
+
   // Layer 1: Hardware boundary
   const bridge = devMode ? createBridgeMock(bus) : createEvenBridgeService(bus);
   await bridge.init();
@@ -215,6 +245,9 @@ export async function boot(): Promise<void> {
     renderer.showWelcome();
   }
 
+  // Start sync heartbeat after display init and restore are complete (Phase 16)
+  syncMonitor?.startHeartbeat();
+
   // ── Session switching helper ──────────────────────────────
   async function switchToSession(sessionId: string): Promise<void> {
     const previousId = activeConversationId;
@@ -241,6 +274,24 @@ export async function boot(): Promise<void> {
     // Emit local bus event for interested modules (auto-save uses getConversationId getter)
     bus.emit('session:switched', { id: sessionId, previousId });
   }
+
+  // Sync drift reconciliation: re-read from IDB and re-render when drift detected
+  bus.on('sync:reconciled', async ({ conversationId }) => {
+    if (conversationId === activeConversationId && store) {
+      renderer.destroy();
+      await renderer.init();
+      const messages = await store.getMessages(conversationId);
+      for (const msg of messages) {
+        if (msg.role === 'user') {
+          renderer.addUserMessage(msg.text);
+        } else {
+          renderer.startStreaming();
+          renderer.appendStreamChunk(msg.text);
+          renderer.endStreaming();
+        }
+      }
+    }
+  });
 
   // ── Menu controller (Layer 4b: depends on renderer, sessions) ──
   const sessionManager = sessionStore ? createSessionManager({
@@ -352,6 +403,7 @@ export async function boot(): Promise<void> {
     cleaned = true;
 
     // Reverse initialization order (Layer 5 -> Layer 0)
+    syncMonitor?.destroy();      // stop heartbeat before bridge teardown
     syncBridge.destroy();        // cross-context sync (no dependencies)
     autoSave?.destroy();
     voiceLoopController.destroy();
