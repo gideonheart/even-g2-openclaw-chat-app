@@ -10,31 +10,31 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 ## Current Position
 
 Phase: 2 of 6 (Even Bridge & Input Pipeline)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-28 - Completed 02-01 Gesture FSM pure function (TDD)
+Last activity: 2026-02-28 - Completed 02-02 EvenBridge service, mock bridge, and audio capture
 
-Progress: [######....] 55%
+Progress: [######....] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4 (Phase 1, Phase 4, Phase 5, Phase 2 Plan 1)
-- Average duration: ~24 min
-- Total execution time: ~1.6 hours
+- Total plans completed: 5 (Phase 1, Phase 4, Phase 5, Phase 2 Plans 1-2)
+- Average duration: ~20 min
+- Total execution time: ~1.7 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 | 1 (infra) | ~30m | 30m |
-| 2 | 1 (gesture FSM) | ~4m | 4m |
+| 2 | 2 (gesture FSM, bridge+audio) | ~10m | 5m |
 | 4 | 1 (API client) | ~20m | 20m |
 | 5 | 1 (hub UI) | ~40m | 40m |
 
 **Recent Trend:**
-- Last 4 plans: completed
-- Trend: fast execution, TDD plans especially quick for pure functions
+- Last 5 plans: completed
+- Trend: fast execution, SDK wrapper + audio capture in 6 min
 
 *Updated after each plan completion*
 
@@ -53,6 +53,7 @@ Recent decisions affecting current work:
 - [Phase quick-1]: 3 P1 items identified as blocking Phase 2: gateway reconnect no-op, missing event bus, zero main.ts test coverage
 - [Phase quick-2]: All 3 P1 blockers resolved: typed event bus created, gateway reconnect retry implemented, app-wiring extracted from main.ts with 28 new tests
 - [Phase 2-01]: Gesture FSM uses Record-based transition table with optional chaining fallback -- pure function, zero dependencies, 22 tests
+- [Phase 2-02]: Used vi.hoisted() for SDK mock in tests; BridgeMock identifies via deviceName 'BridgeMock'; AudioCapture onFrame() is fully synchronous for 100Hz PCM
 
 ### Pending Todos
 
@@ -74,5 +75,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 02-01-PLAN.md (Gesture FSM). Plan 02-02 (EvenBridge service) and 02-03 (gesture handler wiring) remain.
+Stopped at: Completed 02-02-PLAN.md (EvenBridge service, mock bridge, audio capture). Plan 02-03 (gesture handler wiring) remains.
 Resume file: None

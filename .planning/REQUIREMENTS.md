@@ -11,8 +11,8 @@ Requirements for initial release (EvenHub submission). Each maps to roadmap phas
 
 - [x] **VOICE-01**: User can tap to start voice recording on glasses
 - [x] **VOICE-02**: User can tap again to stop voice recording
-- [ ] **VOICE-03**: Audio is captured from glasses microphone via Even SDK bridge events
-- [ ] **VOICE-04**: Captured audio is buffered and sent to backend gateway for STT processing
+- [x] **VOICE-03**: Audio is captured from glasses microphone via Even SDK bridge events
+- [x] **VOICE-04**: Captured audio is buffered and sent to backend gateway for STT processing
 
 ### State Icons HUD
 
@@ -91,9 +91,9 @@ Requirements for initial release (EvenHub submission). Each maps to roadmap phas
 
 ### Even Bridge
 
-- [ ] **BRDG-01**: EvenBridge service wraps SDK initialization, lifecycle, and teardown
-- [ ] **BRDG-02**: Bridge events dispatched via typed event bus (no direct bridge.* calls from UI)
-- [ ] **BRDG-03**: Development fallback mode enables building/testing without physical glasses connected
+- [x] **BRDG-01**: EvenBridge service wraps SDK initialization, lifecycle, and teardown
+- [x] **BRDG-02**: Bridge events dispatched via typed event bus (no direct bridge.* calls from UI)
+- [x] **BRDG-03**: Development fallback mode enables building/testing without physical glasses connected
 
 ### UI Modes
 
@@ -167,9 +167,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SETT-08 | Phase 1 | Pending |
 | PLAT-01 | Phase 1 | Pending |
 | PLAT-02 | Phase 1 | Pending |
-| BRDG-01 | Phase 2 | Pending |
-| BRDG-02 | Phase 2 | Pending |
-| BRDG-03 | Phase 2 | Pending |
+| BRDG-01 | Phase 2 | Complete |
+| BRDG-02 | Phase 2 | Complete |
+| BRDG-03 | Phase 2 | Complete |
 | GEST-01 | Phase 2 | Complete |
 | GEST-02 | Phase 2 | Complete |
 | GEST-03 | Phase 2 | Complete |
@@ -178,8 +178,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GEST-06 | Phase 2 | Pending |
 | VOICE-01 | Phase 2 | Complete |
 | VOICE-02 | Phase 2 | Complete |
-| VOICE-03 | Phase 2 | Pending |
-| VOICE-04 | Phase 2 | Pending |
+| VOICE-03 | Phase 2 | Complete |
+| VOICE-04 | Phase 2 | Complete |
 | ICONS-01 | Phase 3 | Pending |
 | ICONS-02 | Phase 3 | Pending |
 | ICONS-03 | Phase 3 | Pending |
