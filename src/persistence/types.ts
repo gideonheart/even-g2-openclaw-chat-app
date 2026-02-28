@@ -38,6 +38,8 @@ export interface ConversationStore {
     msg: { role: 'user' | 'assistant'; text: string; timestamp: number },
   ): Promise<string>;
   getMessages(conversationId: string): Promise<MessageRecord[]>;
+  getMessage(messageId: string): Promise<MessageRecord | undefined>;
+  verifyMessage(messageId: string): Promise<boolean>;
   getLastConversation(): Promise<ConversationRecord | undefined>;
   searchMessages(query: string, limit?: number): Promise<SearchResult[]>;
 }

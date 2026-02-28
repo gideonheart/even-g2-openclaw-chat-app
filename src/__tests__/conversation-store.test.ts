@@ -169,6 +169,49 @@ describe('conversation-store', () => {
       expect(messages).toEqual([]);
     });
   });
+  // ── getMessage / verifyMessage ─────────────────────────
+
+  describe('getMessage', () => {
+    it('returns record for existing message', async () => {
+      const conv = await store.createConversation('Test');
+      const msgId = await store.addMessage(conv.id, {
+        role: 'user',
+        text: 'Hello',
+        timestamp: Date.now(),
+      });
+
+      const record = await store.getMessage(msgId);
+      expect(record).toBeDefined();
+      expect(record!.id).toBe(msgId);
+      expect(record!.text).toBe('Hello');
+      expect(record!.role).toBe('user');
+    });
+
+    it('returns undefined for non-existent message', async () => {
+      const result = await store.getMessage('non-existent-uuid');
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('verifyMessage', () => {
+    it('returns true for existing message', async () => {
+      const conv = await store.createConversation('Test');
+      const msgId = await store.addMessage(conv.id, {
+        role: 'user',
+        text: 'Hello',
+        timestamp: Date.now(),
+      });
+
+      const exists = await store.verifyMessage(msgId);
+      expect(exists).toBe(true);
+    });
+
+    it('returns false for non-existent message', async () => {
+      const exists = await store.verifyMessage('non-existent-uuid');
+      expect(exists).toBe(false);
+    });
+  });
+
   // ── Search ─────────────────────────────────────────────
 
   describe('searchMessages', () => {

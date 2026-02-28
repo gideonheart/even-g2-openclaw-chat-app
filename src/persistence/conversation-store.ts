@@ -227,6 +227,26 @@ export function createConversationStore(
     });
   }
 
+  function getMessage(
+    messageId: string,
+  ): Promise<MessageRecord | undefined> {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('messages', 'readonly');
+      const req = tx.objectStore('messages').get(messageId);
+      req.onsuccess = () => resolve(req.result ?? undefined);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function verifyMessage(messageId: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const tx = db.transaction('messages', 'readonly');
+      const req = tx.objectStore('messages').get(messageId);
+      req.onsuccess = () => resolve(req.result !== undefined);
+      req.onerror = () => resolve(false);
+    });
+  }
+
   // ── Search ──────────────────────────────────────────────
 
   function searchMessages(
@@ -297,6 +317,8 @@ export function createConversationStore(
     getAllConversations,
     addMessage,
     getMessages,
+    getMessage,
+    verifyMessage,
     getLastConversation,
     searchMessages,
   };
