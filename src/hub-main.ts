@@ -834,8 +834,26 @@ function handleHubChunk(chunk: VoiceTurnChunk): void {
     case 'error': {
       hideStreamingIndicator();
       streamingMsgEl = null;
-      pendingHubAssistantText = '';
       if (sendBtn) sendBtn.disabled = false;
+
+      // RES-08: Save partial hub response instead of discarding
+      if (pendingHubAssistantText && hubConversationStore && sessionManager) {
+        const convId = sessionManager.getActiveSessionId();
+        const text = pendingHubAssistantText + ' [response interrupted]';
+        pendingHubAssistantText = '';
+        if (convId) {
+          hubConversationStore.addMessage(convId, {
+            role: 'assistant',
+            text,
+            timestamp: Date.now(),
+          }).catch(() => {
+            console.error('[hub] Failed to save partial response');
+          });
+        }
+      } else {
+        pendingHubAssistantText = '';
+      }
+
       showToast(chunk.error ?? 'Gateway error');
       if (hubSyncBridge && sessionManager) {
         const convId = sessionManager.getActiveSessionId();
