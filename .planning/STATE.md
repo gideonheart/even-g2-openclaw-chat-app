@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Phase 13 - Phase 9 Verification & Sync Wiring (gap closure)
+**Current focus:** Phase 11 - Glasses Command Menu
 
 ## Current Position
 
-Phase: 13 of 13 (Phase 9 Verification & Sync Wiring)
-Plan: 1 of 1 in current phase
-Status: Phase 13 complete
-Last activity: 2026-02-28 - Completed 13-01: Phase 9 verification + sync wiring
+Phase: 11 of 13 (Glasses Command Menu)
+Plan: 2 of 2 in current phase
+Status: Plan 11-01 complete, executing 11-02
+Last activity: 2026-02-28 - Completed 11-01: CommandMenu pure state module + FSM extension
 
-Progress: [████████████████████] 23/23 plans (v1.0-v1.1 complete, Phase 10 complete, Phase 13 gap closure complete)
+Progress: [████████████████████] 24/25 plans (v1.0-v1.1 complete, Phase 10+13 complete, Phase 11 in progress)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 23 (Phases 1-10 + Phase 13 gap closure complete)
-- Total tests: 328 (all passing)
+- Total plans completed: 24 (Phases 1-10 + Phase 13 gap closure + Phase 11-01 complete)
+- Total tests: 352 (all passing)
 - Total LOC: ~7,600 TypeScript (58 files)
 - Total execution time: ~4.7 hours
 
@@ -38,6 +38,7 @@ Progress: [████████████████████] 23/23 p
 | 8 | 1 (evenhub submission) | ~3m | 3m |
 | 9 | 2 (data layer TDD + wiring) | ~10m | 5m |
 | 10 | 3/3 (session store + sync bridge + glasses wiring + hub sessions) | ~16m | 5m |
+| 11 | 1/2 (command menu state + FSM extension) | ~4m | 4m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
 
 ## Accumulated Context
@@ -59,6 +60,9 @@ All decisions logged in PROJECT.md Key Decisions table (20 entries with outcomes
 - message:added posted only after successful save to prevent hub showing unpersisted messages (13-01)
 - Hub message:added is no-op break for now; Phase 12 will build live conversation view (13-01)
 - conversation:named falls through to refreshSessionList() since hub shows conversation names (13-01)
+- MENU_SELECT action added to FSM; tap in menu stays in menu state, controller decides when to close (11-01)
+- Destructive menu items require confirmation sub-state before execution (11-01)
+- Scroll locked during confirmation to prevent accidental navigation (11-01)
 
 ### Pending Todos
 
@@ -82,5 +86,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 13-01-PLAN.md (Phase 9 verification + sync wiring gap closure)
+Stopped at: Completed 11-01-PLAN.md (CommandMenu pure state module + FSM extension)
 Resume file: None
