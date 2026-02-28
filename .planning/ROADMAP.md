@@ -115,10 +115,10 @@ Plans:
   2. `onConversationNamed` callback in glasses-main.ts posts `conversation:named` SyncMessage (not a no-op stub)
   3. Auto-save handler posts `message:added` SyncMessage to syncBridge after persisting
   4. Both sync message types are no longer dead code — they are posted by glasses context and can be consumed by hub
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 13-01: TBD
+- [ ] 13-01-PLAN.md — Phase 9 verification + sync message wiring (conversation:named, message:added)
 
 ## Progress
 
