@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Phase 11 - Glasses Command Menu
+**Current focus:** Phase 12 - Hub Conversation Features
 
 ## Current Position
 
-Phase: 11 of 13 (Glasses Command Menu) -- COMPLETE
-Plan: 2 of 2 in current phase (all complete)
-Status: Phase 11 complete
-Last activity: 2026-02-28 - Completed 11-02: Menu controller wiring + boot integration
+Phase: 12 of 13 (Hub Conversation Features) -- IN PROGRESS
+Plan: 1 of 3 in current phase (12-01 complete)
+Status: Executing Phase 12
+Last activity: 2026-02-28 - Completed 12-01: Live conversation view with streaming indicator
 
-Progress: [█████████████████████] 25/25 plans (v1.0-v1.1 complete, all phases complete)
+Progress: [██████████████████████] 26/28 plans (v1.0-v1.1 + Phase 12 plan 1)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 25 (Phases 1-11 + Phase 13 gap closure -- ALL COMPLETE)
-- Total tests: 352 (all passing)
+- Total plans completed: 26 (Phases 1-11 + Phase 13 gap closure + Phase 12 plan 1)
+- Total tests: 356 (all passing)
 - Total LOC: ~7,900 TypeScript (59 files)
 - Total execution time: ~4.8 hours
 
@@ -39,6 +39,7 @@ Progress: [█████████████████████] 25/2
 | 9 | 2 (data layer TDD + wiring) | ~10m | 5m |
 | 10 | 3/3 (session store + sync bridge + glasses wiring + hub sessions) | ~16m | 5m |
 | 11 | 2/2 (command menu state + FSM extension, controller + boot wiring) | ~8m | 4m |
+| 12 | 1/3 (live conversation view + streaming indicator) | ~4m | 4m |
 | 13 | 1/1 (Phase 9 verification + sync wiring) | ~5m | 5m |
 
 ## Accumulated Context
@@ -58,7 +59,7 @@ All decisions logged in PROJECT.md Key Decisions table (20 entries with outcomes
 - activeSession default '' (set from IndexedDB on boot), initHub() now async (10-03)
 - syncBridge optional in AutoSaveOptions to preserve backward compatibility (13-01)
 - message:added posted only after successful save to prevent hub showing unpersisted messages (13-01)
-- Hub message:added is no-op break for now; Phase 12 will build live conversation view (13-01)
+- Hub message:added now renders live messages via appendLiveMessage (12-01, replaces 13-01 stub)
 - conversation:named falls through to refreshSessionList() since hub shows conversation names (13-01)
 - MENU_SELECT action added to FSM; tap in menu stays in menu state, controller decides when to close (11-01)
 - Destructive menu items require confirmation sub-state before execution (11-01)
@@ -67,6 +68,10 @@ All decisions logged in PROJECT.md Key Decisions table (20 entries with outcomes
 - Scroll during confirmation cancels the confirmation dialog (11-02)
 - /rename auto-generates name from first user message, no keyboard needed (11-02)
 - /reset implemented as delete+create (cascade deletes messages) (11-02)
+- streaming:end posted AFTER successful save alongside message:added for consistent state (12-01)
+- textContent used for message rendering to prevent XSS without escHtml (12-01)
+- session:switched sync handler calls both refreshSessionList and loadLiveConversation (12-01)
+- hubConversationStore stored at module level for loadLiveConversation access (12-01)
 
 ### Pending Todos
 
@@ -90,5 +95,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 11-02-PLAN.md (Menu controller wiring + boot integration) -- Phase 11 complete
+Stopped at: Completed 12-01-PLAN.md (Live conversation view + streaming indicator)
 Resume file: None
