@@ -18,9 +18,9 @@ Requirements for v1.1 Integration milestone. Wires existing v1.0 library modules
 
 ### Error Handling & Lifecycle
 
-- [ ] **ERR-01**: FSM transitions to idle state when gateway returns an error mid-turn
-- [ ] **ERR-02**: Gateway requests timeout after 30 seconds with user-visible feedback
-- [ ] **ERR-03**: App performs graceful shutdown (gateway.destroy, audio cleanup) on unload
+- [x] **ERR-01**: FSM transitions to idle state when gateway returns an error mid-turn
+- [x] **ERR-02**: Gateway requests timeout after 30 seconds with user-visible feedback
+- [x] **ERR-03**: App performs graceful shutdown (gateway.destroy, audio cleanup) on unload
 - [x] **ERR-04**: Orphaned event types removed from AppEventMap (display:state-change, viewport-update, hide, wake)
 
 ### EvenHub Submission
@@ -75,9 +75,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LOOP-04 | Phase 6 | Complete |
 | LOOP-05 | Phase 6 | Complete |
 | LOOP-06 | Phase 6 | Complete |
-| ERR-01 | Phase 7 | Pending |
-| ERR-02 | Phase 7 | Pending |
-| ERR-03 | Phase 7 | Pending |
+| ERR-01 | Phase 7 | Complete |
+| ERR-02 | Phase 7 | Complete |
+| ERR-03 | Phase 7 | Complete |
 | ERR-04 | Phase 6 | Complete |
 | SUB-01 | Phase 8 | Pending |
 | SUB-02 | Phase 8 | Pending |
@@ -91,4 +91,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-28*
-*Last updated: 2026-02-28 after Phase 6 completion*
+*Last updated: 2026-02-28 after Phase 7 completion*
