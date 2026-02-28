@@ -96,6 +96,7 @@ export interface AppEventMap {
   'gesture:scroll-down': { timestamp: number };
   'audio:recording-start': { sessionId: string };
   'audio:recording-stop': { sessionId: string; blob: Blob };
+  'gesture:menu-toggle': { active: boolean };
   'gateway:status': { status: ConnectionStatus };
   'gateway:chunk': VoiceTurnChunk;
   'log': { level: LogLevel; msg: string; cid?: string };
