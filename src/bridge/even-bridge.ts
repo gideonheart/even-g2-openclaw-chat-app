@@ -99,6 +99,13 @@ export function createEvenBridgeService(
     unsubEvent = null;
     unsubStatus?.();
     unsubStatus = null;
+    // Close microphone before shutting down the page container.
+    // If audioControl(true) was called during a recording session and the app
+    // is hidden without closing the mic, the Even G2 OS leaves the audio state
+    // open. On the next boot the OS shows "Failed Tap to speak" because it
+    // cannot open an already-open microphone. Closing it here ensures a clean
+    // state for the next session.
+    await bridge?.audioControl(false).catch(() => {});
     await bridge?.shutDownPageContainer(0);
     bridge = null;
   }

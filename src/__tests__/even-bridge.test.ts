@@ -139,12 +139,15 @@ describe('EvenBridge service', () => {
     expect(handler.mock.calls[0][0]).toHaveProperty('timestamp');
   });
 
-  it('destroy() unsubscribes listeners and calls shutDownPageContainer', async () => {
+  it('destroy() closes mic, unsubscribes listeners, and calls shutDownPageContainer', async () => {
     const service = createEvenBridgeService(bus);
     await service.init();
 
     await service.destroy();
 
+    // Must close mic before shutting down page to avoid "Failed Tap to speak"
+    // on the next boot (Even G2 OS shows this when mic is left open across sessions)
+    expect(mockBridge.audioControl).toHaveBeenCalledWith(false);
     expect(mockBridge.shutDownPageContainer).toHaveBeenCalledWith(0);
     // After destroy, the event callbacks should be nulled
     expect(getOnEvenHubEventCb()).toBeNull();

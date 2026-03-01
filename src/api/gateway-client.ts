@@ -279,7 +279,12 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     setStatus('connecting');
 
     const formData = new FormData();
-    formData.append('audio', request.audio, 'recording.webm');
+    // Glasses-mode audio arrives as WAV (audio/wav) from audio-capture.ts.
+    // Dev-mode audio arrives as WebM (audio/webm) from MediaRecorder.
+    // Use the blob's MIME type to derive the correct file extension so the
+    // gateway and STT backend can identify the format reliably.
+    const ext = request.audio.type === 'audio/wav' ? 'wav' : 'webm';
+    formData.append('audio', request.audio, `recording.${ext}`);
     formData.append('sessionId', request.sessionId);
     formData.append('sttProvider', request.sttProvider);
 

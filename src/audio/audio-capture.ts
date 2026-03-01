@@ -2,7 +2,11 @@
 //
 // In glasses mode (devMode=false): buffers raw PCM Uint8Array frames
 // pushed by the bridge via onFrame(). On stopRecording(), concatenates
-// all frames into a single Blob of type 'audio/pcm'.
+// all frames and wraps them in a WAV (RIFF) container so the gateway
+// and STT backend receive a standard decodable audio format.
+//
+// PCM parameters from Even G2 SDK: 16 kHz sample rate, 16-bit samples,
+// mono channel, little-endian byte order (40 bytes per 10 ms frame).
 //
 // In dev mode (devMode=true): uses the browser MediaRecorder API to
 // capture audio from the device microphone. onFrame() is a no-op.
@@ -14,6 +18,50 @@ export interface AudioCapture {
   stopRecording(): Promise<Blob>;
   onFrame(pcm: Uint8Array): void;
   isRecording(): boolean;
+}
+
+/**
+ * Wrap raw PCM bytes in a WAV (RIFF) container.
+ *
+ * Even G2 glasses emit 16 kHz, 16-bit, mono PCM (little-endian, 40 bytes/frame).
+ * Standard STT backends (WhisperX, OpenAI Whisper) require a proper audio
+ * container -- they cannot decode raw PCM. This matches the reference sample
+ * (stt-even-g2/g2/main.ts pcm16ToWav) exactly.
+ */
+export function pcm16ToWav(
+  pcmBytes: Uint8Array,
+  sampleRate = 16000,
+  channels = 1,
+  bitsPerSample = 16,
+): Blob {
+  const byteRate = (sampleRate * channels * bitsPerSample) / 8;
+  const blockAlign = (channels * bitsPerSample) / 8;
+  const dataSize = pcmBytes.length;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeStr = (off: number, str: string): void => {
+    for (let i = 0; i < str.length; i++) {
+      view.setUint8(off + i, str.charCodeAt(i));
+    }
+  };
+
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);        // PCM chunk size
+  view.setUint16(20, 1, true);         // PCM format
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  new Uint8Array(buffer, 44).set(pcmBytes);
+  return new Blob([buffer], { type: 'audio/wav' });
 }
 
 export function createAudioCapture(devMode: boolean): AudioCapture {
@@ -62,16 +110,18 @@ export function createAudioCapture(devMode: boolean): AudioCapture {
       });
     }
 
-    // Glasses mode: concatenate all PCM frames into a single buffer
+    // Glasses mode: concatenate all PCM frames and wrap in WAV container.
+    // Even G2 sends 16 kHz / 16-bit / mono PCM. Raw PCM is not decodable by
+    // standard STT backends -- it must be wrapped in a WAV (RIFF) container.
     const totalLen = frames.reduce((sum, f) => sum + f.length, 0);
-    const buffer = new Uint8Array(totalLen);
+    const pcm = new Uint8Array(totalLen);
     let offset = 0;
     for (const frame of frames) {
-      buffer.set(frame, offset);
+      pcm.set(frame, offset);
       offset += frame.length;
     }
     frames = [];
-    return new Blob([buffer], { type: 'audio/pcm' });
+    return pcm16ToWav(pcm);
   }
 
   function isRecordingFn(): boolean {
