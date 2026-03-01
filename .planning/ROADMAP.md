@@ -5,7 +5,7 @@
 - ✅ **v1.0 MVP** — Phases 1-5 (shipped 2026-02-28)
 - ✅ **v1.1 Integration** — Phases 6-8 (shipped 2026-02-28)
 - ✅ **v1.2 Conversation Intelligence & Hub Interaction** — Phases 9-13 (shipped 2026-02-28)
-- **v1.3 Resilience & Error UX** — Phases 14-19 incl. 16.5, 18.5 (active)
+- ✅ **v1.3 Resilience & Error UX** — Phases 14-19 incl. 16.5, 18.5 (shipped 2026-03-01)
 
 ## Phases
 
@@ -40,117 +40,19 @@
 
 </details>
 
-## v1.3 Resilience & Error UX (Phases 14-19) -- ACTIVE
+<details>
+<summary>✅ v1.3 Resilience & Error UX (Phases 14-19) — SHIPPED 2026-03-01</summary>
 
-<!--
-Dependency graph:
+- [x] Phase 14: Data Integrity Foundation (5/5 plans) — completed 2026-02-28
+- [x] Phase 15: Write Verification & Auto-Save Hardening (2/2 plans) — completed 2026-02-28
+- [x] Phase 16: Sync Hardening (2/2 plans) — completed 2026-02-28
+- [x] Phase 16.5: Integration Hardening (2/2 plans) — completed 2026-02-28
+- [x] Phase 17: FSM & Gateway Resilience (2/2 plans) — completed 2026-03-01
+- [x] Phase 18: Error UX (2/2 plans) — completed 2026-03-01
+- [x] Phase 18.5: Hub Integration Wiring (1/1 plan) — completed 2026-03-01
+- [x] Phase 19: Test Infrastructure & Resilience Coverage (2/2 plans) — completed 2026-03-01
 
-Phase 14 (Foundation)
-    |
-    v
-Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
-    |                    |                    |
-    +----+---------------+                    |
-         |                                    |
-         v                                    |
-  Phase 16.5 (Integration Hardening)          |
-         |                                    |
-         +------------------------------------+
-                         |
-                         v
-                  Phase 18 (Error UX)
-                         |
-                         v
-              Phase 18.5 (Hub Integration Wiring)
-                         |
-                         v
-                  Phase 19 (Tests)
--->
-
-### Phase 14: Data Integrity Foundation
-- **Goal:** Boot-time integrity checking, storage health monitoring, eviction detection, and persistent storage -- the foundation all other resilience features depend on.
-- **Requirements:** [RES-01, RES-02, RES-03, RES-04, RES-05, RES-15, RES-20 (persistence events only), RES-22]
-- **Key deliverables:** integrity-checker.ts, storage-health.ts, sentinel record, IDB onclose handler, persistence event types in AppEventMap
-- **Plans:** 5/5 plans complete
-  - [x] 14-01-PLAN.md — Event types, IDB onclose handler, sentinel filtering (Wave 1)
-  - [x] 14-02-PLAN.md — IntegrityChecker module with TDD (Wave 2)
-  - [x] 14-03-PLAN.md — StorageHealth module + boot wiring (Wave 2)
-  - [ ] 14-04-PLAN.md — Gap closure: wire reopenDB() into onclose callbacks (Wave 1)
-  - [ ] 14-05-PLAN.md — Gap closure: orphan grace-period lifecycle + hub diagnostics (Wave 1)
-
-### Phase 15: Write Verification & Auto-Save Hardening
-- **Goal:** Make the primary write path (auto-save) resilient with verification, error escalation, and partial response preservation -- preventing silent data loss.
-- **Requirements:** [RES-06, RES-07, RES-08]
-- **Depends on:** Phase 14 (needs persistence:error event type, storage health context)
-- **Key deliverables:** verifyMessage() on ConversationStore, enhanced auto-save error escalation, partial response save on mid-stream failure
-- **Plans:** 2/2 plans complete
-  - [ ] 15-01-PLAN.md — Store extensions + auto-save hardening (verification, escalation, partial save) + tests (Wave 1)
-  - [ ] 15-02-PLAN.md — Hub-side error escalation + partial response preservation (Wave 1)
-
-### Phase 16: Sync Hardening
-- **Goal:** Detect and recover from cross-context sync drift using IDB-as-truth pattern with sequence numbering and heartbeat.
-- **Requirements:** [RES-09, RES-10, RES-11, RES-12, RES-20 (sync events only)]
-- **Depends on:** Phase 14 (uses ConversationStore.countMessages for drift detection)
-- **Key deliverables:** sync-monitor.ts, drift-reconciler.ts, SyncMessage seq field, heartbeat timer, sync event types
-- **Plans:** 2/2 plans complete
-  - [ ] 16-01-PLAN.md — Types, countMessages, SyncMonitor TDD, DriftReconciler TDD (Wave 1)
-  - [ ] 16-02-PLAN.md — Boot wiring in glasses-main.ts and hub-main.ts (Wave 2)
-
-### Phase 16.5: Integration Hardening
-- **Goal:** Fix critical integration bugs in completed Phases 14/16 -- stale db handle after reopenDB(), dead-end event wiring, missing hub health emission, cleanup teardown gaps -- so Phase 18 can consume reliable signals.
-- **Requirements:** [RES-15, RES-02, RES-04, RES-11 (integration fixes for satisfied requirements)]
-- **Depends on:** Phases 15, 16 (completed)
-- **Blocks:** Phase 18 (Error UX needs these signals working correctly)
-- **Gap Closure:** Closes 4 integration issues + 3 broken flows from v1.3 audit
-- **Key deliverables:**
-  - Fix reopenDB() to propagate new IDBDatabase handle to all stores (Critical)
-  - Wire storage:evicted event subscribers in both glasses and hub contexts (Significant)
-  - Add hub persistence:health emission with 80%/95% threshold logging (Significant)
-  - Call driftReconciler.destroy() in glasses cleanup and hub beforeunload (Minor)
-- **Plans:** 2/2 plans complete
-  - [ ] 16.5-01-PLAN.md — Glasses-side: reopenDB handle propagation + eviction subscriber + cleanup teardown
-  - [ ] 16.5-02-PLAN.md — Hub-side: reopenDB handle propagation + health emission + eviction notification + cleanup teardown
-
-### Phase 17: FSM & Gateway Resilience
-- **Goal:** Prevent stuck states and handle gateway failures gracefully -- watchdog timer for FSM, error classification for gateway, no auto-retry of mid-stream failures.
-- **Requirements:** [RES-13, RES-14, RES-20 (fsm events only)]
-- **Depends on:** Phase 14 (event types)
-- **Can run parallel with Phase 16.**
-- **Key deliverables:** FSM watchdog timer, gateway error classification (connection vs mid-stream), receivedAnyData flag
-- **Plans:** 2/2 plans complete
-  - [ ] 17-01-PLAN.md — FSM watchdog timer + fsm:watchdog-reset event type (Wave 1)
-  - [ ] 17-02-PLAN.md — Gateway error classification (receivedAnyData, mid-stream vs connection) (Wave 1)
-
-### Phase 18: Error UX
-- **Goal:** Surface all error and health signals to users appropriately -- minimal on glasses (status bar, auto-clear), rich on hub (toasts, banners, health page).
-- **Requirements:** [RES-16, RES-17, RES-18, RES-19]
-- **Depends on:** Phases 14-17 + 16.5 (consumes all error events from prior phases; 16.5 fixes integration signals)
-- **Key deliverables:** error-presenter.ts (glasses + hub variants), health-indicator.ts, hub health page enhancements, error banner component
-- **Plans:** 2/2 plans complete
-  - [ ] 18-01-PLAN.md — Glasses error presenter: status bar auto-clear, icon animator pause/resume, RES-16/RES-19 (Wave 1)
-  - [ ] 18-02-PLAN.md — Hub error display + health page: toast/banner, health-indicator pure functions, hStorage + hSync rows (Wave 1)
-
-### Phase 18.5: Hub Integration Wiring
-- **Goal:** Make hub-side error presenter, reopenDB handle propagation, and storage health dot fully functional -- closing 3 integration gaps and 2 broken E2E flows identified by milestone audit.
-- **Requirements:** [RES-17, RES-11, RES-15, RES-02, RES-18 (integration fixes for satisfied requirements)]
-- **Depends on:** Phase 18 (completed)
-- **Blocks:** Phase 19 (tests should exercise fully wired integration)
-- **Gap Closure:** Closes 3 integration issues + 2 broken flows from v1.3 audit
-- **Key deliverables:**
-  - Wire hubBus.emit('persistence:error') in hub error paths (IDB close, save failure, eviction) so hub error presenter activates
-  - Recreate driftReconciler + syncMonitor with new IDB handle after reopenDB() (matching glasses-side 16.5-01 pattern)
-  - Emit persistence:health to hubBus after getQuota() + add computeStorageHealth() to refreshHealthDisplay() for storage health dot
-- **Plans:** 1/1 plans complete
-  - [ ] 18.5-01-PLAN.md — Wire hubBus.emit persistence:error in error paths, recreate sync modules after reopenDB, emit persistence:health + storage dot in refreshHealthDisplay (Wave 1)
-
-### Phase 19: Test Infrastructure & Resilience Coverage
-- **Goal:** Comprehensive failure scenario testing using existing tools -- test helpers for IDB failures and sync message loss, integration tests for all resilience features.
-- **Requirements:** [RES-21]
-- **Depends on:** Phases 14-18.5 (tests exercise all resilience features including hub integration wiring)
-- **Key deliverables:** failure-helpers.ts, integration test suite for integrity/sync/error scenarios
-- **Plans:** 2/2 plans complete
-  - [x] 19-01-PLAN.md — Failure injection helpers + IDB integrity flow integration tests (Wave 1)
-  - [x] 19-02-PLAN.md — Sync resilience + error escalation integration tests (Wave 2)
+</details>
 
 ## Progress
 
@@ -169,14 +71,14 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 | 11. Glasses Command Menu | v1.2 | 2/2 | Complete | 2026-02-28 |
 | 12. Hub Conversation Features | v1.2 | 3/3 | Complete | 2026-02-28 |
 | 13. Phase 9 Verification & Sync Wiring | v1.2 | 1/1 | Complete | 2026-02-28 |
-| 14. Data Integrity Foundation | 5/5 | Complete    | 2026-02-28 | -- |
-| 15. Write Verification & Auto-Save Hardening | 2/2 | Complete    | 2026-02-28 | -- |
-| 16. Sync Hardening | 2/2 | Complete    | 2026-02-28 | -- |
-| 16.5. Integration Hardening | 2/2 | Complete    | 2026-02-28 | -- |
-| 17. FSM & Gateway Resilience | 2/2 | Complete    | 2026-03-01 | -- |
-| 18. Error UX | 2/2 | Complete    | 2026-03-01 | -- |
-| 18.5. Hub Integration Wiring | 1/1 | Complete    | 2026-03-01 | -- |
-| 19. Test Infrastructure & Resilience Coverage | 2/2 | Complete    | 2026-03-01 | -- |
+| 14. Data Integrity Foundation | v1.3 | 5/5 | Complete | 2026-02-28 |
+| 15. Write Verification & Auto-Save Hardening | v1.3 | 2/2 | Complete | 2026-02-28 |
+| 16. Sync Hardening | v1.3 | 2/2 | Complete | 2026-02-28 |
+| 16.5. Integration Hardening | v1.3 | 2/2 | Complete | 2026-02-28 |
+| 17. FSM & Gateway Resilience | v1.3 | 2/2 | Complete | 2026-03-01 |
+| 18. Error UX | v1.3 | 2/2 | Complete | 2026-03-01 |
+| 18.5. Hub Integration Wiring | v1.3 | 1/1 | Complete | 2026-03-01 |
+| 19. Test Infrastructure & Resilience Coverage | v1.3 | 2/2 | Complete | 2026-03-01 |
 
 ---
 *Full phase details archived to `.planning/milestones/`*

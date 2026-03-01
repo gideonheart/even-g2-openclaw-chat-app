@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A public EvenHub app for Even G2 smart glasses that provides voice/chat UX for interacting with an OpenClaw AI agent. Users speak through the glasses, audio is sent to a backend gateway (`openclaw-even-g2-voice-gateway`) for STT processing and OpenClaw agent responses, which stream back as bubble chat in a compact HUD rendered on the 576x288 glasses display. The companion hub provides live conversation view, text input, session management, conversation history browsing with full-text search, and a glasses command menu for hands-free session control. Conversations persist in IndexedDB with real-time two-way sync between glasses and hub via BroadcastChannel.
+A public EvenHub app for Even G2 smart glasses that provides voice/chat UX for interacting with an OpenClaw AI agent. Users speak through the glasses, audio is sent to a backend gateway (`openclaw-even-g2-voice-gateway`) for STT processing and OpenClaw agent responses, which stream back as bubble chat in a compact HUD rendered on the 576x288 glasses display. The companion hub provides live conversation view, text input, session management, conversation history browsing with full-text search, and a glasses command menu for hands-free session control. Conversations persist in IndexedDB with real-time two-way sync between glasses and hub via BroadcastChannel. The app includes comprehensive resilience: boot-time integrity checking, write verification, sync heartbeat with drift reconciliation, FSM watchdog, and visible error recovery on both glasses and hub.
 
 ## Core Value
 
@@ -52,65 +52,31 @@ Users can have natural voice conversations with an AI assistant through their Ev
 - ✓ Conversation history browsing with transcript viewer and delete — v1.2
 - ✓ Full-text search across conversation history with highlighted snippets — v1.2
 
+- ✓ Boot-time integrity check with orphan detection, sentinel verification, dangling pointer fix — v1.3
+- ✓ Storage health monitoring with quota estimation and persistent storage request — v1.3
+- ✓ Eviction detection via sentinel record with storage:evicted event — v1.3
+- ✓ Orphan cleanup with 30-second grace period and cross-context coordination — v1.3
+- ✓ IDB onclose handler with reopenDB() retry and module recreation — v1.3
+- ✓ Write verification for first message per session with re-verify after warnings — v1.3
+- ✓ Auto-save error escalation to persistence:error after retry exhaustion — v1.3
+- ✓ Partial response preservation with "[response interrupted]" suffix — v1.3
+- ✓ Sync sequence numbering with gap detection on heartbeat messages — v1.3
+- ✓ Sync heartbeat every 10s with 30s peer disconnection detection — v1.3
+- ✓ Drift reconciliation via IDB re-read with 2-consecutive-mismatch rule — v1.3
+- ✓ IDB-as-truth sync design (BroadcastChannel optional, IDB authoritative) — v1.3
+- ✓ FSM 45-second watchdog timer with auto-reset to idle — v1.3
+- ✓ Gateway error classification: connection vs mid-stream, no auto-retry of mid-stream — v1.3
+- ✓ Glasses 3-tier error display: transient 3s, recoverable 10s, fatal full-screen — v1.3
+- ✓ Hub toasts (5s auto-clear) and persistent banners with dismiss for errors — v1.3
+- ✓ Hub health page: 5 status dots (Gateway, STT, Session, Storage, Sync) — v1.3
+- ✓ Glasses health policy: no persistent indicators, user-friendly language, auto-clear — v1.3
+- ✓ New AppEventMap events: persistence:error, sync:drift-detected, sync:reconciled, fsm:watchdog-reset — v1.3
+- ✓ Failure simulation test helpers: createFailingStore, createLossySyncBridge, createDelayedStore — v1.3
+- ✓ Zero new runtime dependencies — all resilience features use browser built-in APIs — v1.3
+
 ### Active
 
-## Current Milestone: v1.3 Resilience & Error UX
-
-**Goal:** Make the app bulletproof — no silent data loss, no stale state, visible error recovery — across all failure modes and real hardware.
-
-**Target features:**
-- IndexedDB write verification, orphan detection/cleanup, referential integrity checks on boot
-- Cross-context sync hardening: message loss detection, drift reconciliation, fallback behaviors
-- Real-hardware gap closure: BroadcastChannel in flutter_inappwebview, IndexedDB eviction, SDK quirks
-- Error resilience: mid-stream gateway failures, stuck FSM states, network drops, corrupted state recovery
-- Error UX: visible error states, recovery prompts, sync/storage health indicators
-- Test coverage: integration tests for failure scenarios, E2E resilience tests, CI pipeline
-
-#### Data Integrity (ARCHITECTURE.md IntegrityChecker + StorageHealth + PITFALLS P1/P2/P4/P9)
-
-- [ ] **RES-01:** Boot-time integrity check -- scan for orphaned messages (conversationId with no matching conversation) and dangling session pointer (localStorage active ID pointing to deleted conversation). Single read-only IDB transaction. Under 50ms, under 50 lines of code. Do NOT do per-write verification (Pitfall P1). Do NOT auto-delete orphans (Pitfall P2) -- use grace period.
-- [ ] **RES-02:** Storage health monitoring -- call navigator.storage.estimate() on boot, emit quota info via event bus. Warn at 80% usage, critical at 95%. Feature-detect with 'storage' in navigator.
-- [ ] **RES-03:** Persistent storage request -- call navigator.storage.persist() on first boot. Log whether granted. If denied, show non-dismissible warning on hub health page.
-- [ ] **RES-04:** Eviction detection via sentinel record -- write sentinel to IDB on first run. On subsequent boots, if IDB opens but sentinel missing, data was evicted. Emit storage:evicted event. Do NOT show first-run experience when data was evicted (Pitfall P4).
-- [ ] **RES-05:** Orphan cleanup with grace period -- mark suspected orphans with timestamp. Only delete after 30-second grace period. Verify orphan status a second time before deletion. Surface orphan counts in hub diagnostics. One integrity check per boot maximum (Pitfall P2).
-- [ ] **RES-15:** IDB database onclose handler -- hook IDBDatabase.onclose to detect unexpected closure (eviction, manual clear). Emit persistence:error with type database-closed. Attempt reopenDB().
-
-#### Write & Save Hardening (ARCHITECTURE.md AutoSave + ConversationStore + PITFALLS P1)
-
-- [ ] **RES-06:** Write verification for first message only -- after first successful addMessage() in a session, read back via separate readonly transaction to confirm storage is working. Skip verification for subsequent messages in same session. Re-verify after any persistence:warning event.
-- [ ] **RES-07:** Error escalation in auto-save -- after all retries exhausted, emit persistence:error (not just persistence:warning). Include error type, conversationId, recoverable flag.
-- [ ] **RES-08:** Partial response preservation -- on mid-stream SSE failure, save partial assistant text with "[response interrupted]" suffix rather than discarding. Clear pendingAssistantText after save.
-
-#### Sync Hardening (ARCHITECTURE.md SyncMonitor + DriftReconciler + PITFALLS P3/P6)
-
-- [ ] **RES-09:** Sync sequence numbering -- add optional seq field to SyncMessage. Each context maintains monotonic counter. Detect gaps in received sequence numbers.
-- [ ] **RES-10:** Sync heartbeat -- send sync:heartbeat message every 10 seconds with active conversation message count. Detect peer disconnection after 30 seconds of silence.
-- [ ] **RES-11:** Drift reconciliation via IDB re-read -- when heartbeat reveals message count mismatch, re-read from IndexedDB (single source of truth) and re-render. Do NOT build complex sync protocol. IDB is shared, re-reading is cheapest reconciliation (Pitfall P3/P6).
-- [ ] **RES-12:** IDB-as-truth sync design -- all sync hardening must work without BroadcastChannel. BC is optional "hurry up" notification. IDB is the authority. Design for poll-with-event-trigger pattern (Pitfall P3).
-
-#### FSM & Gateway Resilience (ARCHITECTURE.md + PITFALLS P7/P8)
-
-- [ ] **RES-13:** FSM watchdog timer -- 45-second timeout for any transient state (recording, sent, thinking). Auto-reset to idle if no transition fires. Emit fsm:watchdog-reset event.
-- [ ] **RES-14:** Gateway error classification -- distinguish connection errors (safe to auto-retry) from mid-stream errors (show partial response, prompt user). Add receivedAnyData flag in streamSSEResponse. Do NOT auto-retry mid-stream failures (Pitfall P7).
-
-#### Error UX (ARCHITECTURE.md ErrorPresenter + HealthIndicator + PITFALLS P5/P10)
-
-- [ ] **RES-16:** Glasses error display hierarchy -- transient errors in status bar only (container 0), auto-clear 3 seconds. Recoverable errors in status + hint bar, auto-clear 10 seconds, "tap to retry." Fatal errors full-screen but with "double-tap for menu" escape. Never occupy chat container (container 1) for more than 5 seconds (Pitfall P5).
-- [ ] **RES-17:** Hub error display -- toasts for transient errors (auto-clear 5s), persistent banners for ongoing issues with action buttons. Error banner component with severity, message, optional recovery action, optional dismiss.
-- [ ] **RES-18:** Hub health page enhancement -- add storage quota indicator (usage/quota/percent), sync status (last heartbeat, sequence gaps), overall health level (ok/degraded/error). Use existing status-dot CSS pattern.
-- [ ] **RES-19:** Glasses health policy -- no persistent health indicators on glasses. Only show errors when actionable or temporary. No technical jargon on glasses ("Storage full" not "QuotaExceededError"). Every glasses error has auto-clear or existing gesture dismiss (Pitfall P10).
-
-#### Event System (ARCHITECTURE.md AppEventMap)
-
-- [ ] **RES-20:** New AppEventMap events -- add persistence:error, sync:drift-detected, sync:reconciled, health:status-change, fsm:watchdog-reset event types to src/types.ts. All additive (no breaking changes).
-
-#### Test Infrastructure (STACK.md test helpers)
-
-- [ ] **RES-21:** Failure simulation test helpers -- createFailingStore (fails after N writes), createLossySyncBridge (drops every Nth message). Uses existing fake-indexeddb forceCloseDatabase() for IDB closure simulation. No new dev dependencies.
-
-#### Stack Constraints (STACK.md)
-
-- [ ] **RES-22:** Zero new runtime dependencies -- all features use browser built-in APIs (Storage API, IDB durability, IDBDatabase.onclose). Zero bundle impact.
+(None yet — define requirements for next milestone with `/gsd:new-milestone`)
 
 ### Out of Scope
 
@@ -128,16 +94,16 @@ Users can have natural voice conversations with an AI assistant through their Ev
 
 ## Context
 
-Shipped v1.2 Conversation Intelligence with ~10,300 LOC TypeScript across 60 files, 372 passing tests (25 suites).
-Tech stack: Vite, TypeScript strict mode, Vitest, @evenrealities/even_hub_sdk, eventsource-parser, @evenrealities/evenhub-cli, fake-indexeddb (dev).
+Shipped v1.3 Resilience & Error UX with 14,436 LOC TypeScript across 78 files, 498 passing tests (35 suites).
+Tech stack: Vite, TypeScript strict mode, Vitest, @evenrealities/even_hub_sdk, eventsource-parser, @evenrealities/evenhub-cli, fake-indexeddb (dev). Zero new runtime dependencies added in v1.3.
 
-v1.3 research completed: 3 streams (ARCHITECTURE.md, STACK.md, PITFALLS.md) with HIGH confidence findings. Zero new runtime dependencies needed -- all resilience features use browser built-in APIs (Storage API, IDB durability, IDBDatabase.onclose) and existing project patterns.
-
-Architecture: Pure-function core modules (gesture-fsm.ts, viewport.ts, icon-animator.ts, command-menu.ts) with zero SDK imports. Side effects confined to bridge boundary (even-bridge.ts). Event bus + SyncBridge connects all modules across contexts. Factory pattern for services. Environment router (main.ts) detects Even App WebView vs browser and routes to glasses-main.ts or hub-main.ts. Layer 0-5 initialization sequence in glasses-main.ts ensures correct dependency order. IndexedDB persistence layer with ConversationStore and SessionStore. BroadcastChannel sync with localStorage fallback for cross-context messaging.
+Architecture: Pure-function core modules (gesture-fsm.ts, viewport.ts, icon-animator.ts, command-menu.ts) with zero SDK imports. Side effects confined to bridge boundary (even-bridge.ts). Event bus + SyncBridge connects all modules across contexts. Factory pattern for services. Environment router (main.ts) detects Even App WebView vs browser and routes to glasses-main.ts or hub-main.ts. Layer 0-5 initialization sequence in glasses-main.ts ensures correct dependency order. IndexedDB persistence layer with ConversationStore and SessionStore. BroadcastChannel sync with localStorage fallback for cross-context messaging. Resilience layer: IntegrityChecker + StorageHealth at boot, SyncMonitor + DriftReconciler for cross-context consistency, ErrorPresenter for user-facing error display, FSM watchdog for stuck state recovery.
 
 App is packaged as .ehpk artifact via `npm run pack` and ready for EvenHub portal submission.
 
-Three milestones shipped (v1.0 MVP → v1.1 Integration → v1.2 Conversation Intelligence) across 13 phases, 28 plans, in ~4.8 hours total execution time.
+Four milestones shipped (v1.0 MVP → v1.1 Integration → v1.2 Conversation Intelligence → v1.3 Resilience & Error UX) across 21 phases (incl. 16.5, 18.5), 46 plans, in ~13.2 hours total execution time.
+
+Known tech debt from v1.3: Hub quota-exceeded toast never fires (emission gap), hub watchdog toast unreachable (glasses-only event, no bridge relay), boot-time eviction error fires before presenter registration. All low severity.
 
 ## Constraints
 
@@ -179,6 +145,20 @@ Three milestones shipped (v1.0 MVP → v1.1 Integration → v1.2 Conversation In
 | Shared streamSSEResponse helper | DRY SSE parsing between sendVoiceTurn and sendTextTurn | ✓ Good — v1.2 |
 | textContent for message rendering | Prevents XSS without escHtml utility for live conversation | ✓ Good — v1.2 |
 | IDB cursor-based full-text search | searchMessages scans all messages with limit + snippet extraction | ✓ Good — v1.2 |
+| reopenDB with Promise chain | Stay safe outside IDB transactions; 3 retries with 1s cooldown | ✓ Good — v1.3 |
+| Sentinel filtering in queries only | Filter __sentinel__ in list/search/count but allow direct getConversation lookup | ✓ Good — v1.3 |
+| Orphan grace period with cross-context keys | 30s delay + localStorage shared keys for glasses/hub cooperation | ✓ Good — v1.3 |
+| verifyMessage never rejects | Resolves false on any IDB error; verification failure is data, not exception | ✓ Good — v1.3 |
+| Dual-emit on retry exhaustion | persistence:warning for soft handler + persistence:error for error presenter | ✓ Good — v1.3 |
+| DriftReconciler callback pattern | Bus-agnostic via callback for portability across glasses and hub contexts | ✓ Good — v1.3 |
+| 2-consecutive-mismatch rule | Prevents false positive drift during active streaming | ✓ Good — v1.3 |
+| IDB-as-truth sync design | BroadcastChannel is "hurry up" notification; IDB is authority | ✓ Good — v1.3 |
+| Watchdog external to pure FSM | Timer logic in gesture-handler.ts, not pure gesture-fsm.ts | ✓ Good — v1.3 |
+| receivedAnyData flag for error classification | Distinguishes connection vs mid-stream failures; no auto-retry of mid-stream | ✓ Good — v1.3 |
+| 3-tier auto-clear on glasses | 3s transient / 10s recoverable / 5s watchdog; icon animator paused during errors | ✓ Good — v1.3 |
+| hubBus for hub error wiring | Module-level event bus in hub for error presenter subscription | ✓ Good — v1.3 |
+| Recreate all 5 IDB modules after reopenDB | Full recreation (store, session, autoSave, drift, sync) for clean state | ✓ Good — v1.3 |
+| cachedQuota for sync health display | Module-level cached quota so refreshHealthDisplay stays synchronous | ✓ Good — v1.3 |
 
 ---
-*Last updated: 2026-02-28 after v1.3 milestone started*
+*Last updated: 2026-03-01 after v1.3 milestone*

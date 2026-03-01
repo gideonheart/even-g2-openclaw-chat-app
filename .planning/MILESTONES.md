@@ -84,3 +84,32 @@
 
 ---
 
+
+## v1.3 Resilience & Error UX (Shipped: 2026-03-01)
+
+**Phases completed:** 8 phases (14-19 incl. 16.5, 18.5), 18 plans, 498 tests
+**Lines of code:** 14,436 TypeScript (78 files)
+**Timeline:** ~8 hours (2026-02-28 → 2026-03-01)
+**Git range:** `ab710e8` → `6f5d890` (91 files changed, +16,129/-76)
+
+**Delivered:** Comprehensive resilience layer and error UX — boot-time integrity checking, write verification with partial response preservation, sync heartbeat with drift reconciliation, FSM watchdog, gateway error classification, and user-facing error presenters on both glasses and hub.
+
+**Key accomplishments:**
+1. Boot-time integrity checking (orphan detection, sentinel verification, dangling pointer fix) and storage health monitoring with persistent storage request
+2. Write verification on first save, auto-save error escalation to persistence:error after retries, partial response preservation with "[response interrupted]" suffix
+3. Sync hardening with SyncMonitor (seq numbering, 10s heartbeat, 30s liveness) and DriftReconciler (2-consecutive-mismatch rule, IDB-as-truth reconciliation)
+4. Integration hardening: reopenDB propagates fresh IDB handle to all 5 modules in both contexts, eviction subscribers wired, cleanup teardown ordered
+5. FSM 45-second watchdog timer with auto-reset and gateway error classification (connection vs mid-stream, no auto-retry of mid-stream failures)
+6. Error UX: glasses 3-tier auto-clear error presenter, hub toast/banner error presenter, 5 health status dots (Gateway, STT, Session, Storage, Sync)
+7. Reusable failure injection test helpers and 14 integration tests for IDB integrity flows, sync resilience, and error escalation
+
+**Known tech debt:**
+- Hub `quota-exceeded` persistence:error type defined/mapped but never emitted at runtime (low)
+- Hub `fsm:watchdog-reset` subscription unreachable (glasses-only event, no bridge relay) (low)
+- Hub boot-time eviction persistence:error fires before hubErrorPresenter registration (low)
+- Seq gap detection is heartbeat-only — non-heartbeat messages bypass gap tracking (low)
+
+**Archive:** `.planning/milestones/v1.3-ROADMAP.md`, `.planning/milestones/v1.3-MILESTONE-AUDIT.md`
+
+---
+
