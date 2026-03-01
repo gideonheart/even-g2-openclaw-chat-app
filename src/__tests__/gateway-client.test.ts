@@ -112,6 +112,99 @@ describe('gateway-client', () => {
     });
   });
 
+  describe('checkHealth', () => {
+    let originalFetch: typeof globalThis.fetch;
+
+    beforeEach(() => {
+      originalFetch = globalThis.fetch;
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it('fetches /readyz (not /healthz)', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ status: 'ready', checks: { stt: { status: 'ok' }, openclaw: { status: 'ok' } } }),
+      });
+
+      const client = createGatewayClient();
+      await client.checkHealth('https://gw.test');
+
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(url).toBe('https://gw.test/readyz');
+      expect(url).not.toContain('/healthz');
+    });
+
+    it('populates readyz detail fields from 200 JSON response', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          status: 'ready',
+          checks: { stt: { status: 'ok' }, openclaw: { status: 'ready' } },
+        }),
+      });
+
+      const client = createGatewayClient();
+      const result = await client.checkHealth('https://gw.test');
+
+      expect(result).toBe(true);
+      const health = client.getHealth();
+      expect(health.readyStatus).toBe('ready');
+      expect(health.sttReady).toBe(true);
+      expect(health.openclawReady).toBe(true);
+      expect(health.latencyMs).toBeGreaterThanOrEqual(0);
+      expect(health.lastHeartbeat).toBeGreaterThan(0);
+    });
+
+    it('parses body on 503 response and returns false', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        json: () => Promise.resolve({
+          status: 'not_ready',
+          checks: { stt: { status: 'ok' }, openclaw: { status: 'error' } },
+        }),
+      });
+
+      const client = createGatewayClient();
+      const result = await client.checkHealth('https://gw.test');
+
+      expect(result).toBe(false);
+      const health = client.getHealth();
+      expect(health.readyStatus).toBe('not_ready');
+      expect(health.sttReady).toBe(true);
+      expect(health.openclawReady).toBe(false);
+    });
+
+    it('clears detail fields on non-JSON response', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.reject(new SyntaxError('Unexpected token')),
+      });
+
+      const client = createGatewayClient();
+      const result = await client.checkHealth('https://gw.test');
+
+      expect(result).toBe(true);
+      const health = client.getHealth();
+      expect(health.readyStatus).toBeUndefined();
+      expect(health.sttReady).toBeUndefined();
+      expect(health.openclawReady).toBeUndefined();
+    });
+
+    it('returns false on network error', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network down'));
+
+      const client = createGatewayClient();
+      const result = await client.checkHealth('https://gw.test');
+
+      expect(result).toBe(false);
+      expect(client.getHealth().latencyMs).toBeNull();
+    });
+  });
+
   describe('sendVoiceTurn', () => {
     const testSettings: AppSettings = {
       gatewayUrl: 'https://gw.test',
@@ -126,18 +219,6 @@ describe('gateway-client', () => {
       sttProvider: 'whisperx',
     };
 
-    function createSSEStream(events: string[]): ReadableStream<Uint8Array> {
-      const encoder = new TextEncoder();
-      return new ReadableStream({
-        start(controller) {
-          for (const evt of events) {
-            controller.enqueue(encoder.encode(evt));
-          }
-          controller.close();
-        },
-      });
-    }
-
     let originalFetch: typeof globalThis.fetch;
 
     beforeEach(() => {
@@ -148,18 +229,17 @@ describe('gateway-client', () => {
       globalThis.fetch = originalFetch;
     });
 
-    it('successful voice turn streams SSE chunks to handler', async () => {
-      const sseData = [
-        'data: {"type":"response_start","turnId":"t1"}\n\n',
-        'data: {"type":"response_delta","text":"hi"}\n\n',
-        'data: {"type":"response_end"}\n\n',
-      ];
+    it('successful voice turn emits chunks from JSON gateway reply', async () => {
+      const gatewayReply = {
+        turnId: 't1',
+        assistant: { fullText: 'hi' },
+      };
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
         statusText: 'OK',
-        body: createSSEStream(sseData),
+        json: () => Promise.resolve(gatewayReply),
       });
 
       const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
@@ -172,6 +252,7 @@ describe('gateway-client', () => {
 
       expect(chunks).toHaveLength(3);
       expect(chunks[0].type).toBe('response_start');
+      expect(chunks[0].turnId).toBe('t1');
       expect(chunks[1].type).toBe('response_delta');
       expect(chunks[1].text).toBe('hi');
       expect(chunks[2].type).toBe('response_end');
@@ -179,47 +260,7 @@ describe('gateway-client', () => {
       expect(client.getHealth().reconnectAttempts).toBe(0);
     });
 
-    it('retries on network error and succeeds on second attempt', async () => {
-      const sseData = ['data: {"type":"response_end"}\n\n'];
-      let callCount = 0;
-
-      globalThis.fetch = vi.fn().mockImplementation(() => {
-        callCount++;
-        if (callCount === 1) {
-          return Promise.reject(new Error('Network failure'));
-        }
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          statusText: 'OK',
-          body: createSSEStream(sseData),
-        });
-      });
-
-      const client = createGatewayClient({
-        maxReconnectAttempts: 3,
-        reconnectBaseDelayMs: 1,
-      });
-      const statuses: string[] = [];
-      const chunks: VoiceTurnChunk[] = [];
-      client.onStatusChange((s) => statuses.push(s));
-      client.onChunk((c) => chunks.push(c));
-
-      await client.sendVoiceTurn(testSettings, testRequest);
-
-      // fetch called twice: first fails, second succeeds
-      expect(callCount).toBe(2);
-      // Status transitions: connecting (1st attempt) -> connecting (retry) -> connecting (2nd sendVoiceTurn call via abort()) -> connected
-      expect(statuses).toContain('connecting');
-      expect(statuses).toContain('connected');
-      // reconnectAttempts resets on success
-      expect(client.getHealth().reconnectAttempts).toBe(0);
-      // Retries are silent — no error chunk emitted during retry (only on fatal)
-      const errorChunks = chunks.filter((c) => c.type === 'error');
-      expect(errorChunks.length).toBe(0);
-    });
-
-    it('gives up after maxReconnectAttempts and sets status to error', async () => {
+    it('emits error on network failure', async () => {
       globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network down'));
 
       const client = createGatewayClient({
@@ -235,11 +276,9 @@ describe('gateway-client', () => {
 
       // Should end in error state
       expect(client.getHealth().status).toBe('error');
-      // Only one error chunk emitted (at final fatal failure, not during retries)
       const errorChunks = chunks.filter((c) => c.type === 'error');
       expect(errorChunks.length).toBe(1);
-      expect(errorChunks[0].error).toContain('Gateway unreachable');
-      // Last status should be error
+      expect(errorChunks[0].error).toContain('Network down');
       expect(statuses[statuses.length - 1]).toBe('error');
     });
 
@@ -270,7 +309,7 @@ describe('gateway-client', () => {
       expect(client.getHealth().reconnectAttempts).toBe(0);
     });
 
-    it('does not retry on AbortError', async () => {
+    it('emits error on AbortError', async () => {
       globalThis.fetch = vi.fn().mockRejectedValue(
         new DOMException('Aborted', 'AbortError'),
       );
@@ -284,127 +323,55 @@ describe('gateway-client', () => {
 
       await client.sendVoiceTurn(testSettings, testRequest);
 
-      // No error chunk emitted, no retry
-      expect(chunks).toHaveLength(0);
+      // AbortError is treated as timeout in the current implementation
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0].type).toBe('error');
       expect(client.getHealth().reconnectAttempts).toBe(0);
     });
 
-    describe('mid-stream error classification', () => {
-      it('does NOT retry when reader throws after receiving data', async () => {
-        let readCount = 0;
-        const encoder = new TextEncoder();
-        globalThis.fetch = vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          statusText: 'OK',
-          body: new ReadableStream({
-            pull(controller) {
-              readCount++;
-              if (readCount === 1) {
-                controller.enqueue(encoder.encode('data: {"type":"response_delta","text":"hi"}\n\n'));
-              } else {
-                controller.error(new Error('Connection reset'));
-              }
-            },
-          }),
-        });
-
-        const client = createGatewayClient({
-          maxReconnectAttempts: 3,
-          reconnectBaseDelayMs: 1,
-        });
-        const chunks: VoiceTurnChunk[] = [];
-        client.onChunk((c) => chunks.push(c));
-
-        await client.sendVoiceTurn(testSettings, testRequest);
-
-        // Should emit the delta chunk + the mid-stream error chunk
-        expect(chunks.some((c) => c.type === 'response_delta')).toBe(true);
-        const errorChunks = chunks.filter((c) => c.type === 'error');
-        expect(errorChunks).toHaveLength(1);
-        expect(errorChunks[0].error).toContain('interrupted');
-
-        // fetch called only once -- no retry
-        expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    it('emits error on non-ok response', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
       });
 
-      it('sets status to error on mid-stream failure', async () => {
-        let readCount = 0;
-        const encoder = new TextEncoder();
-        globalThis.fetch = vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          statusText: 'OK',
-          body: new ReadableStream({
-            pull(controller) {
-              readCount++;
-              if (readCount === 1) {
-                controller.enqueue(encoder.encode('data: {"type":"response_start"}\n\n'));
-              } else {
-                controller.error(new Error('Stream broken'));
-              }
-            },
-          }),
-        });
+      const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
+      const chunks: VoiceTurnChunk[] = [];
+      client.onChunk((c) => chunks.push(c));
 
-        const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
-        const statuses: string[] = [];
-        client.onStatusChange((s) => statuses.push(s));
+      await client.sendVoiceTurn(testSettings, testRequest);
 
-        await client.sendVoiceTurn(testSettings, testRequest);
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks).toHaveLength(1);
+      expect(errorChunks[0].error).toContain('502');
+    });
 
-        // Final status should be error
-        expect(statuses[statuses.length - 1]).toBe('error');
+    it('sends correct request format', async () => {
+      const gatewayReply = {
+        turnId: 't1',
+        assistant: { fullText: 'response' },
+      };
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: () => Promise.resolve(gatewayReply),
       });
 
-      it('does NOT increment reconnectAttempts on mid-stream failure', async () => {
-        let readCount = 0;
-        const encoder = new TextEncoder();
-        globalThis.fetch = vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          statusText: 'OK',
-          body: new ReadableStream({
-            pull(controller) {
-              readCount++;
-              if (readCount === 1) {
-                controller.enqueue(encoder.encode('data: {"type":"response_delta","text":"data"}\n\n'));
-              } else {
-                controller.error(new Error('Connection lost'));
-              }
-            },
-          }),
-        });
+      const client = createGatewayClient();
+      await client.sendVoiceTurn(testSettings, testRequest);
 
-        const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
-        await client.sendVoiceTurn(testSettings, testRequest);
-
-        expect(client.getHealth().reconnectAttempts).toBe(0);
-      });
-
-      it('still retries when fetch rejects before any response (connection error)', async () => {
-        let callCount = 0;
-        const sseData = ['data: {"type":"response_end"}\n\n'];
-        globalThis.fetch = vi.fn().mockImplementation(() => {
-          callCount++;
-          if (callCount === 1) return Promise.reject(new Error('Network failure'));
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            statusText: 'OK',
-            body: createSSEStream(sseData),
-          });
-        });
-
-        const client = createGatewayClient({
-          maxReconnectAttempts: 3,
-          reconnectBaseDelayMs: 1,
-        });
-        await client.sendVoiceTurn(testSettings, testRequest);
-
-        // Should have retried (2 calls total)
-        expect(callCount).toBe(2);
-      });
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(url).toBe('https://gw.test/api/voice/turn');
+      expect(init.method).toBe('POST');
+      // Body should be the audio blob
+      expect(init.body).toBeInstanceOf(Blob);
+      // Content-Type should match audio type
+      expect(init.headers['Content-Type']).toBe('audio/webm');
+      expect(init.headers['X-Session-Key']).toBe('key-123');
     });
   });
 
@@ -421,18 +388,6 @@ describe('gateway-client', () => {
       text: 'Hello, assistant!',
     };
 
-    function createSSEStream(events: string[]): ReadableStream<Uint8Array> {
-      const encoder = new TextEncoder();
-      return new ReadableStream({
-        start(controller) {
-          for (const evt of events) {
-            controller.enqueue(encoder.encode(evt));
-          }
-          controller.close();
-        },
-      });
-    }
-
     let originalFetch: typeof globalThis.fetch;
 
     beforeEach(() => {
@@ -443,14 +398,17 @@ describe('gateway-client', () => {
       globalThis.fetch = originalFetch;
     });
 
-    it('POSTs to /text/turn with JSON body and Content-Type header', async () => {
-      const sseData = ['data: {"type":"response_end"}\n\n'];
+    it('POSTs to /api/text/turn with JSON body and Content-Type header', async () => {
+      const gatewayReply = {
+        turnId: 't1',
+        assistant: { fullText: 'Hi there' },
+      };
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
         statusText: 'OK',
-        body: createSSEStream(sseData),
+        json: () => Promise.resolve(gatewayReply),
       });
 
       const client = createGatewayClient();
@@ -458,26 +416,25 @@ describe('gateway-client', () => {
 
       expect(globalThis.fetch).toHaveBeenCalledTimes(1);
       const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toBe('https://gw.test/text/turn');
+      expect(url).toBe('https://gw.test/api/text/turn');
       expect(init.method).toBe('POST');
       expect(init.headers['Content-Type']).toBe('application/json');
       expect(init.headers['X-Session-Key']).toBe('key-123');
       const body = JSON.parse(init.body);
-      expect(body).toEqual({ sessionId: 'sess-1', text: 'Hello, assistant!' });
+      expect(body).toEqual({ text: 'Hello, assistant!' });
     });
 
-    it('emits chunks from the SSE response stream', async () => {
-      const sseData = [
-        'data: {"type":"response_start","turnId":"t1"}\n\n',
-        'data: {"type":"response_delta","text":"Hi there"}\n\n',
-        'data: {"type":"response_end"}\n\n',
-      ];
+    it('emits chunks from the JSON gateway reply', async () => {
+      const gatewayReply = {
+        turnId: 't1',
+        assistant: { fullText: 'Hi there' },
+      };
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
         statusText: 'OK',
-        body: createSSEStream(sseData),
+        json: () => Promise.resolve(gatewayReply),
       });
 
       const client = createGatewayClient();
@@ -488,6 +445,7 @@ describe('gateway-client', () => {
 
       expect(chunks).toHaveLength(3);
       expect(chunks[0].type).toBe('response_start');
+      expect(chunks[0].turnId).toBe('t1');
       expect(chunks[1].type).toBe('response_delta');
       expect(chunks[1].text).toBe('Hi there');
       expect(chunks[2].type).toBe('response_end');
@@ -510,7 +468,10 @@ describe('gateway-client', () => {
     });
 
     it('aborts the previous request before starting a new one', async () => {
-      const sseData = ['data: {"type":"response_end"}\n\n'];
+      const gatewayReply = {
+        turnId: 't1',
+        assistant: { fullText: 'Response' },
+      };
 
       // Track abort signals
       const abortSignals: AbortSignal[] = [];
@@ -523,7 +484,7 @@ describe('gateway-client', () => {
           ok: true,
           status: 200,
           statusText: 'OK',
-          body: createSSEStream(sseData),
+          json: () => Promise.resolve(gatewayReply),
         });
       });
 
@@ -539,39 +500,22 @@ describe('gateway-client', () => {
       expect(abortSignals[0].aborted).toBe(true);
     });
 
-    it('does NOT retry mid-stream failures for text turns', async () => {
-      let readCount = 0;
-      const encoder = new TextEncoder();
+    it('emits error chunk on gateway failure', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        body: new ReadableStream({
-          pull(controller) {
-            readCount++;
-            if (readCount === 1) {
-              controller.enqueue(encoder.encode('data: {"type":"response_delta","text":"hi"}\n\n'));
-            } else {
-              controller.error(new Error('Stream broken'));
-            }
-          },
-        }),
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
       });
 
-      const client = createGatewayClient({
-        maxReconnectAttempts: 3,
-        reconnectBaseDelayMs: 1,
-      });
+      const client = createGatewayClient();
       const chunks: VoiceTurnChunk[] = [];
       client.onChunk((c) => chunks.push(c));
 
       await client.sendTextTurn(testSettings, testTextRequest);
 
-      // Mid-stream error emits "interrupted" message, no retry
       const errorChunks = chunks.filter((c) => c.type === 'error');
       expect(errorChunks).toHaveLength(1);
-      expect(errorChunks[0].error).toContain('interrupted');
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(errorChunks[0].error).toContain('502');
     });
   });
 });

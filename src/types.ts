@@ -61,6 +61,10 @@ export interface GatewayHealthState {
   lastHeartbeat: number | null;
   reconnectAttempts: number;
   latencyMs: number | null;
+  // Readyz detail (populated when /readyz returns a parseable body)
+  readyStatus?: 'ready' | 'not_ready';
+  sttReady?: boolean;
+  openclawReady?: boolean;
 }
 
 export interface SSEEvent {
