@@ -5,7 +5,7 @@ import type { AppSettings, FieldConfig, SttProvider } from './types';
 export const STORAGE_KEY = 'even-openclaw-settings';
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  gatewayUrl: '',
+  gatewayUrl: 'https://bibele.kingdom.lv/gateway',
   sessionKey: '',
   sttProvider: 'whisperx',
   apiKey: '',
@@ -15,8 +15,8 @@ export const FIELD_CONFIG: Record<string, FieldConfig> = {
   gatewayUrl: {
     label: 'Gateway URL',
     type: 'url',
-    placeholder: 'http://your-server:4400',
-    help: 'OpenClaw voice gateway endpoint (use server IP/hostname, not localhost)',
+    placeholder: 'https://bibele.kingdom.lv/gateway',
+    help: 'OpenClaw voice gateway endpoint (production: https://bibele.kingdom.lv/gateway)',
     validate: (v: string) =>
       !v || /^https?:\/\/.+/.test(v) ? '' : 'Must be a valid http(s):// URL',
     secret: false,
