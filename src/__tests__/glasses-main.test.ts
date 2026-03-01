@@ -65,6 +65,7 @@ vi.mock('../gestures/gesture-handler', () => ({
 }));
 
 const mockRendererDestroy = vi.fn();
+const mockIconAnimator = { stop: vi.fn(), start: vi.fn() };
 const mockRenderer = {
   init: vi.fn().mockResolvedValue(undefined),
   destroy: mockRendererDestroy,
@@ -81,6 +82,9 @@ const mockRenderer = {
   showWelcome: vi.fn(),
   showConfigRequired: vi.fn(),
   showError: vi.fn(),
+  showMenuOverlay: vi.fn(),
+  restoreConversation: vi.fn(),
+  getIconAnimator: vi.fn().mockReturnValue(mockIconAnimator),
 };
 
 vi.mock('../display/glasses-renderer', () => ({
@@ -92,6 +96,13 @@ vi.mock('../display/display-controller', () => ({
   createDisplayController: vi.fn(() => ({
     init: vi.fn().mockResolvedValue(undefined),
     destroy: mockDisplayControllerDestroy,
+  })),
+}));
+
+const mockErrorPresenterDestroy = vi.fn();
+vi.mock('../display/error-presenter', () => ({
+  createGlassesErrorPresenter: vi.fn(() => ({
+    destroy: mockErrorPresenterDestroy,
   })),
 }));
 
@@ -142,6 +153,7 @@ describe('glasses-main lifecycle cleanup', () => {
     mockBridgeDestroy.mockClear();
     mockBusClear.mockClear();
     mockGateway.checkHealth.mockResolvedValue(true);
+    mockErrorPresenterDestroy.mockClear();
 
     visibilityChangeCallback = null;
     pagehideCallback = null;

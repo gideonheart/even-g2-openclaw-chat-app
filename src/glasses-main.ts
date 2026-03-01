@@ -26,6 +26,7 @@ import { createSyncMonitor } from './sync/sync-monitor';
 import { createDriftReconciler } from './sync/drift-reconciler';
 import { createSessionManager } from './sessions';
 import { createMenuController } from './menu/menu-controller';
+import { createGlassesErrorPresenter } from './display/error-presenter';
 
 export async function boot(): Promise<void> {
   // Layer 0: Foundation (no dependencies)
@@ -305,6 +306,15 @@ export async function boot(): Promise<void> {
     renderer.showError('Data was cleared by system');
   }
 
+  // Layer 4.5: Error presenter (subscribes after display init — cannot show errors before display exists)
+  // Pauses icon animator during error display, resumes on auto-clear (Pitfall 1 mitigation)
+  const glassesErrorPresenter = createGlassesErrorPresenter({
+    bus,
+    bridge,
+    renderer,
+    iconAnimator: renderer.getIconAnimator() ?? { stop: () => {}, start: () => {} },
+  });
+
   // Start sync heartbeat after display init and restore are complete (Phase 16)
   syncMonitor?.startHeartbeat();
 
@@ -470,6 +480,7 @@ export async function boot(): Promise<void> {
     voiceLoopController.destroy();
     gateway.destroy();           // stops heartbeat, aborts in-flight fetch
     menuController?.destroy();   // unsubscribes menu bus listeners, clears auto-close timer
+    glassesErrorPresenter.destroy(); // clears status-bar timers, unsubscribes error bus handlers
     displayController.destroy(); // stops icon animator, clears flush timer
     gestureHandler.destroy();    // unsubscribes bus listeners
     // audioCapture has no destroy() -- stopRecording is best-effort cleanup

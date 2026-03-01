@@ -87,6 +87,8 @@ export interface GlassesRenderer {
   showError(message: string): void;
   showMenuOverlay(text: string): void;
   restoreConversation(): void;
+  /** Expose icon animator for error presenter pause/resume (Phase 18). */
+  getIconAnimator(): { stop(): void; start(): void } | null;
 }
 
 // ── Factory ───────────────────────────────────────────────
@@ -306,6 +308,10 @@ export function createGlassesRenderer(opts: {
     renderAndPush();
   }
 
+  function getIconAnimatorFn(): { stop(): void; start(): void } | null {
+    return iconAnimator;
+  }
+
   return {
     init,
     destroy,
@@ -324,5 +330,6 @@ export function createGlassesRenderer(opts: {
     showError,
     showMenuOverlay,
     restoreConversation,
+    getIconAnimator: getIconAnimatorFn,
   };
 }
