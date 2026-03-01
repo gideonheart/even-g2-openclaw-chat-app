@@ -1,19 +1,27 @@
 // ── Runtime router ──────────────────────────────────────────
-// Detects Even App WebView vs browser and boots the correct code path.
-// Primary detection: window.flutter_inappwebview (injected by Even App SDK).
-// Secondary: ?even URL parameter for manual override during development.
+// The Even App runs BOTH the glasses display and the phone-side Hub UI
+// in a single WebView.  glasses-main drives the AR display via the SDK
+// bridge while hub-main wires up the phone-screen companion UI (bottom
+// nav, settings, health, chat history, etc.).
+//
+// Detection: window.flutter_inappwebview is injected by the Even App SDK.
+//   - Present  -> Even App WebView  -> boot glasses-main AND hub-main
+//   - Absent   -> plain browser     -> boot hub-main only (dev / standalone)
+//   - ?even URL param forces glasses-main in a browser for dev testing.
 
 async function main() {
-  const isEvenApp =
-    typeof (window as any).flutter_inappwebview !== 'undefined' ||
-    new URLSearchParams(location.search).has('even');
+  const hasFlutterBridge =
+    typeof (window as any).flutter_inappwebview !== 'undefined';
+  const forceEvenDev = new URLSearchParams(location.search).has('even');
 
-  if (isEvenApp) {
+  // Hub UI is always needed (phone screen / standalone browser)
+  const { initHub } = await import('./hub-main');
+  await initHub();
+
+  // Glasses runtime is added when running inside Even App (or ?even dev flag)
+  if (hasFlutterBridge || forceEvenDev) {
     const { boot } = await import('./glasses-main');
     await boot();
-  } else {
-    const { initHub } = await import('./hub-main');
-    await initHub();
   }
 }
 
