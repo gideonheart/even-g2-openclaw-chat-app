@@ -136,7 +136,11 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
         health.openclawReady = undefined;
       }
 
-      return resp.ok;
+      // Any HTTP response (200 or 503) means the gateway is reachable.
+      // The readyz body carries the actual readiness detail; the HTTP status
+      // alone should NOT determine reachability.  Only a fetch throw (network
+      // error / CORS block / timeout) means truly unreachable.
+      return true;
     } catch {
       health.latencyMs = null;
       return false;

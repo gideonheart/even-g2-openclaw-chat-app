@@ -1117,16 +1117,18 @@ export async function initHub(): Promise<void> {
 
   // Run gateway health check at hub boot (mirrors glasses-main.ts behavior)
   if (appState.settings.gatewayUrl) {
-    hubGateway.checkHealth(appState.settings.gatewayUrl).then((healthy) => {
-      if (healthy) {
+    hubGateway.checkHealth(appState.settings.gatewayUrl).then((reachable) => {
+      if (reachable) {
         gatewayLiveStatus = 'connected';
-        hubGateway!.startHeartbeat(appState.settings.gatewayUrl);
       } else {
         gatewayLiveStatus = 'error';
         addLog('warn', 'Gateway health check failed at boot');
       }
       refreshHealthDisplay();
     });
+    // Always start heartbeat so status can recover if the initial check
+    // fails (e.g. during gateway startup race).
+    hubGateway.startHeartbeat(appState.settings.gatewayUrl);
   }
 
   // Wire text input form

@@ -493,12 +493,13 @@ export async function boot(): Promise<void> {
 
   // Gateway health check at boot (per user decision)
   if (settings.gatewayUrl) {
-    const healthy = await gateway.checkHealth(settings.gatewayUrl);
-    if (healthy) {
-      gateway.startHeartbeat(settings.gatewayUrl);
+    const reachable = await gateway.checkHealth(settings.gatewayUrl);
+    if (reachable) {
       bus.emit('gateway:status', { status: 'connected' });
     }
-    // Auto-retry handled by heartbeat system (per user decision: no manual retry needed)
+    // Always start heartbeat so status can recover if the initial check
+    // fails (e.g. during gateway startup race).
+    gateway.startHeartbeat(settings.gatewayUrl);
   } else {
     // Gateway URL not configured -- show blocking config message
     renderer.showConfigRequired();

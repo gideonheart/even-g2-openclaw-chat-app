@@ -159,7 +159,7 @@ describe('gateway-client', () => {
       expect(health.lastHeartbeat).toBeGreaterThan(0);
     });
 
-    it('parses body on 503 response and returns false', async () => {
+    it('returns true on 503 response (gateway is reachable) and parses body', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
         json: () => Promise.resolve({
@@ -171,7 +171,8 @@ describe('gateway-client', () => {
       const client = createGatewayClient();
       const result = await client.checkHealth('https://gw.test');
 
-      expect(result).toBe(false);
+      // Any HTTP response means the gateway is reachable
+      expect(result).toBe(true);
       const health = client.getHealth();
       expect(health.readyStatus).toBe('not_ready');
       expect(health.sttReady).toBe(true);
