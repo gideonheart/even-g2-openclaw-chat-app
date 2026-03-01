@@ -111,11 +111,11 @@ export function maskSecret(value: string): string {
 
 // ── Localhost detection ─────────────────────────────────────
 
-const LOOPBACK_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i;
+const LOOPBACK_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:\d+)?(\/|$)/i;
 
 /**
  * Returns true when the gateway URL points to a loopback address
- * (localhost, 127.0.0.1, or [::1]).
+ * (localhost, 127.0.0.1, [::1], or 0.0.0.0).
  */
 export function isLocalhostUrl(url: string): boolean {
   return LOOPBACK_RE.test(url);
