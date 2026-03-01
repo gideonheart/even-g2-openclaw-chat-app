@@ -11,13 +11,13 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 Phase: 18-error-ux
 Current Plan: 2 of 2
-Status: Phase 18 in progress (Plan 02 complete)
-Last activity: 2026-03-01 - Completed 18-02: Hub error presenter with toast/banner, health indicator pure functions, storage+sync health page rows
+Status: Phase 18 complete
+Last activity: 2026-03-01 - Completed 18-01: Glasses error presenter with auto-clear status bar, user-friendly message mapping, icon animator pause/resume (Phase 18 fully complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 42 (Phases 1-17 + Phase 13 gap closure + 18-02)
+- Total plans completed: 43 (Phases 1-18 + Phase 13 gap closure)
 - Total tests: 484 (all passing)
 - Total LOC: ~10,900 TypeScript (68 files)
 - Total execution time: ~5.3 hours
@@ -44,7 +44,7 @@ Last activity: 2026-03-01 - Completed 18-02: Hub error presenter with toast/bann
 | 16 | 2/2 (sync monitor + drift reconciler + countMessages TDD + boot wiring) | ~8m | 4m |
 | 16.5 | 2/2 (glasses + hub integration hardening: reopenDB propagation + eviction + health + cleanup) | ~12m | 6m |
 | 17 | 2/2 (FSM watchdog timer + gateway error classification) | ~5m | 2.5m |
-| 18 | 1/2 (hub error presenter + health indicator) | ~6m | 6m |
+| 18 | 2/2 (glasses error presenter + hub error presenter + health indicator) | ~15m | 7.5m |
 
 ## Accumulated Context
 
@@ -136,6 +136,10 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - Hub event bus (hubBus) created at module level for error presenter wiring -- hub previously had no bus (18-02)
 - showBanner uses last-writer-wins (always replaces) rather than worst-severity-only filtering (18-02)
 - Hub error presenter subscribes to persistence:error and fsm:watchdog-reset only, not persistence:warning (18-02)
+- Icon animator exposed via getIconAnimator() accessor on GlassesRenderer rather than constructor injection (18-01)
+- Error presenter wired at Layer 4.5 after displayController.init() but before sync heartbeat start (18-01)
+- Fallback no-op iconAnimator when getIconAnimator() returns null for defensive pre-init edge case (18-01)
+- glassesErrorPresenter.destroy() placed before displayController.destroy() in cleanup sequence (18-01)
 
 ### Pending Todos
 
@@ -163,5 +167,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 18-02-PLAN.md (Hub error presenter + health indicator)
+Stopped at: Completed 18-01-PLAN.md (Glasses error presenter -- Phase 18 fully complete)
 Resume file: None

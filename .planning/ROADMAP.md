@@ -123,7 +123,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 - **Requirements:** [RES-16, RES-17, RES-18, RES-19]
 - **Depends on:** Phases 14-17 + 16.5 (consumes all error events from prior phases; 16.5 fixes integration signals)
 - **Key deliverables:** error-presenter.ts (glasses + hub variants), health-indicator.ts, hub health page enhancements, error banner component
-- **Plans:** 1/2 plans executed
+- **Plans:** 2/2 plans complete
   - [ ] 18-01-PLAN.md — Glasses error presenter: status bar auto-clear, icon animator pause/resume, RES-16/RES-19 (Wave 1)
   - [ ] 18-02-PLAN.md — Hub error display + health page: toast/banner, health-indicator pure functions, hStorage + hSync rows (Wave 1)
 
@@ -156,7 +156,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 | 16. Sync Hardening | 2/2 | Complete    | 2026-02-28 | -- |
 | 16.5. Integration Hardening | 2/2 | Complete    | 2026-02-28 | -- |
 | 17. FSM & Gateway Resilience | 2/2 | Complete    | 2026-03-01 | -- |
-| 18. Error UX | 1/2 | In Progress|  | -- |
+| 18. Error UX | 2/2 | Complete   | 2026-03-01 | -- |
 | 19. Test Infrastructure & Resilience Coverage | v1.3 | 0/? | Not Started | -- |
 
 ---
