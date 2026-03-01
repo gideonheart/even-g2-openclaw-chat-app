@@ -11,7 +11,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: None (milestone v1.3 complete)
 Status: Between milestones
-Last activity: 2026-03-01 - Completed quick task 13: Switch health check /healthz to /readyz, enrich health view with readyz detail
+Last activity: 2026-03-01 - Completed quick task 14: Restart voice gateway with .env CORS_ORIGINS and verify health
 
 ## Performance Metrics
 
@@ -78,9 +78,10 @@ None.
 | 11 | Self-review of commit e89ede3: dual-boot fix strengths, 6 real-device risk assumptions, test recommendation | 2026-03-01 | 97cf3a4 | [11-self-review-commit-e89ede3-what-did-you-](./quick/11-self-review-commit-e89ede3-what-did-you-/) |
 | 12 | Self-review of tap-pipeline fix 6fe259e: isEventCapture safeguard assertions on hide/wake paths | 2026-03-01 | aaf5017 | [12-self-review-the-tap-pipeline-fix-commit-](./quick/12-self-review-the-tap-pipeline-fix-commit-/) |
 | 13 | Switch health check /healthz to /readyz, enrich health view with readyz detail, rename Gateway URL label | 2026-03-01 | dcbf44a | [13-update-health-section-rename-gateway-to-](./quick/13-update-health-section-rename-gateway-to-/) |
+| 14 | Restart voice gateway with .env CORS_ORIGINS and verify health (readyz + CORS strict) | 2026-03-01 | (ops, no commit) | [14-restart-voice-gateway-and-verify-health-](./quick/14-restart-voice-gateway-and-verify-health-/) |
 
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed quick task 13 (switch health check /healthz to /readyz with readyz detail enrichment)
+Stopped at: Completed quick task 14 (restart voice gateway with .env CORS_ORIGINS, verify readyz + CORS strict mode)
 Resume file: None
