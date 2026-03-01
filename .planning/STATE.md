@@ -11,13 +11,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: None (milestone v1.3 complete)
 Status: Between milestones
-Last activity: 2026-03-01 - Completed quick task 11: Self-review of commit e89ede3 dual-boot fix
+Last activity: 2026-03-01 - Completed quick task 12: Self-review of tap-pipeline fix commit 6fe259e
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 46 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure)
-- Total tests: 524 (all passing)
+- Total tests: 528 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -76,9 +76,10 @@ None.
 | 8 | Implement 3 pre-audit fixes: heartbeat try/catch, .catch() on handleHeartbeat, send() removal | 2026-02-28 | ec87d9a | [8-implement-3-pre-audit-fixes-from-quick-t](./quick/8-implement-3-pre-audit-fixes-from-quick-t/) |
 | 9 | Review 5 hotfix commits for risks/edge cases, resolve debug doc, add z-index reference | 2026-03-01 | 4fc26fc | [9-review-hotfix-commits-for-risks-edge-cas](./quick/9-review-hotfix-commits-for-risks-edge-cas/) |
 | 11 | Self-review of commit e89ede3: dual-boot fix strengths, 6 real-device risk assumptions, test recommendation | 2026-03-01 | 97cf3a4 | [11-self-review-commit-e89ede3-what-did-you-](./quick/11-self-review-commit-e89ede3-what-did-you-/) |
+| 12 | Self-review of tap-pipeline fix 6fe259e: isEventCapture safeguard assertions on hide/wake paths | 2026-03-01 | aaf5017 | [12-self-review-the-tap-pipeline-fix-commit-](./quick/12-self-review-the-tap-pipeline-fix-commit-/) |
 
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed quick task 11 (self-review of commit e89ede3)
+Stopped at: Completed quick task 12 (self-review of tap-pipeline fix commit 6fe259e)
 Resume file: None
