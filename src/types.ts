@@ -143,4 +143,10 @@ export interface AppEventMap {
     conversationId: string;
     action: 'full-reload';
   };
+
+  // Phase 17: FSM & Gateway Resilience
+  'fsm:watchdog-reset': {
+    previousState: string;
+    elapsed: number;
+  };
 }

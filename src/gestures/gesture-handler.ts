@@ -56,6 +56,33 @@ export function createGestureHandler(opts: {
   let state: GestureState = 'idle';
   let lastTapTs = 0;
 
+  const WATCHDOG_MS = 45_000;
+  const TRANSIENT_STATES: ReadonlySet<GestureState> = new Set(['recording', 'sent', 'thinking']);
+  let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearWatchdog(): void {
+    if (watchdogTimer !== null) {
+      clearTimeout(watchdogTimer);
+      watchdogTimer = null;
+    }
+  }
+
+  function startWatchdog(): void {
+    clearWatchdog();
+    if (TRANSIENT_STATES.has(state)) {
+      const watchedState = state; // capture for closure
+      watchdogTimer = setTimeout(() => {
+        watchdogTimer = null;
+        bus.emit('fsm:watchdog-reset', { previousState: watchedState, elapsed: WATCHDOG_MS });
+        bus.emit('log', {
+          level: 'warn',
+          msg: `FSM watchdog: stuck in ${watchedState} for ${WATCHDOG_MS / 1000}s, resetting`,
+        });
+        handleInput('reset', Date.now());
+      }, WATCHDOG_MS);
+    }
+  }
+
   function handleInput(input: GestureInput, timestamp: number): void {
     // Debounce: suppress rapid tap within DEBOUNCE_MS of a previous tap
     if (input === 'tap' && (timestamp - lastTapTs) < DEBOUNCE_MS) {
@@ -68,6 +95,7 @@ export function createGestureHandler(opts: {
 
     const transition = gestureTransition(state, input);
     state = transition.nextState;
+    startWatchdog(); // Reset/clear watchdog on every transition
 
     if (transition.action !== null) {
       dispatchAction(transition.action);
@@ -124,13 +152,17 @@ export function createGestureHandler(opts: {
   unsubs.push(bus.on('gesture:scroll-down', (p) => handleInput('scroll-down', p.timestamp)));
 
   // Reset FSM to idle on gateway error chunks (error recovery)
+  // Keep watchdog alive during active streaming (Pitfall P2 prevention)
   unsubs.push(bus.on('gateway:chunk', (chunk) => {
     if (chunk.type === 'error') {
       handleInput('reset', Date.now());
+    } else if (chunk.type === 'response_delta') {
+      startWatchdog(); // Keep watchdog alive during active streaming
     }
   }));
 
   function destroy(): void {
+    clearWatchdog();
     for (const unsub of unsubs) {
       unsub();
     }
