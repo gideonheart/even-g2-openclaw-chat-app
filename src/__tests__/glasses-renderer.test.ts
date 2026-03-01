@@ -195,6 +195,8 @@ describe('GlassesRenderer', () => {
     expect(config.textObject).toHaveLength(1);
     expect(config.textObject[0].containerName).toBe('blank');
     expect(config.textObject[0].content).toBe('');
+    // SDK invariant: exactly one container with isEventCapture=1 per page
+    expect(config.textObject[0].isEventCapture).toBe(1);
     expect(renderer.isHidden()).toBe(true);
   });
 
@@ -210,6 +212,11 @@ describe('GlassesRenderer', () => {
     expect(bridge.rebuildPageContainer).toHaveBeenCalledOnce();
     const config = bridge.rebuildPageContainer.mock.calls[0][0] as PageContainerConfig;
     expect(config.containerTotalNum).toBe(2);
+    // SDK invariant: exactly one container with isEventCapture=1 per page
+    const statusC = config.textObject.find((t) => t.containerName === 'status')!;
+    const chatC = config.textObject.find((t) => t.containerName === 'chat')!;
+    expect(statusC.isEventCapture).toBe(0);
+    expect(chatC.isEventCapture).toBe(1);
     expect(renderer.isHidden()).toBe(false);
 
     // Re-renders the chat viewport with existing messages
