@@ -11,14 +11,14 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 Phase: 17-fsm-gateway-resilience
 Current Plan: 2 of 2
-Status: Plan 17-02 complete
-Last activity: 2026-03-01 - Completed 17-02: Gateway error classification (mid-stream detection via receivedAnyData, prevents duplicate retries on partial SSE responses)
+Status: Phase 17 complete
+Last activity: 2026-03-01 - Completed 17-01: FSM watchdog timer (45s auto-reset for stuck transient states, response_delta keepalive, fsm:watchdog-reset event)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 40 (Phases 1-17 + Phase 13 gap closure)
-- Total tests: 441 (all passing)
+- Total plans completed: 41 (Phases 1-17 + Phase 13 gap closure)
+- Total tests: 445 (all passing)
 - Total LOC: ~10,800 TypeScript (66 files)
 - Total execution time: ~5.2 hours
 
@@ -43,7 +43,7 @@ Last activity: 2026-03-01 - Completed 17-02: Gateway error classification (mid-s
 | 15 | 2/2 (write verification + error escalation + partial save + hub error escalation + partial response preservation) | ~19m | 9.5m |
 | 16 | 2/2 (sync monitor + drift reconciler + countMessages TDD + boot wiring) | ~8m | 4m |
 | 16.5 | 2/2 (glasses + hub integration hardening: reopenDB propagation + eviction + health + cleanup) | ~12m | 6m |
-| 17 | 1/2 (gateway error classification: mid-stream detection + receivedAnyData flag) | ~2m | 2m |
+| 17 | 2/2 (FSM watchdog timer + gateway error classification) | ~5m | 2.5m |
 
 ## Accumulated Context
 
@@ -125,6 +125,9 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - Hub reopenDB handler recreates only ConversationStore (not SessionManager) -- full recreation too complex for gap closure (16.5-02)
 - Hub uses addLog + showToast for persistence notifications (no event bus, deferred to Phase 18) (16.5-02)
 - DriftReconciler type imported as DriftReconcilerType alias and stored in module-level hubDriftReconciler for beforeunload cleanup (16.5-02)
+- Watchdog timer is external concern in gesture-handler.ts, not in pure gesture-fsm.ts (17-01)
+- startWatchdog() called on every transition; clears itself for non-transient states (idle, menu) (17-01)
+- response_delta chunks reset watchdog to prevent false positives during active streaming (17-01)
 - streamState object shared via closure between streamSSEResponse and handleTurnError catch block (17-02)
 - receivedAnyData defaults to false in handleTurnError for backward compatibility (17-02)
 - Mid-stream errors emit 'Response interrupted' message, distinct from connection error messages (17-02)
@@ -156,5 +159,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 17-02-PLAN.md (gateway error classification -- mid-stream detection via receivedAnyData)
+Stopped at: Completed 17-01-PLAN.md (FSM watchdog timer -- Phase 17 complete)
 Resume file: None
