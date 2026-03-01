@@ -153,7 +153,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 | 15. Write Verification & Auto-Save Hardening | 2/2 | Complete    | 2026-02-28 | -- |
 | 16. Sync Hardening | 2/2 | Complete    | 2026-02-28 | -- |
 | 16.5. Integration Hardening | 2/2 | Complete    | 2026-02-28 | -- |
-| 17. FSM & Gateway Resilience | 2/2 | Complete   | 2026-03-01 | -- |
+| 17. FSM & Gateway Resilience | 2/2 | Complete    | 2026-03-01 | -- |
 | 18. Error UX | v1.3 | 0/? | Not Started | -- |
 | 19. Test Infrastructure & Resilience Coverage | v1.3 | 0/? | Not Started | -- |
 
