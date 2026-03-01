@@ -65,6 +65,10 @@ let hubGateway: GatewayClient | null = null;
 let pendingHubAssistantText = '';
 let streamingMsgEl: HTMLElement | null = null;
 
+// ── Live gateway status tracking ─────────────────────────────
+
+let gatewayLiveStatus: string = 'disconnected';
+
 // ── DOM helpers ──────────────────────────────────────────────
 
 function $(id: string): HTMLElement {
@@ -135,7 +139,7 @@ function refreshSettingsDisplay(): void {
 }
 
 function refreshHealthDisplay(): void {
-  const vm = buildHealthViewModel(appState.settings, appState.activeSession);
+  const vm = buildHealthViewModel(appState.settings, appState.activeSession, gatewayLiveStatus);
 
   setHealthDot('hGatewayDot', vm.gateway.dot);
   $('hGatewayStatus').textContent = vm.gateway.label;
@@ -1094,9 +1098,36 @@ export async function initHub(): Promise<void> {
     hubBus.emit('persistence:health', persistence.quota);
   }
 
-  // Create hub gateway client for text turns
+  // Create hub gateway client for text turns + gateway health monitoring
   hubGateway = createGatewayClient();
   hubGateway.onChunk(handleHubChunk);
+
+  // Wire gateway status changes to health display
+  hubGateway.onStatusChange((status) => {
+    gatewayLiveStatus = status;
+    refreshHealthDisplay();
+  });
+
+  // Hub-side gateway error logging (surfaces gateway:chunk errors in hub logs)
+  hubGateway.onChunk((chunk) => {
+    if (chunk.type === 'error') {
+      addLog('error', `Gateway error: ${chunk.error ?? 'unknown'}`);
+    }
+  });
+
+  // Run gateway health check at hub boot (mirrors glasses-main.ts behavior)
+  if (appState.settings.gatewayUrl) {
+    hubGateway.checkHealth(appState.settings.gatewayUrl).then((healthy) => {
+      if (healthy) {
+        gatewayLiveStatus = 'connected';
+        hubGateway!.startHeartbeat(appState.settings.gatewayUrl);
+      } else {
+        gatewayLiveStatus = 'error';
+        addLog('warn', 'Gateway health check failed at boot');
+      }
+      refreshHealthDisplay();
+    });
+  }
 
   // Wire text input form
   const textForm = document.getElementById('hubTextForm');
@@ -1325,6 +1356,17 @@ async function initPersistence(): Promise<{
           break;
         case 'streaming:end':
           hideStreamingIndicator();
+          break;
+        case 'gateway:error':
+          // Glasses-side gateway error — surface in hub logs and health
+          addLog('error', `Glasses gateway error: ${msg.error}`);
+          gatewayLiveStatus = 'error';
+          refreshHealthDisplay();
+          break;
+        case 'gateway:status-changed':
+          // Glasses-side gateway status — update hub health display
+          gatewayLiveStatus = msg.status;
+          refreshHealthDisplay();
           break;
       }
     });

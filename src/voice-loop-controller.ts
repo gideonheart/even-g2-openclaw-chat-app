@@ -20,19 +20,33 @@ export function createVoiceLoopController(opts: {
   const { bus, gateway, settings } = opts;
   const unsubs: Array<() => void> = [];
 
-  // Forward gateway chunks to bus
+  // Forward gateway chunks to bus (with error logging)
   unsubs.push(gateway.onChunk((chunk) => {
+    if (chunk.type === 'error') {
+      bus.emit('log', {
+        level: 'error',
+        msg: `Gateway error: ${chunk.error ?? 'unknown'}`,
+      });
+    }
     bus.emit('gateway:chunk', chunk);
   }));
 
-  // Forward gateway status changes to bus
+  // Forward gateway status changes to bus (with logging)
   unsubs.push(gateway.onStatusChange((status) => {
+    bus.emit('log', {
+      level: status === 'error' ? 'error' : 'info',
+      msg: `Gateway status: ${status}`,
+    });
     bus.emit('gateway:status', { status });
   }));
 
   // When recording stops, send voice turn to gateway
   unsubs.push(bus.on('audio:recording-stop', ({ sessionId, blob }) => {
     const s = settings();
+    bus.emit('log', {
+      level: 'info',
+      msg: `Sending voice turn: ${blob.size} bytes ${blob.type} to ${s.gatewayUrl || '(not set)'} stt=${s.sttProvider}`,
+    });
     gateway.sendVoiceTurn(s, {
       sessionId,
       audio: blob,

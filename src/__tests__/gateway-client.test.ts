@@ -214,9 +214,9 @@ describe('gateway-client', () => {
       expect(statuses).toContain('connected');
       // reconnectAttempts resets on success
       expect(client.getHealth().reconnectAttempts).toBe(0);
-      // The error chunk from the failed attempt + successful response
+      // Retries are silent — no error chunk emitted during retry (only on fatal)
       const errorChunks = chunks.filter((c) => c.type === 'error');
-      expect(errorChunks.length).toBeGreaterThanOrEqual(1);
+      expect(errorChunks.length).toBe(0);
     });
 
     it('gives up after maxReconnectAttempts and sets status to error', async () => {
@@ -235,9 +235,10 @@ describe('gateway-client', () => {
 
       // Should end in error state
       expect(client.getHealth().status).toBe('error');
-      // Error chunks emitted for each attempt (initial + 2 retries = 3 total calls)
+      // Only one error chunk emitted (at final fatal failure, not during retries)
       const errorChunks = chunks.filter((c) => c.type === 'error');
-      expect(errorChunks.length).toBeGreaterThanOrEqual(2);
+      expect(errorChunks.length).toBe(1);
+      expect(errorChunks[0].error).toContain('Gateway unreachable');
       // Last status should be error
       expect(statuses[statuses.length - 1]).toBe('error');
     });

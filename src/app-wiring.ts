@@ -151,7 +151,7 @@ export function buildSettingsViewModel(settings: AppSettings): SettingsViewModel
 
 // ── Health view model (pure) ─────────────────────────────
 
-export type HealthDotState = 'ok' | 'off';
+export type HealthDotState = 'ok' | 'warn' | 'err' | 'off';
 
 export interface HealthViewModel {
   gateway: { dot: HealthDotState; label: string };
@@ -162,16 +162,35 @@ export interface HealthViewModel {
 export function buildHealthViewModel(
   settings: AppSettings,
   activeSession: string,
+  gatewayLiveStatus?: string,
 ): HealthViewModel {
-  const gwOk = !!settings.gatewayUrl;
+  const gwConfigured = !!settings.gatewayUrl;
   const sttOk = !!settings.sttProvider;
   const sessOk = !!activeSession;
 
+  // Gateway health: combine configuration + live status
+  let gwDot: HealthDotState;
+  let gwLabel: string;
+  if (!gwConfigured) {
+    gwDot = 'off';
+    gwLabel = 'Not configured';
+  } else if (gatewayLiveStatus === 'connected') {
+    gwDot = 'ok';
+    gwLabel = truncate(settings.gatewayUrl, 35);
+  } else if (gatewayLiveStatus === 'connecting') {
+    gwDot = 'warn';
+    gwLabel = 'Connecting\u2026';
+  } else if (gatewayLiveStatus === 'error') {
+    gwDot = 'err';
+    gwLabel = 'Unreachable';
+  } else {
+    // No live status yet — show URL as label, dot stays off until checked
+    gwDot = 'off';
+    gwLabel = truncate(settings.gatewayUrl, 35);
+  }
+
   return {
-    gateway: {
-      dot: gwOk ? 'ok' : 'off',
-      label: gwOk ? truncate(settings.gatewayUrl, 35) : 'Not configured',
-    },
+    gateway: { dot: gwDot, label: gwLabel },
     stt: {
       dot: sttOk ? 'ok' : 'off',
       label: sttOk

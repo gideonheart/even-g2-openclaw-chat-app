@@ -470,6 +470,24 @@ export async function boot(): Promise<void> {
     }
   });
 
+  // Forward gateway errors and status changes to hub via sync bridge
+  bus.on('gateway:chunk', (chunk) => {
+    if (chunk.type === 'error') {
+      syncBridge.postMessage({
+        type: 'gateway:error',
+        origin: 'glasses',
+        error: chunk.error ?? 'Unknown error',
+      });
+    }
+  });
+  bus.on('gateway:status', ({ status }) => {
+    syncBridge.postMessage({
+      type: 'gateway:status-changed',
+      origin: 'glasses',
+      status,
+    });
+  });
+
   // NOTE: 500ms settle period is handled in display-controller.ts,
   // not here. The display controller delays setIconState('idle') after response_end.
 

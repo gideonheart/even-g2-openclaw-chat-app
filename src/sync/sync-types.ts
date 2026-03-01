@@ -12,7 +12,9 @@ export type SyncMessage =
   | { type: 'conversation:named'; origin: SyncOrigin; seq?: number; conversationId: string; name: string }
   | { type: 'streaming:start'; origin: SyncOrigin; seq?: number; conversationId: string }
   | { type: 'streaming:end'; origin: SyncOrigin; seq?: number; conversationId: string }
-  | { type: 'sync:heartbeat'; origin: SyncOrigin; seq?: number; messageCount: number; conversationId: string };
+  | { type: 'sync:heartbeat'; origin: SyncOrigin; seq?: number; messageCount: number; conversationId: string }
+  | { type: 'gateway:error'; origin: SyncOrigin; seq?: number; error: string }
+  | { type: 'gateway:status-changed'; origin: SyncOrigin; seq?: number; status: string };
 
 export interface SyncBridge {
   postMessage(msg: SyncMessage): void;

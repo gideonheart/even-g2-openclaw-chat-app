@@ -246,11 +246,13 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     }
 
     const message = err instanceof Error ? err.message : 'Unknown error';
-    emitChunk({ type: 'error', error: message });
 
     if (health.reconnectAttempts < opts.maxReconnectAttempts) {
+      // Retry silently — do NOT emit error chunk yet.
+      // Error will be shown only when all retries are exhausted (fatal).
       return 'retry';
     } else {
+      emitChunk({ type: 'error', error: `Gateway unreachable — ${message}` });
       setStatus('error');
       return 'fatal';
     }

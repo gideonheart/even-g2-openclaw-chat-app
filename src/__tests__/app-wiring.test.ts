@@ -236,9 +236,9 @@ describe('app-wiring', () => {
   });
 
   describe('buildHealthViewModel', () => {
-    it('returns ok dots for configured settings', () => {
+    it('returns ok dots for configured settings with live gateway status', () => {
       const settings = makeSettings();
-      const vm = buildHealthViewModel(settings, 'gideon');
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected');
 
       expect(vm.gateway.dot).toBe('ok');
       expect(vm.gateway.label).toContain('gw.example.com');
@@ -246,6 +246,31 @@ describe('app-wiring', () => {
       expect(vm.stt.label).toBe('WhisperX');
       expect(vm.session.dot).toBe('ok');
       expect(vm.session.label).toBe('gideon');
+    });
+
+    it('returns off dot for configured gateway without live status', () => {
+      const settings = makeSettings();
+      const vm = buildHealthViewModel(settings, 'gideon');
+
+      // Gateway URL is set but no live status — dot is off until health check runs
+      expect(vm.gateway.dot).toBe('off');
+      expect(vm.gateway.label).toContain('gw.example.com');
+    });
+
+    it('returns err dot when gateway status is error', () => {
+      const settings = makeSettings();
+      const vm = buildHealthViewModel(settings, 'gideon', 'error');
+
+      expect(vm.gateway.dot).toBe('err');
+      expect(vm.gateway.label).toBe('Unreachable');
+    });
+
+    it('returns warn dot when gateway status is connecting', () => {
+      const settings = makeSettings();
+      const vm = buildHealthViewModel(settings, 'gideon', 'connecting');
+
+      expect(vm.gateway.dot).toBe('warn');
+      expect(vm.gateway.label).toContain('Connecting');
     });
 
     it('returns off dots for unconfigured settings', () => {
