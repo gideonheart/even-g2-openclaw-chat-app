@@ -139,8 +139,11 @@
     .toast-container.hidden { opacity: 0; pointer-events: none; }
 
     /* ── Modal overlay ───────────────────────────────── */
-    .modal { display: none; z-index: 300; }
-    .modal.active { display: flex; }
+    /* display:none must override Even SDK .modal{display:flex} regardless of
+       stylesheet load order (Vite build moves <link> after <style>).
+       Using #app ancestor for higher specificity instead of !important. */
+    #app ~ .modal { display: none; z-index: 300; }
+    #app ~ .modal.active { display: flex; }
 
     /* ── Chat messages ────────────────────────────────── */
     .chat-msg { padding: 6px 10px; margin-bottom: 4px; border-radius: var(--radius-base); font-size: var(--text-body-base-size); line-height: 1.4; word-break: break-word; }

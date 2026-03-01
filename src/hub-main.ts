@@ -628,7 +628,9 @@ function init(): void {
   // Session modal cancel
   document.querySelector('[data-action="close-session-modal"]')?.addEventListener('click', closeSessionModal);
 
-  // Confirm modal
+  // Confirm modal — defensive: ensure hidden on boot (Even SDK .modal{display:flex}
+  // can leak through if CSS load order puts external sheet after inline styles)
+  $('confirmModal').classList.remove('active');
   $('confirmOk').addEventListener('click', confirmAction);
   document.querySelector('[data-action="close-confirm"]')?.addEventListener('click', closeConfirm);
   // Backdrop click dismisses confirm modal
