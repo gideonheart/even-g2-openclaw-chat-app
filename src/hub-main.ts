@@ -439,8 +439,8 @@ function closeConfirm(): void {
 
 // ── Glasses connection (single stateful button) ──────────────
 // States: disconnected → Connect | connecting → Connecting… | connected → Disconnect
-// Reacts to real bridge:connected / bridge:disconnected events on hubBus.
-// Falls back to mock in dev-mode (no real EvenAppBridge present).
+// Reacts only to real bridge:connected / bridge:disconnected events on hubBus.
+// No mock fallback in production path.
 
 let bridgeStatusUnsub: (() => void) | null = null;
 
@@ -557,13 +557,11 @@ async function toggleGlassesConnection(): Promise<void> {
     return;
   }
 
-  // ── No real bridge: dev-mode mock with realistic delay ──
-  addLog('warn', 'No Even bridge detected — using mock connection (dev mode)');
-  setTimeout(() => {
-    setGlassesConnected(appState, addLog, 'Even G2 (mock)', '87 %');
-    renderGlassesButton();
-    showToast('Mock glasses connected (dev mode)');
-  }, 800);
+  // ── No real bridge: hard fail (prod behavior only) ──
+  setGlassesDisconnected(appState, addLog, 'bridge unavailable');
+  renderGlassesButton();
+  showToast('Even bridge unavailable — open in Even Hub with glasses connected');
+  addLog('error', 'Connection attempt failed: EvenAppBridge unavailable');
 }
 
 // ── Simulator launch ─────────────────────────────────────────
