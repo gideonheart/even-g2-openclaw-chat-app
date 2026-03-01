@@ -11,13 +11,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: None (milestone v1.3 complete)
 Status: Between milestones
-Last activity: 2026-03-01 - Completed quick task 15: Self-review commit 4cad75a localhost detection logic
+Last activity: 2026-03-01 - Completed quick task 16: Extend LOOPBACK_RE to include 0.0.0.0
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 46 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure)
-- Total tests: 549 (all passing)
+- Total tests: 579 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -80,9 +80,10 @@ None.
 | 13 | Switch health check /healthz to /readyz, enrich health view with readyz detail, rename Gateway URL label | 2026-03-01 | dcbf44a | [13-update-health-section-rename-gateway-to-](./quick/13-update-health-section-rename-gateway-to-/) |
 | 14 | Restart voice gateway with .env CORS_ORIGINS and verify health (readyz + CORS strict) | 2026-03-01 | (ops, no commit) | [14-restart-voice-gateway-and-verify-health-](./quick/14-restart-voice-gateway-and-verify-health-/) |
 | 15 | Self-review commit 4cad75a: localhost detection regex verified, 8 risk scenarios assessed, 0.0.0.0 follow-up recommended | 2026-03-01 | 2b41c8d | [15-self-review-commit-4cad75a-confirm-local](./quick/15-self-review-commit-4cad75a-confirm-local/) |
+| 16 | Extend LOOPBACK_RE to include 0.0.0.0 as non-routable address, add 4 test cases | 2026-03-01 | 3a410ba | [16-extend-loopback-re-to-include-0-0-0-0-ad](./quick/16-extend-loopback-re-to-include-0-0-0-0-ad/) |
 
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed quick task 15 (self-review commit 4cad75a localhost detection logic)
+Stopped at: Completed quick task 16 (extend LOOPBACK_RE to include 0.0.0.0)
 Resume file: None
