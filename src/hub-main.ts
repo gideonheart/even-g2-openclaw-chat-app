@@ -29,6 +29,7 @@ import type { GatewayClient } from './api/gateway-client';
 import { createHubErrorPresenter } from './hub-error-presenter';
 import type { HubErrorPresenter } from './hub-error-presenter';
 import { computeStorageHealth, computeSyncHealth } from './health-indicator';
+import type { StorageHealth } from './persistence/storage-health';
 import { createEventBus } from './events';
 
 // ── App state ────────────────────────────────────────────────
@@ -45,6 +46,7 @@ let hubSyncBridge: SyncBridge | null = null;
 let hubSyncMonitor: SyncMonitorType | null = null;
 let hubDriftReconciler: DriftReconcilerType | null = null;
 let hubConversationStore: ConversationStore | null = null;
+let cachedQuota: StorageHealth | null = null;
 
 // ── Hub event bus (Phase 18) ─────────────────────────────────
 
@@ -137,6 +139,18 @@ function refreshHealthDisplay(): void {
 
   setHealthDot('hSessionDot', vm.session.dot);
   $('hSessionStatus').textContent = vm.session.label;
+
+  // Phase 18.5: Storage health (RES-02, RES-18)
+  if (cachedQuota) {
+    const storageSnap = computeStorageHealth(
+      cachedQuota.usagePercent,
+      cachedQuota.usageBytes,
+      cachedQuota.quotaBytes,
+      cachedQuota.isPersisted,
+    );
+    setHealthDot('hStorageDot', storageSnap.dot);
+    $('hStorageStatus').textContent = storageSnap.label;
+  }
 
   // Phase 18: Sync health
   const stats = hubSyncMonitor?.getStats();
@@ -984,6 +998,12 @@ export async function initHub(): Promise<void> {
     $('hStorageStatus').textContent = snap.label;
   });
 
+  // Phase 18.5: Emit initial quota to persistence:health subscriber (RES-02, RES-18)
+  if (persistence && persistence.quota) {
+    cachedQuota = persistence.quota;
+    hubBus.emit('persistence:health', persistence.quota);
+  }
+
   // Create hub gateway client for text turns
   hubGateway = createGatewayClient();
   hubGateway.onChunk(handleHubChunk);
@@ -1020,6 +1040,7 @@ async function initPersistence(): Promise<{
   conversationStore: ConversationStore;
   syncMonitor: SyncMonitorType;
   driftReconciler: DriftReconcilerType;
+  quota: StorageHealth | null;
 } | null> {
   try {
     const { isIndexedDBAvailable, openDB } = await import('./persistence/db');
@@ -1216,7 +1237,7 @@ async function initPersistence(): Promise<{
       }
     });
 
-    return { sessionManager: mgr, sessionStore, syncBridge, conversationStore, syncMonitor: monitor, driftReconciler };
+    return { sessionManager: mgr, sessionStore, syncBridge, conversationStore, syncMonitor: monitor, driftReconciler, quota: quota.isAvailable ? quota : null };
   } catch {
     return null;
   }
