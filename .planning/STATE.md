@@ -9,15 +9,15 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 18-error-ux
-Current Plan: 2 of 2
-Status: Phase 18 complete
-Last activity: 2026-03-01 - Completed 18-01: Glasses error presenter with auto-clear status bar, user-friendly message mapping, icon animator pause/resume (Phase 18 fully complete)
+Phase: 18.5-hub-integration-wiring
+Current Plan: 1 of 1
+Status: Phase 18.5 complete
+Last activity: 2026-03-01 - Completed 18.5-01: Hub integration wiring -- 5 error paths emit persistence:error, IDB module recreation after reopenDB, storage health dot wired (Phase 18.5 fully complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 43 (Phases 1-18 + Phase 13 gap closure)
+- Total plans completed: 44 (Phases 1-18 + Phase 13 gap closure + Phase 18.5 hub integration wiring)
 - Total tests: 484 (all passing)
 - Total LOC: ~10,900 TypeScript (68 files)
 - Total execution time: ~5.3 hours
@@ -45,6 +45,7 @@ Last activity: 2026-03-01 - Completed 18-01: Glasses error presenter with auto-c
 | 16.5 | 2/2 (glasses + hub integration hardening: reopenDB propagation + eviction + health + cleanup) | ~12m | 6m |
 | 17 | 2/2 (FSM watchdog timer + gateway error classification) | ~5m | 2.5m |
 | 18 | 2/2 (glasses error presenter + hub error presenter + health indicator) | ~15m | 7.5m |
+| 18.5 | 1/1 (hub integration wiring: error bus, IDB module recreation, storage health) | ~5m | 5m |
 
 ## Accumulated Context
 
@@ -140,6 +141,10 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - Error presenter wired at Layer 4.5 after displayController.init() but before sync heartbeat start (18-01)
 - Fallback no-op iconAnimator when getIconAnimator() returns null for defensive pre-init edge case (18-01)
 - glassesErrorPresenter.destroy() placed before displayController.destroy() in cleanup sequence (18-01)
+- Hub error paths replace direct showToast() with hubBus.emit('persistence:error') -- presenter IS the showToast, dual-call produces double toasts (18.5-01)
+- loadLiveConversation() moved to last call in reopenDB success handler after sync module recreation (18.5-01)
+- cachedQuota stored at module level so refreshHealthDisplay stays synchronous -- quota doesn't change rapidly within a session (18.5-01)
+- persistence:health emitted after subscriber registration in initHub to guarantee subscriber receives initial quota (18.5-01)
 
 ### Pending Todos
 
@@ -167,5 +172,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 18-01-PLAN.md (Glasses error presenter -- Phase 18 fully complete)
+Stopped at: Completed 18.5-01-PLAN.md (Hub integration wiring -- Phase 18.5 fully complete)
 Resume file: None
