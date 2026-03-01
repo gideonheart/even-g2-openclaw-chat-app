@@ -32,6 +32,12 @@ import { computeStorageHealth, computeSyncHealth } from './health-indicator';
 import type { StorageHealth } from './persistence/storage-health';
 import { createEventBus } from './events';
 
+// z-index stacking order (defined in index.html inline <style>):
+//   100 = bottom-nav-wrap (fixed bottom navigation)
+//   150 = error-banner (sticky top, within scroll flow)
+//   200 = toast-container (fixed, above nav)
+//   300 = modals (sessionModal, confirmModal — full-screen overlay)
+
 // ── App state ────────────────────────────────────────────────
 
 const appState = createAppState(loadSettings());
