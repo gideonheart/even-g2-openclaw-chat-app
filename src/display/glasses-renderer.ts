@@ -36,7 +36,7 @@ const CHAT_CONTAINER: TextContainerConfig = {
   height: 256,
   containerID: 2,
   containerName: 'chat',
-  isEventCapture: 0,
+  isEventCapture: 1,
   content: '',
 };
 
@@ -55,7 +55,7 @@ const BLANK_LAYOUT: PageContainerConfig = {
       height: 288,
       containerID: 1,
       containerName: 'blank',
-      isEventCapture: 0,
+      isEventCapture: 1,
       content: '',
     },
   ],

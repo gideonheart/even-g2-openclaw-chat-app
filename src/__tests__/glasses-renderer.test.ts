@@ -52,10 +52,12 @@ describe('GlassesRenderer', () => {
     const names = config.textObject.map((t) => t.containerName);
     expect(names).toEqual(['status', 'chat']);
 
-    // Verify all containers have isEventCapture=0
-    for (const container of config.textObject) {
-      expect(container.isEventCapture).toBe(0);
-    }
+    // SDK requires exactly one container with isEventCapture=1 per page.
+    // The chat container (containerID=2) captures gesture events.
+    const status = config.textObject.find((t) => t.containerName === 'status')!;
+    const chat = config.textObject.find((t) => t.containerName === 'chat')!;
+    expect(status.isEventCapture).toBe(0);
+    expect(chat.isEventCapture).toBe(1);
   });
 
   it('init() starts icon animator and sets idle icon', async () => {
