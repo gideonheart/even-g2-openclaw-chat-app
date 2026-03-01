@@ -148,7 +148,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 - **Requirements:** [RES-21]
 - **Depends on:** Phases 14-18.5 (tests exercise all resilience features including hub integration wiring)
 - **Key deliverables:** failure-helpers.ts, integration test suite for integrity/sync/error scenarios
-- **Plans:** 2/2 plans executed
+- **Plans:** 2/2 plans complete
   - [x] 19-01-PLAN.md — Failure injection helpers + IDB integrity flow integration tests (Wave 1)
   - [x] 19-02-PLAN.md — Sync resilience + error escalation integration tests (Wave 2)
 
