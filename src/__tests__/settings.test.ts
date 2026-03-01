@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   loadSettings,
   saveSettings,
@@ -6,6 +6,9 @@ import {
   importSettingsJson,
   validateField,
   maskSecret,
+  isLocalhostUrl,
+  isRealDeviceRuntime,
+  localhostWarning,
   DEFAULT_SETTINGS,
   STORAGE_KEY,
 } from '../settings';
@@ -171,6 +174,112 @@ describe('settings', () => {
 
     it('returns Not set for empty value', () => {
       expect(maskSecret('')).toBe('Not set');
+    });
+  });
+
+  describe('isLocalhostUrl', () => {
+    it('returns true for http://localhost:4400', () => {
+      expect(isLocalhostUrl('http://localhost:4400')).toBe(true);
+    });
+
+    it('returns true for http://localhost:4400/', () => {
+      expect(isLocalhostUrl('http://localhost:4400/')).toBe(true);
+    });
+
+    it('returns true for http://localhost (no port)', () => {
+      expect(isLocalhostUrl('http://localhost')).toBe(true);
+    });
+
+    it('returns true for https://localhost:443', () => {
+      expect(isLocalhostUrl('https://localhost:443')).toBe(true);
+    });
+
+    it('returns true for http://127.0.0.1:4400', () => {
+      expect(isLocalhostUrl('http://127.0.0.1:4400')).toBe(true);
+    });
+
+    it('returns true for http://127.0.0.1', () => {
+      expect(isLocalhostUrl('http://127.0.0.1')).toBe(true);
+    });
+
+    it('returns true for http://[::1]:4400', () => {
+      expect(isLocalhostUrl('http://[::1]:4400')).toBe(true);
+    });
+
+    it('returns true for case-insensitive LOCALHOST', () => {
+      expect(isLocalhostUrl('http://LOCALHOST:4400')).toBe(true);
+    });
+
+    it('returns false for http://192.168.1.100:4400', () => {
+      expect(isLocalhostUrl('http://192.168.1.100:4400')).toBe(false);
+    });
+
+    it('returns false for https://gw.example.com', () => {
+      expect(isLocalhostUrl('https://gw.example.com')).toBe(false);
+    });
+
+    it('returns false for empty string', () => {
+      expect(isLocalhostUrl('')).toBe(false);
+    });
+
+    it('returns false for non-URL string', () => {
+      expect(isLocalhostUrl('not-a-url')).toBe(false);
+    });
+
+    it('returns false for URL containing localhost in path only', () => {
+      expect(isLocalhostUrl('http://example.com/localhost')).toBe(false);
+    });
+  });
+
+  describe('isRealDeviceRuntime', () => {
+    afterEach(() => {
+      delete (window as any).flutter_inappwebview;
+    });
+
+    it('returns false when flutter_inappwebview is absent (browser dev mode)', () => {
+      delete (window as any).flutter_inappwebview;
+      expect(isRealDeviceRuntime()).toBe(false);
+    });
+
+    it('returns true when flutter_inappwebview is present (Even App WebView)', () => {
+      (window as any).flutter_inappwebview = {};
+      expect(isRealDeviceRuntime()).toBe(true);
+    });
+  });
+
+  describe('localhostWarning', () => {
+    afterEach(() => {
+      delete (window as any).flutter_inappwebview;
+    });
+
+    it('returns empty string for non-localhost URL', () => {
+      (window as any).flutter_inappwebview = {};
+      expect(localhostWarning('https://gw.example.com')).toBe('');
+    });
+
+    it('returns empty string for localhost in dev mode (browser)', () => {
+      delete (window as any).flutter_inappwebview;
+      expect(localhostWarning('http://localhost:4400')).toBe('');
+    });
+
+    it('returns warning for localhost on real device', () => {
+      (window as any).flutter_inappwebview = {};
+      const warning = localhostWarning('http://localhost:4400');
+      expect(warning).toContain('localhost');
+      expect(warning).toContain('phone');
+      expect(warning).toContain('server');
+    });
+
+    it('returns warning for 127.0.0.1 on real device', () => {
+      (window as any).flutter_inappwebview = {};
+      const warning = localhostWarning('http://127.0.0.1:4400');
+      expect(warning).toContain('localhost');
+      expect(warning).toContain('phone');
+    });
+
+    it('returns empty string for empty URL', () => {
+      (window as any).flutter_inappwebview = {};
+      expect(localhostWarning('')).toBe('');
     });
   });
 });

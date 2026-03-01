@@ -11,7 +11,7 @@
 
 import { createEventBus } from './events';
 import type { AppEventMap } from './types';
-import { loadSettings } from './settings';
+import { loadSettings, isLocalhostUrl } from './settings';
 import { createEvenBridgeService } from './bridge/even-bridge';
 import { createBridgeMock } from './bridge/bridge-mock';
 import { createAudioCapture } from './audio/audio-capture';
@@ -493,9 +493,15 @@ export async function boot(): Promise<void> {
 
   // Gateway health check at boot (per user decision)
   if (settings.gatewayUrl) {
-    const reachable = await gateway.checkHealth(settings.gatewayUrl);
-    if (reachable) {
-      bus.emit('gateway:status', { status: 'connected' });
+    // Detect localhost misconfiguration on real device (not devMode)
+    if (isLocalhostUrl(settings.gatewayUrl) && !devMode) {
+      bus.emit('log', { level: 'error', msg: 'Gateway URL uses localhost which points to the phone. Update in Settings.' });
+      renderer.showError('Gateway: localhost = phone. Set server URL.');
+    } else {
+      const reachable = await gateway.checkHealth(settings.gatewayUrl);
+      if (reachable) {
+        bus.emit('gateway:status', { status: 'connected' });
+      }
     }
     // Always start heartbeat so status can recover if the initial check
     // fails (e.g. during gateway startup race).

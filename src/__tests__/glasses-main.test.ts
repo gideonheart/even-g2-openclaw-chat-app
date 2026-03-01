@@ -23,6 +23,7 @@ vi.mock('../settings', () => ({
     sttProvider: 'whisperx',
     apiKey: '',
   })),
+  isLocalhostUrl: vi.fn(() => false),
 }));
 
 const mockBridgeDestroy = vi.fn().mockResolvedValue(undefined);
@@ -364,8 +365,6 @@ describe('glasses-main lifecycle cleanup', () => {
 
   it('reboot after cleanup restores full module teardown capability', async () => {
     await boot();
-    const initCallsAfterFirstBoot = mockBridge.init.mock.calls.length;
-
     // First hidden/visible cycle
     Object.defineProperty(document, 'visibilityState', {
       value: 'hidden',

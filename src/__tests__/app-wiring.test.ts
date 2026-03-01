@@ -352,6 +352,63 @@ describe('app-wiring', () => {
       expect(vm.gateway.dot).toBe('ok');
       expect(vm.gateway.label).toContain('gw.example.com');
     });
+
+    // ── Localhost on real device detection ──
+
+    it('shows err dot with localhost warning when URL is localhost and isOnDevice is true', () => {
+      const settings = makeSettings({ gatewayUrl: 'http://localhost:4400' });
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected', undefined, true);
+
+      expect(vm.gateway.dot).toBe('err');
+      expect(vm.gateway.label).toContain('localhost');
+      expect(vm.gateway.label).toContain('phone');
+      expect(vm.gateway.label).toContain('server');
+    });
+
+    it('shows err dot for 127.0.0.1 when isOnDevice is true', () => {
+      const settings = makeSettings({ gatewayUrl: 'http://127.0.0.1:4400' });
+      const vm = buildHealthViewModel(settings, 'gideon', undefined, undefined, true);
+
+      expect(vm.gateway.dot).toBe('err');
+      expect(vm.gateway.label).toContain('localhost');
+      expect(vm.gateway.label).toContain('phone');
+    });
+
+    it('does NOT show localhost warning when isOnDevice is false (dev mode)', () => {
+      const settings = makeSettings({ gatewayUrl: 'http://localhost:4400' });
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected', undefined, false);
+
+      // In dev mode, localhost is valid -- should show normal connected status
+      expect(vm.gateway.dot).toBe('ok');
+    });
+
+    it('does NOT show localhost warning when isOnDevice is undefined (backward compat)', () => {
+      const settings = makeSettings({ gatewayUrl: 'http://localhost:4400' });
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected');
+
+      // Backward compat: no isOnDevice param = treat as dev mode
+      expect(vm.gateway.dot).toBe('ok');
+    });
+
+    it('shows normal status for non-localhost URL when isOnDevice is true', () => {
+      const settings = makeSettings({ gatewayUrl: 'http://192.168.1.100:4400' });
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected', undefined, true);
+
+      expect(vm.gateway.dot).toBe('ok');
+    });
+
+    it('localhost override takes priority over readyz detail on device', () => {
+      const settings = makeSettings({ gatewayUrl: 'http://localhost:4400' });
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected', {
+        readyStatus: 'ready',
+        sttReady: true,
+        openclawReady: true,
+      }, true);
+
+      // Even if readyz somehow says "ready", localhost on device is always an error
+      expect(vm.gateway.dot).toBe('err');
+      expect(vm.gateway.label).toContain('localhost');
+    });
   });
 
   describe('resolveLogFilter', () => {

@@ -5,6 +5,8 @@ import {
   exportSettingsJson,
   importSettingsJson,
   FIELD_CONFIG,
+  isLocalhostUrl,
+  isRealDeviceRuntime,
 } from './settings';
 import { createSessionManager } from './sessions';
 import type { SessionManager } from './sessions';
@@ -139,7 +141,7 @@ function refreshSettingsDisplay(): void {
 }
 
 function refreshHealthDisplay(): void {
-  const vm = buildHealthViewModel(appState.settings, appState.activeSession, gatewayLiveStatus);
+  const vm = buildHealthViewModel(appState.settings, appState.activeSession, gatewayLiveStatus, undefined, isRealDeviceRuntime());
 
   setHealthDot('hGatewayDot', vm.gateway.dot);
   $('hGatewayStatus').textContent = vm.gateway.label;
@@ -1117,15 +1119,22 @@ export async function initHub(): Promise<void> {
 
   // Run gateway health check at hub boot (mirrors glasses-main.ts behavior)
   if (appState.settings.gatewayUrl) {
-    hubGateway.checkHealth(appState.settings.gatewayUrl).then((reachable) => {
-      if (reachable) {
-        gatewayLiveStatus = 'connected';
-      } else {
-        gatewayLiveStatus = 'error';
-        addLog('warn', 'Gateway health check failed at boot');
-      }
+    // Detect localhost misconfiguration on real device before even trying the health check
+    if (isLocalhostUrl(appState.settings.gatewayUrl) && isRealDeviceRuntime()) {
+      gatewayLiveStatus = 'error';
+      addLog('error', 'Gateway URL uses localhost which points to the phone, not the server. Update the Gateway URL in Settings to use the server IP or hostname.');
       refreshHealthDisplay();
-    });
+    } else {
+      hubGateway.checkHealth(appState.settings.gatewayUrl).then((reachable) => {
+        if (reachable) {
+          gatewayLiveStatus = 'connected';
+        } else {
+          gatewayLiveStatus = 'error';
+          addLog('warn', 'Gateway health check failed at boot');
+        }
+        refreshHealthDisplay();
+      });
+    }
     // Always start heartbeat so status can recover if the initial check
     // fails (e.g. during gateway startup race).
     hubGateway.startHeartbeat(appState.settings.gatewayUrl);

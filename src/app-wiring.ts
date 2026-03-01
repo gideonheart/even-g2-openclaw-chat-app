@@ -2,7 +2,7 @@
 
 import { STT_LABELS } from './types';
 import type { AppSettings, LogLevel, GlassesConnectionState } from './types';
-import { maskSecret } from './settings';
+import { maskSecret, isLocalhostUrl } from './settings';
 import { truncate } from './utils';
 import type { LogStore } from './logs';
 
@@ -170,15 +170,24 @@ export function buildHealthViewModel(
   activeSession: string,
   gatewayLiveStatus?: string,
   readyzDetail?: ReadyzDetail,
+  isOnDevice?: boolean,
 ): HealthViewModel {
   const gwConfigured = !!settings.gatewayUrl;
   const sttOk = !!settings.sttProvider;
   const sessOk = !!activeSession;
+  const gwIsLocalhost = gwConfigured && isLocalhostUrl(settings.gatewayUrl);
 
   // Gateway health: combine configuration + live status
   let gwDot: HealthDotState;
   let gwLabel: string;
-  if (!gwConfigured) {
+
+  // Localhost on real device: always show error regardless of live status,
+  // because even a momentary "connected" is misleading (it would be the
+  // phone answering itself, not the actual gateway server).
+  if (gwIsLocalhost && isOnDevice) {
+    gwDot = 'err';
+    gwLabel = 'localhost points to phone \u2014 use server URL';
+  } else if (!gwConfigured) {
     gwDot = 'off';
     gwLabel = 'Not configured';
   } else if (gatewayLiveStatus === 'connected') {

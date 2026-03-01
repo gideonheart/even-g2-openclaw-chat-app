@@ -15,8 +15,8 @@ export const FIELD_CONFIG: Record<string, FieldConfig> = {
   gatewayUrl: {
     label: 'Gateway URL',
     type: 'url',
-    placeholder: 'https://your-gateway.example.com',
-    help: 'OpenClaw voice gateway endpoint',
+    placeholder: 'http://your-server:4400',
+    help: 'OpenClaw voice gateway endpoint (use server IP/hostname, not localhost)',
     validate: (v: string) =>
       !v || /^https?:\/\/.+/.test(v) ? '' : 'Must be a valid http(s):// URL',
     secret: false,
@@ -107,4 +107,36 @@ export function validateField(fieldId: string, value: string): string {
 
 export function maskSecret(value: string): string {
   return value ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : 'Not set';
+}
+
+// ── Localhost detection ─────────────────────────────────────
+
+const LOOPBACK_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i;
+
+/**
+ * Returns true when the gateway URL points to a loopback address
+ * (localhost, 127.0.0.1, or [::1]).
+ */
+export function isLocalhostUrl(url: string): boolean {
+  return LOOPBACK_RE.test(url);
+}
+
+/**
+ * Returns true when the current runtime is a real device WebView
+ * (Even App injects window.flutter_inappwebview).
+ * In dev mode (plain browser) localhost is expected and valid.
+ */
+export function isRealDeviceRuntime(): boolean {
+  return typeof (window as any).flutter_inappwebview !== 'undefined';
+}
+
+/**
+ * If the gateway URL is localhost AND we're running on a real device,
+ * returns an actionable warning string.  Otherwise returns ''.
+ */
+export function localhostWarning(url: string): string {
+  if (!url) return '';
+  if (!isLocalhostUrl(url)) return '';
+  if (!isRealDeviceRuntime()) return '';
+  return 'localhost points to the phone, not the server. Use the server IP/hostname instead.';
 }
