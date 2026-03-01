@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createGestureHandler, getHintText } from '../gestures/gesture-handler';
 import { createEventBus } from '../events';
 import type { AppEventMap } from '../types';
@@ -237,6 +237,136 @@ describe('createGestureHandler', () => {
       bus.emit('gesture:tap', { timestamp: 2000 });
       expect(handler.getState()).toBe('idle'); // no change
       expect(bridge.startAudio).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── FSM watchdog ──────────────────────────────────────────
+
+  describe('FSM watchdog', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('resets FSM to idle after 45s in recording state', () => {
+      const handler = createHandler();
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('recording');
+
+      vi.advanceTimersByTime(45_000);
+      expect(handler.getState()).toBe('idle');
+    });
+
+    it('resets FSM to idle after 45s in sent state', () => {
+      const handler = createHandler();
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      bus.emit('gesture:tap', { timestamp: 1300 });
+      expect(handler.getState()).toBe('sent');
+
+      vi.advanceTimersByTime(45_000);
+      expect(handler.getState()).toBe('idle');
+    });
+
+    it('emits fsm:watchdog-reset event with previousState and elapsed', () => {
+      const handler = createHandler();
+      const spy = vi.fn();
+      bus.on('fsm:watchdog-reset', spy);
+
+      bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
+      vi.advanceTimersByTime(45_000);
+
+      expect(spy).toHaveBeenCalledOnce();
+      expect(spy).toHaveBeenCalledWith({
+        previousState: 'recording',
+        elapsed: 45_000,
+      });
+    });
+
+    it('emits log warning when watchdog fires', () => {
+      createHandler();
+      const logSpy = vi.fn();
+      bus.on('log', logSpy);
+
+      bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
+      vi.advanceTimersByTime(45_000);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: 'warn',
+          msg: expect.stringContaining('watchdog'),
+        }),
+      );
+    });
+
+    it('does NOT fire watchdog in idle state', () => {
+      createHandler();
+      const spy = vi.fn();
+      bus.on('fsm:watchdog-reset', spy);
+
+      vi.advanceTimersByTime(60_000);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('does NOT fire watchdog in menu state', () => {
+      createHandler();
+      const spy = vi.fn();
+      bus.on('fsm:watchdog-reset', spy);
+
+      bus.emit('gesture:double-tap', { timestamp: 1000 }); // idle -> menu
+      vi.advanceTimersByTime(60_000);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('resets watchdog timer on response_delta chunks (keeps alive during streaming)', () => {
+      createHandler();
+      const spy = vi.fn();
+      bus.on('fsm:watchdog-reset', spy);
+
+      bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
+      bus.emit('gesture:tap', { timestamp: 1300 }); // recording -> sent
+
+      // Advance 30s, then send a delta (resets the 45s window)
+      vi.advanceTimersByTime(30_000);
+      bus.emit('gateway:chunk', { type: 'response_delta', text: 'hello' });
+
+      // Advance another 30s -- only 30s since last delta, should NOT fire
+      vi.advanceTimersByTime(30_000);
+      expect(spy).not.toHaveBeenCalled();
+
+      // Advance remaining 15s to hit 45s since last delta -- NOW it fires
+      vi.advanceTimersByTime(15_000);
+      expect(spy).toHaveBeenCalledOnce();
+    });
+
+    it('clears watchdog on state transition to idle (no double-fire after error reset)', () => {
+      createHandler();
+      const spy = vi.fn();
+      bus.on('fsm:watchdog-reset', spy);
+
+      bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
+      bus.emit('gesture:tap', { timestamp: 1300 }); // recording -> sent
+
+      // Error chunk resets FSM to idle, which clears watchdog
+      vi.advanceTimersByTime(10_000);
+      bus.emit('gateway:chunk', { type: 'error', error: 'test error' });
+
+      // Advance past 45s -- watchdog should NOT fire (was cleared on reset)
+      vi.advanceTimersByTime(45_000);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('clears watchdog on destroy', () => {
+      const handler = createHandler();
+      const spy = vi.fn();
+      bus.on('fsm:watchdog-reset', spy);
+
+      bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
+      handler.destroy();
+
+      vi.advanceTimersByTime(45_000);
+      expect(spy).not.toHaveBeenCalled();
     });
   });
 });
