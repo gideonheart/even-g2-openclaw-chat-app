@@ -107,6 +107,38 @@ describe('createGestureHandler', () => {
       expect(handler.getState()).toBe('menu');
     });
 
+    it('suppresses trailing tap within 275ms after double-tap (SDK quirk)', () => {
+      const handler = createHandler();
+      const menuToggleSpy = vi.fn();
+      const menuSelectSpy = vi.fn();
+      bus.on('gesture:menu-toggle', menuToggleSpy);
+      bus.on('menu:select', menuSelectSpy);
+
+      // Real hardware: SDK fires double-click then a trailing click ~50ms later
+      bus.emit('gesture:double-tap', { timestamp: 1000 }); // idle -> menu
+      expect(handler.getState()).toBe('menu');
+      expect(menuToggleSpy).toHaveBeenCalledWith({ active: true });
+
+      // Trailing tap within debounce window must be suppressed
+      bus.emit('gesture:tap', { timestamp: 1050 }); // should be debounced
+      expect(handler.getState()).toBe('menu'); // still in menu, NOT menu:select
+      expect(menuSelectSpy).not.toHaveBeenCalled();
+    });
+
+    it('allows tap in menu after debounce window (intentional select)', () => {
+      const handler = createHandler();
+      const menuSelectSpy = vi.fn();
+      bus.on('menu:select', menuSelectSpy);
+
+      bus.emit('gesture:double-tap', { timestamp: 1000 }); // idle -> menu
+      expect(handler.getState()).toBe('menu');
+
+      // Intentional tap well after debounce window
+      bus.emit('gesture:tap', { timestamp: 1300 }); // 300ms later -> processed
+      expect(handler.getState()).toBe('menu'); // menu state, MENU_SELECT keeps in menu
+      expect(menuSelectSpy).toHaveBeenCalledTimes(1);
+    });
+
     it('does not debounce scroll events', () => {
       const handler = createHandler();
       bus.emit('gesture:scroll-up', { timestamp: 1000 });

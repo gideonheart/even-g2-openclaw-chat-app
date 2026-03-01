@@ -89,7 +89,7 @@ export function createGestureHandler(opts: {
       return; // suppressed
     }
 
-    if (input === 'tap') {
+    if (input === 'tap' || input === 'double-tap') {
       lastTapTs = timestamp;
     }
 

@@ -427,8 +427,10 @@ function closeSessionModal(): void {
 }
 
 function confirmAction(): void {
-  if (appState.pendingConfirm) appState.pendingConfirm();
+  const action = appState.pendingConfirm;
   appState.pendingConfirm = null;
+  $('confirmModal').classList.remove('active');
+  if (action) action();
 }
 
 function closeConfirm(): void {
@@ -629,6 +631,10 @@ function init(): void {
   // Confirm modal
   $('confirmOk').addEventListener('click', confirmAction);
   document.querySelector('[data-action="close-confirm"]')?.addEventListener('click', closeConfirm);
+  // Backdrop click dismisses confirm modal
+  $('confirmModal').addEventListener('click', (e) => {
+    if (e.target === $('confirmModal')) closeConfirm();
+  });
 
   // Log filters
   document.querySelectorAll('.log-filter').forEach((btn) => {

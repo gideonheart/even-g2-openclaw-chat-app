@@ -286,7 +286,7 @@ describe('GlassesRenderer', () => {
       (c: unknown[]) => c[0] === 2,
     );
     expect(chatCalls).toHaveLength(1);
-    expect(chatCalls[0][1]).toBe('Open companion app to configure');
+    expect(chatCalls[0][1]).toBe('Set Gateway URL in companion app Settings');
   });
 
   // ── showError ───────────────────────────────────────────────

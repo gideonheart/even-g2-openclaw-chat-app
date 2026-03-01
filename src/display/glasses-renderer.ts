@@ -280,7 +280,7 @@ export function createGlassesRenderer(opts: {
   }
 
   function showConfigRequired(): void {
-    bridge.textContainerUpgrade(2, 'Open companion app to configure');
+    bridge.textContainerUpgrade(2, 'Set Gateway URL in companion app Settings');
   }
 
   function showError(message: string): void {
