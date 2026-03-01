@@ -284,6 +284,74 @@ describe('app-wiring', () => {
       expect(vm.session.dot).toBe('off');
       expect(vm.session.label).toBe('No session');
     });
+
+    it('shows "Ready" label when connected with readyStatus ready', () => {
+      const settings = makeSettings();
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected', {
+        readyStatus: 'ready',
+        sttReady: true,
+        openclawReady: true,
+      });
+
+      expect(vm.gateway.dot).toBe('ok');
+      expect(vm.gateway.label).toBe('Ready');
+    });
+
+    it('shows warn dot and "Degraded: STT down" when sttReady is false', () => {
+      const settings = makeSettings();
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected', {
+        readyStatus: 'not_ready',
+        sttReady: false,
+        openclawReady: true,
+      });
+
+      expect(vm.gateway.dot).toBe('warn');
+      expect(vm.gateway.label).toBe('Degraded: STT down');
+    });
+
+    it('shows "Degraded: STT, OpenClaw down" when both are false', () => {
+      const settings = makeSettings();
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected', {
+        readyStatus: 'not_ready',
+        sttReady: false,
+        openclawReady: false,
+      });
+
+      expect(vm.gateway.dot).toBe('warn');
+      expect(vm.gateway.label).toBe('Degraded: STT, OpenClaw down');
+    });
+
+    it('shows "Not ready" when readyStatus is not_ready but no specific deps down', () => {
+      const settings = makeSettings();
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected', {
+        readyStatus: 'not_ready',
+        sttReady: true,
+        openclawReady: true,
+      });
+
+      expect(vm.gateway.dot).toBe('warn');
+      expect(vm.gateway.label).toBe('Not ready');
+    });
+
+    it('enriches error label with readyz detail when error + not_ready', () => {
+      const settings = makeSettings();
+      const vm = buildHealthViewModel(settings, 'gideon', 'error', {
+        readyStatus: 'not_ready',
+        sttReady: false,
+        openclawReady: true,
+      });
+
+      expect(vm.gateway.dot).toBe('err');
+      expect(vm.gateway.label).toBe('Unreachable: STT down');
+    });
+
+    it('backward compatible: no readyzDetail behaves exactly as before', () => {
+      const settings = makeSettings();
+      const vm = buildHealthViewModel(settings, 'gideon', 'connected');
+
+      expect(vm.gateway.dot).toBe('ok');
+      expect(vm.gateway.label).toContain('gw.example.com');
+    });
   });
 
   describe('resolveLogFilter', () => {

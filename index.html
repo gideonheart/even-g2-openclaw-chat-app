@@ -337,7 +337,7 @@
           <div class="list-item" id="hGateway">
             <span class="list-item__leading"><span class="status-dot status-dot--off" id="hGatewayDot"></span></span>
             <div class="list-item__content">
-              <div class="list-item__title">Gateway</div>
+              <div class="list-item__title">Voice Gateway</div>
               <div class="list-item__subtitle" id="hGatewayStatus">Not configured</div>
             </div>
           </div>
@@ -407,11 +407,11 @@
       <!-- Settings list (main view) -->
       <div id="settingsList" class="settings-form active">
         <div class="page-section">
-          <div class="section-title">Connection</div>
+          <div class="section-title">Voice Gateway</div>
           <div class="card card-list">
             <div class="list-item" data-setting="gatewayUrl">
               <div class="list-item__content">
-                <div class="list-item__title">Gateway URL</div>
+                <div class="list-item__title">Voice Gateway URL</div>
                 <div class="list-item__subtitle mono" id="settGatewayDisplay">Not set</div>
               </div>
               <span class="list-item__chevron">&#8250;</span>
@@ -534,6 +534,9 @@
       </div>
     </div>
   </div>
+
+  <!-- ── Build info footer ──────────────────────────── -->
+  <div id="buildInfo" style="text-align:center; padding:16px 0 8px; font-size:11px; color:var(--tc-2nd); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;"></div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

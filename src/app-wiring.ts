@@ -153,6 +153,12 @@ export function buildSettingsViewModel(settings: AppSettings): SettingsViewModel
 
 export type HealthDotState = 'ok' | 'warn' | 'err' | 'off';
 
+export interface ReadyzDetail {
+  readyStatus?: 'ready' | 'not_ready';
+  sttReady?: boolean;
+  openclawReady?: boolean;
+}
+
 export interface HealthViewModel {
   gateway: { dot: HealthDotState; label: string };
   stt: { dot: HealthDotState; label: string };
@@ -163,6 +169,7 @@ export function buildHealthViewModel(
   settings: AppSettings,
   activeSession: string,
   gatewayLiveStatus?: string,
+  readyzDetail?: ReadyzDetail,
 ): HealthViewModel {
   const gwConfigured = !!settings.gatewayUrl;
   const sttOk = !!settings.sttProvider;
@@ -177,12 +184,31 @@ export function buildHealthViewModel(
   } else if (gatewayLiveStatus === 'connected') {
     gwDot = 'ok';
     gwLabel = truncate(settings.gatewayUrl, 35);
+
+    // Enrich with readyz detail when connected
+    if (readyzDetail?.readyStatus === 'ready') {
+      gwLabel = 'Ready';
+    } else if (readyzDetail?.readyStatus === 'not_ready') {
+      gwDot = 'warn';
+      const down: string[] = [];
+      if (readyzDetail.sttReady === false) down.push('STT');
+      if (readyzDetail.openclawReady === false) down.push('OpenClaw');
+      gwLabel = down.length > 0 ? `Degraded: ${down.join(', ')} down` : 'Not ready';
+    }
   } else if (gatewayLiveStatus === 'connecting') {
     gwDot = 'warn';
     gwLabel = 'Connecting\u2026';
   } else if (gatewayLiveStatus === 'error') {
     gwDot = 'err';
     gwLabel = 'Unreachable';
+
+    // Enrich error label with readyz detail if available
+    if (readyzDetail?.readyStatus === 'not_ready') {
+      const down: string[] = [];
+      if (readyzDetail.sttReady === false) down.push('STT');
+      if (readyzDetail.openclawReady === false) down.push('OpenClaw');
+      if (down.length > 0) gwLabel = `Unreachable: ${down.join(', ')} down`;
+    }
   } else {
     // No live status yet — show URL as label, dot stays off until checked
     gwDot = 'off';
