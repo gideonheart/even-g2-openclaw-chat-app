@@ -25,6 +25,7 @@ interface MockRenderer {
   showError: Mock;
   showMenuOverlay: Mock;
   restoreConversation: Mock;
+  getIconAnimator: Mock;
 }
 
 // ── Mock GlassesRenderer (all methods as vi.fn()) ──────────
@@ -48,6 +49,7 @@ function createMockRenderer(): MockRenderer {
     showError: vi.fn(),
     showMenuOverlay: vi.fn(),
     restoreConversation: vi.fn(),
+    getIconAnimator: vi.fn().mockReturnValue(null),
   };
 }
 

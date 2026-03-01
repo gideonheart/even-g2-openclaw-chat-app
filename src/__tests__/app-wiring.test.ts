@@ -3,6 +3,9 @@ import {
   createAppState,
   connectGlasses,
   disconnectGlasses,
+  setGlassesConnecting,
+  setGlassesConnected,
+  setGlassesDisconnected,
   switchSession,
   resolveLogFilter,
   buildSettingsViewModel,
@@ -36,6 +39,9 @@ describe('app-wiring', () => {
 
       expect(state.settings).toEqual(settings);
       expect(state.glassesConnected).toBe(false);
+      expect(state.glassesConnectionState).toBe('disconnected');
+      expect(state.glassesBattery).toBe('-- %');
+      expect(state.glassesDeviceName).toBe('');
       expect(state.activeSession).toBe('');
       expect(state.currentLogFilter).toBe('all');
       expect(state.pendingConfirm).toBeNull();
@@ -43,7 +49,86 @@ describe('app-wiring', () => {
     });
   });
 
-  describe('connectGlasses', () => {
+  // ── New stateful connection API ──
+
+  describe('setGlassesConnecting', () => {
+    it('sets state to connecting and glassesConnected false', () => {
+      const state = createAppState(makeSettings());
+      const { logFn, logs } = makeLogFn();
+
+      const result = setGlassesConnecting(state, logFn);
+
+      expect(state.glassesConnectionState).toBe('connecting');
+      expect(state.glassesConnected).toBe(false);
+      expect(result.connectionState).toBe('connecting');
+      expect(logs).toHaveLength(1);
+      expect(logs[0][1]).toContain('connecting');
+    });
+  });
+
+  describe('setGlassesConnected', () => {
+    it('sets state to connected with device name and battery', () => {
+      const state = createAppState(makeSettings());
+      const { logFn, logs } = makeLogFn();
+
+      const result = setGlassesConnected(state, logFn, 'Even G2', '92 %');
+
+      expect(state.glassesConnectionState).toBe('connected');
+      expect(state.glassesConnected).toBe(true);
+      expect(state.glassesDeviceName).toBe('Even G2');
+      expect(state.glassesBattery).toBe('92 %');
+      expect(result.connectionState).toBe('connected');
+      expect(result.battery).toBe('92 %');
+      expect(result.deviceName).toBe('Even G2');
+      expect(logs).toHaveLength(1);
+      expect(logs[0][1]).toContain('Even G2');
+    });
+
+    it('keeps existing battery if none provided', () => {
+      const state = createAppState(makeSettings());
+      state.glassesBattery = '50 %';
+      const { logFn } = makeLogFn();
+
+      setGlassesConnected(state, logFn, 'Even G2');
+
+      expect(state.glassesBattery).toBe('50 %');
+    });
+  });
+
+  describe('setGlassesDisconnected', () => {
+    it('resets all connection state', () => {
+      const state = createAppState(makeSettings());
+      state.glassesConnectionState = 'connected';
+      state.glassesConnected = true;
+      state.glassesBattery = '85 %';
+      state.glassesDeviceName = 'Even G2';
+      const { logFn, logs } = makeLogFn();
+
+      const result = setGlassesDisconnected(state, logFn, 'user request');
+
+      expect(state.glassesConnectionState).toBe('disconnected');
+      expect(state.glassesConnected).toBe(false);
+      expect(state.glassesBattery).toBe('-- %');
+      expect(state.glassesDeviceName).toBe('');
+      expect(result.connectionState).toBe('disconnected');
+      expect(result.battery).toBe('-- %');
+      expect(logs).toHaveLength(1);
+      expect(logs[0][1]).toContain('user request');
+    });
+
+    it('logs generic message when no reason', () => {
+      const state = createAppState(makeSettings());
+      const { logFn, logs } = makeLogFn();
+
+      setGlassesDisconnected(state, logFn);
+
+      expect(logs[0][1]).toBe('Glasses disconnected');
+    });
+  });
+
+  // ── Deprecated (backward compat) ──
+
+  describe('connectGlasses (deprecated)', () => {
     it('sets state.glassesConnected to true and calls log', () => {
       const state = createAppState(makeSettings());
       const { logFn, logs } = makeLogFn();
@@ -59,7 +144,7 @@ describe('app-wiring', () => {
     });
   });
 
-  describe('disconnectGlasses', () => {
+  describe('disconnectGlasses (deprecated)', () => {
     it('sets state.glassesConnected to false and calls log', () => {
       const state = createAppState(makeSettings());
       state.glassesConnected = true;
@@ -115,7 +200,6 @@ describe('app-wiring', () => {
       state.activeSession = 'current';
       const { logFn } = makeLogFn();
 
-      // Empty string but different from current
       const result = switchSession(state, '', logFn);
 
       expect(result.switched).toBe(false);
@@ -129,7 +213,7 @@ describe('app-wiring', () => {
       });
       const vm = buildSettingsViewModel(settings);
 
-      expect(vm.gatewayDisplay.length).toBeLessThanOrEqual(31); // 30 + ellipsis char
+      expect(vm.gatewayDisplay.length).toBeLessThanOrEqual(31);
       expect(vm.sessionKeyDisplay).not.toContain('sk-secret');
       expect(vm.apiKeyDisplay).not.toContain('ak-secret');
       expect(vm.sttDisplay).toBe('WhisperX');

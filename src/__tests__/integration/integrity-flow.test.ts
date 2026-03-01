@@ -29,7 +29,7 @@ describe('IDB integrity flow integration', () => {
     const onClose = vi.fn();
     db.onclose = onClose;
 
-    forceCloseDatabase(db);
+    forceCloseDatabase(db as any);
 
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -45,7 +45,7 @@ describe('IDB integrity flow integration', () => {
     expect(conv.name).toBe('Before close');
 
     // Close database forcefully
-    forceCloseDatabase(db);
+    forceCloseDatabase(db as any);
 
     // Store operations should fail after closure
     await expect(store.createConversation('After close')).rejects.toThrow();

@@ -12,8 +12,9 @@ import { createLogStore, buildDiagnostics } from './logs';
 import { escHtml } from './utils';
 import {
   createAppState,
-  connectGlasses as connectGlassesPure,
-  disconnectGlasses as disconnectGlassesPure,
+  setGlassesConnecting,
+  setGlassesConnected,
+  setGlassesDisconnected,
   buildSettingsViewModel,
   buildHealthViewModel,
 } from './app-wiring';
@@ -436,21 +437,133 @@ function closeConfirm(): void {
   appState.pendingConfirm = null;
 }
 
-// ── Glasses connection (mock) ────────────────────────────────
+// ── Glasses connection (single stateful button) ──────────────
+// States: disconnected → Connect | connecting → Connecting… | connected → Disconnect
+// Reacts to real bridge:connected / bridge:disconnected events on hubBus.
+// Falls back to mock in dev-mode (no real EvenAppBridge present).
 
-function connectGlasses(): void {
-  const result = connectGlassesPure(appState, addLog);
-  $('gState').innerHTML =
-    '<span class="status-dot status-dot--ok"></span> Connected';
-  $('gBattery').textContent = result.battery;
-  showToast('Glasses connected');
+let bridgeStatusUnsub: (() => void) | null = null;
+
+function renderGlassesButton(): void {
+  const stateEl = $('gState');
+  const btn = document.getElementById('glassesConnBtn') as HTMLButtonElement | null;
+  const cs = appState.glassesConnectionState;
+
+  if (cs === 'connected') {
+    stateEl.innerHTML = `<span class="status-dot status-dot--ok"></span> Connected${appState.glassesDeviceName ? ' — ' + escHtml(appState.glassesDeviceName) : ''}`;
+    $('gBattery').textContent = appState.glassesBattery;
+    if (btn) { btn.textContent = 'Disconnect'; btn.disabled = false; btn.className = 'btn btn--ghost'; }
+    return;
+  }
+
+  if (cs === 'connecting') {
+    stateEl.innerHTML = '<span class="status-dot status-dot--warn"></span> Connecting\u2026';
+    if (btn) { btn.textContent = 'Connecting\u2026'; btn.disabled = true; btn.className = 'btn btn--highlight'; }
+    return;
+  }
+
+  // disconnected
+  stateEl.innerHTML = '<span class="status-dot status-dot--off"></span> Disconnected';
+  $('gBattery').textContent = '-- %';
+  if (btn) { btn.textContent = 'Connect'; btn.disabled = false; btn.className = 'btn btn--highlight'; }
 }
 
-function disconnectGlasses(): void {
-  const result = disconnectGlassesPure(appState, addLog);
-  $('gState').innerHTML =
-    '<span class="status-dot status-dot--off"></span> Disconnected';
-  $('gBattery').textContent = result.battery;
+/** Try to subscribe to real bridge device-status-changed events */
+function ensureBridgeStatusSubscription(): void {
+  if (bridgeStatusUnsub) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bridge = (window as unknown as Record<string, any>).EvenAppBridge;
+  if (!bridge || typeof bridge.onDeviceStatusChanged !== 'function') return;
+
+  bridgeStatusUnsub = bridge.onDeviceStatusChanged((status: any) => {
+    if (status?.isConnected?.()) {
+      const battery = typeof status?.batteryLevel === 'number' ? `${status.batteryLevel} %` : undefined;
+      setGlassesConnected(appState, addLog, 'Even G2', battery);
+      renderGlassesButton();
+    } else if (status?.isDisconnected?.()) {
+      setGlassesDisconnected(appState, addLog, status?.connectType);
+      renderGlassesButton();
+    }
+  });
+  addLog('info', 'Subscribed to bridge device status events');
+}
+
+/** Also listen on hubBus for bridge events relayed via sync bridge */
+function wireHubBusBridgeEvents(): void {
+  hubBus.on('bridge:connected', ({ deviceName }) => {
+    setGlassesConnected(appState, addLog, deviceName);
+    renderGlassesButton();
+  });
+  hubBus.on('bridge:disconnected', ({ reason }) => {
+    setGlassesDisconnected(appState, addLog, reason);
+    renderGlassesButton();
+  });
+}
+
+/** Probe real bridge for current status (one-shot) */
+async function refreshBridgeStatus(): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bridge = (window as unknown as Record<string, any>).EvenAppBridge;
+  if (!bridge || typeof bridge.getDeviceInfo !== 'function') return false;
+
+  try {
+    const info = await bridge.getDeviceInfo();
+    const status = info?.status;
+    const connected = status?.isConnected?.() === true || status?.connectType === 'connected';
+    if (connected) {
+      const battery = typeof status?.batteryLevel === 'number' ? `${status.batteryLevel} %` : undefined;
+      setGlassesConnected(appState, addLog, 'Even G2', battery);
+    } else {
+      setGlassesDisconnected(appState, addLog);
+    }
+    renderGlassesButton();
+    return true;
+  } catch {
+    setGlassesDisconnected(appState, addLog);
+    renderGlassesButton();
+    return false;
+  }
+}
+
+/** Handle the single button tap. Stateful: action depends on current connection state. */
+async function toggleGlassesConnection(): Promise<void> {
+  if (appState.glassesConnectionState === 'connecting') return; // debounce
+
+  // ── DISCONNECT path ──
+  if (appState.glassesConnectionState === 'connected') {
+    setGlassesDisconnected(appState, addLog, 'user request');
+    renderGlassesButton();
+    showToast('Glasses disconnected');
+    return;
+  }
+
+  // ── CONNECT path ──
+  setGlassesConnecting(appState, addLog);
+  renderGlassesButton();
+
+  ensureBridgeStatusSubscription();
+  const hasBridge = await refreshBridgeStatus();
+
+  if (hasBridge) {
+    // Real bridge handled state via refreshBridgeStatus → already rendered
+    // Note: refreshBridgeStatus mutates appState, so re-read (TS narrowing doesn't track mutations)
+    const currentState: string = appState.glassesConnectionState;
+    if (currentState === 'connected') {
+      showToast('Glasses connected');
+    } else {
+      showToast('Glasses not connected — check Even Hub');
+      addLog('warn', 'Bridge reachable but glasses are disconnected');
+    }
+    return;
+  }
+
+  // ── No real bridge: dev-mode mock with realistic delay ──
+  addLog('warn', 'No Even bridge detected — using mock connection (dev mode)');
+  setTimeout(() => {
+    setGlassesConnected(appState, addLog, 'Even G2 (mock)', '87 %');
+    renderGlassesButton();
+    showToast('Mock glasses connected (dev mode)');
+  }, 800);
 }
 
 // ── Simulator launch ─────────────────────────────────────────
@@ -551,9 +664,12 @@ function init(): void {
   importFile?.addEventListener('change', importSettingsAction);
   document.querySelector('[data-action="import-settings"]')?.addEventListener('click', () => importFile.click());
 
-  // Glasses connect/disconnect
-  document.querySelector('[data-action="connect"]')?.addEventListener('click', connectGlasses);
-  document.querySelector('[data-action="disconnect"]')?.addEventListener('click', disconnectGlasses);
+  // Glasses connection (single stateful button bound to bridge events)
+  document.querySelector('[data-action="toggle-glasses"]')?.addEventListener('click', () => {
+    void toggleGlassesConnection();
+  });
+  wireHubBusBridgeEvents();
+  renderGlassesButton();
 
   // Session modal cancel
   document.querySelector('[data-action="close-session-modal"]')?.addEventListener('click', closeSessionModal);
@@ -594,6 +710,9 @@ function init(): void {
   // Initialize displays
   refreshSettingsDisplay();
   refreshHealthDisplay();
+  renderGlassesButton();
+  ensureBridgeStatusSubscription();
+  void refreshBridgeStatus();
   renderLogs();
 }
 
@@ -1025,6 +1144,8 @@ export async function initHub(): Promise<void> {
 
   // Clean up sync bridge and gateway on tab close
   window.addEventListener('beforeunload', () => {
+    bridgeStatusUnsub?.();
+    bridgeStatusUnsub = null;
     hubErrorPresenter?.destroy();
     hubDriftReconciler?.destroy();
     hubSyncMonitor?.destroy();

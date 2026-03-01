@@ -53,6 +53,9 @@ export interface FieldConfig {
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
+/** Glasses bridge connection state for hub UI */
+export type GlassesConnectionState = 'disconnected' | 'connecting' | 'connected';
+
 export interface GatewayHealthState {
   status: ConnectionStatus;
   lastHeartbeat: number | null;

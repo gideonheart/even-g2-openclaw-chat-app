@@ -1,7 +1,7 @@
 // ── Extracted testable app logic (pure functions, no DOM) ────
 
 import { STT_LABELS } from './types';
-import type { AppSettings, LogLevel } from './types';
+import type { AppSettings, LogLevel, GlassesConnectionState } from './types';
 import { maskSecret } from './settings';
 import { truncate } from './utils';
 import type { LogStore } from './logs';
@@ -12,6 +12,9 @@ export function createAppState(initialSettings: AppSettings) {
   return {
     settings: initialSettings,
     glassesConnected: false,
+    glassesConnectionState: 'disconnected' as GlassesConnectionState,
+    glassesBattery: '-- %',
+    glassesDeviceName: '',
     activeSession: '',
     currentLogFilter: 'all' as LogLevel | 'all',
     pendingConfirm: null as (() => void) | null,
@@ -25,23 +28,71 @@ export type AppState = ReturnType<typeof createAppState>;
 
 export type LogFn = (level: LogLevel, msg: string, cid?: string | null) => void;
 
-// ── Glasses connection (pure state mutation) ──────────────
+// ── Glasses connection state machine ──────────────────────
+// Three states: disconnected → connecting → connected (and back).
+// Hub binds these to bridge:connected / bridge:disconnected events.
+// In dev-mode (no real bridge), mock transitions with a delay.
 
+export interface GlassesStateUpdate {
+  connectionState: GlassesConnectionState;
+  battery: string;
+  deviceName: string;
+}
+
+export function setGlassesConnecting(
+  state: AppState,
+  log: LogFn,
+): GlassesStateUpdate {
+  state.glassesConnectionState = 'connecting';
+  state.glassesConnected = false;
+  log('info', 'Glasses connecting...', 'conn-' + Date.now());
+  return { connectionState: 'connecting', battery: state.glassesBattery, deviceName: '' };
+}
+
+export function setGlassesConnected(
+  state: AppState,
+  log: LogFn,
+  deviceName: string,
+  battery?: string,
+): GlassesStateUpdate {
+  state.glassesConnectionState = 'connected';
+  state.glassesConnected = true;
+  state.glassesDeviceName = deviceName;
+  if (battery) state.glassesBattery = battery;
+  log('info', `Glasses connected: ${deviceName}`, 'conn-' + Date.now());
+  return { connectionState: 'connected', battery: state.glassesBattery, deviceName };
+}
+
+export function setGlassesDisconnected(
+  state: AppState,
+  log: LogFn,
+  reason?: string,
+): GlassesStateUpdate {
+  state.glassesConnectionState = 'disconnected';
+  state.glassesConnected = false;
+  state.glassesBattery = '-- %';
+  state.glassesDeviceName = '';
+  log('info', reason ? `Glasses disconnected: ${reason}` : 'Glasses disconnected');
+  return { connectionState: 'disconnected', battery: '-- %', deviceName: '' };
+}
+
+// ── DEPRECATED — kept only for backward compat in tests ──
+
+/** @deprecated Use setGlassesConnected instead */
 export function connectGlasses(
   state: AppState,
   log: LogFn,
 ): { connected: true; battery: string } {
-  state.glassesConnected = true;
-  log('info', 'Glasses connected (mock)', 'conn-' + Date.now());
+  setGlassesConnected(state, log, 'Even G2 (mock)', '87 %');
   return { connected: true, battery: '87 %' };
 }
 
+/** @deprecated Use setGlassesDisconnected instead */
 export function disconnectGlasses(
   state: AppState,
   log: LogFn,
 ): { connected: false; battery: string } {
-  state.glassesConnected = false;
-  log('info', 'Glasses disconnected');
+  setGlassesDisconnected(state, log);
   return { connected: false, battery: '-- %' };
 }
 

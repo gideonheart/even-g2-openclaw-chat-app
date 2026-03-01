@@ -270,7 +270,7 @@ describe('createGestureHandler', () => {
     });
 
     it('emits fsm:watchdog-reset event with previousState and elapsed', () => {
-      const handler = createHandler();
+      createHandler(); // handler created for side-effects (bus subscription)
       const spy = vi.fn();
       bus.on('fsm:watchdog-reset', spy);
 

@@ -231,8 +231,8 @@ export async function boot(): Promise<void> {
     origin: 'glasses',
     getActiveConversationId: () => activeConversationId,
     onHeartbeat: driftReconciler
-      ? (conversationId, remoteCount) => {
-          driftReconciler.handleHeartbeat(conversationId, remoteCount).catch(() => {});
+      ? (conversationId: string, remoteCount: number) => {
+          driftReconciler!.handleHeartbeat(conversationId, remoteCount).catch(() => {});
         }
       : undefined,
   }) : null;
