@@ -11,7 +11,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: None (milestone v1.3 complete)
 Status: Between milestones
-Last activity: 2026-03-01 - Completed quick task 16: Extend LOOPBACK_RE to include 0.0.0.0
+Last activity: 2026-03-01 - Completed quick task 17: Implement robust CORS support for Even WebView Origin: null
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Last activity: 2026-03-01 - Completed quick task 16: Extend LOOPBACK_RE to inclu
 ### Decisions
 
 All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes).
+- [Phase quick-17]: Null origin CORS branch before strict mode; allowNullOrigin defaults false; reflect literal 'null' per RFC 6454
 
 ### Pending Todos
 
@@ -81,9 +82,10 @@ None.
 | 14 | Restart voice gateway with .env CORS_ORIGINS and verify health (readyz + CORS strict) | 2026-03-01 | (ops, no commit) | [14-restart-voice-gateway-and-verify-health-](./quick/14-restart-voice-gateway-and-verify-health-/) |
 | 15 | Self-review commit 4cad75a: localhost detection regex verified, 8 risk scenarios assessed, 0.0.0.0 follow-up recommended | 2026-03-01 | 2b41c8d | [15-self-review-commit-4cad75a-confirm-local](./quick/15-self-review-commit-4cad75a-confirm-local/) |
 | 16 | Extend LOOPBACK_RE to include 0.0.0.0 as non-routable address, add 4 test cases | 2026-03-01 | 3a410ba | [16-extend-loopback-re-to-include-0-0-0-0-ad](./quick/16-extend-loopback-re-to-include-0-0-0-0-ad/) |
+| 17 | Implement robust CORS support for Even WebView Origin: null with allowNullOrigin flag | 2026-03-01 | 7106723 | [17-implement-robust-cors-support-for-even-w](./quick/17-implement-robust-cors-support-for-even-w/) |
 
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed quick task 16 (extend LOOPBACK_RE to include 0.0.0.0)
+Stopped at: Completed quick task 17 tasks 1-2; checkpoint at task 3 (human-verify WebView CORS)
 Resume file: None
