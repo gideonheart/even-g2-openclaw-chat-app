@@ -11,7 +11,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: None (milestone v1.3 complete)
 Status: Between milestones
-Last activity: 2026-03-01 - Completed quick task 14: Restart voice gateway with .env CORS_ORIGINS and verify health
+Last activity: 2026-03-01 - Completed quick task 15: Self-review commit 4cad75a localhost detection logic
 
 ## Performance Metrics
 
@@ -79,9 +79,10 @@ None.
 | 12 | Self-review of tap-pipeline fix 6fe259e: isEventCapture safeguard assertions on hide/wake paths | 2026-03-01 | aaf5017 | [12-self-review-the-tap-pipeline-fix-commit-](./quick/12-self-review-the-tap-pipeline-fix-commit-/) |
 | 13 | Switch health check /healthz to /readyz, enrich health view with readyz detail, rename Gateway URL label | 2026-03-01 | dcbf44a | [13-update-health-section-rename-gateway-to-](./quick/13-update-health-section-rename-gateway-to-/) |
 | 14 | Restart voice gateway with .env CORS_ORIGINS and verify health (readyz + CORS strict) | 2026-03-01 | (ops, no commit) | [14-restart-voice-gateway-and-verify-health-](./quick/14-restart-voice-gateway-and-verify-health-/) |
+| 15 | Self-review commit 4cad75a: localhost detection regex verified, 8 risk scenarios assessed, 0.0.0.0 follow-up recommended | 2026-03-01 | 2b41c8d | [15-self-review-commit-4cad75a-confirm-local](./quick/15-self-review-commit-4cad75a-confirm-local/) |
 
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed quick task 14 (restart voice gateway with .env CORS_ORIGINS, verify readyz + CORS strict mode)
+Stopped at: Completed quick task 15 (self-review commit 4cad75a localhost detection logic)
 Resume file: None
