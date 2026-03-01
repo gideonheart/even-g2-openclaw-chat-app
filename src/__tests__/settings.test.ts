@@ -206,6 +206,18 @@ describe('settings', () => {
       expect(isLocalhostUrl('http://[::1]:4400')).toBe(true);
     });
 
+    it('returns true for http://0.0.0.0:4400', () => {
+      expect(isLocalhostUrl('http://0.0.0.0:4400')).toBe(true);
+    });
+
+    it('returns true for http://0.0.0.0 (no port)', () => {
+      expect(isLocalhostUrl('http://0.0.0.0')).toBe(true);
+    });
+
+    it('returns true for http://0.0.0.0:4400/', () => {
+      expect(isLocalhostUrl('http://0.0.0.0:4400/')).toBe(true);
+    });
+
     it('returns true for case-insensitive LOCALHOST', () => {
       expect(isLocalhostUrl('http://LOCALHOST:4400')).toBe(true);
     });
@@ -273,6 +285,13 @@ describe('settings', () => {
     it('returns warning for 127.0.0.1 on real device', () => {
       (window as any).flutter_inappwebview = {};
       const warning = localhostWarning('http://127.0.0.1:4400');
+      expect(warning).toContain('localhost');
+      expect(warning).toContain('phone');
+    });
+
+    it('returns warning for 0.0.0.0 on real device', () => {
+      (window as any).flutter_inappwebview = {};
+      const warning = localhostWarning('http://0.0.0.0:4400');
       expect(warning).toContain('localhost');
       expect(warning).toContain('phone');
     });
