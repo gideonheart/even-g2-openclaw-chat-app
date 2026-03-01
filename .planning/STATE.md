@@ -9,16 +9,16 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 16.5-integration-hardening
+Phase: 17-fsm-gateway-resilience
 Current Plan: 2 of 2
-Status: Phase 16.5 complete
-Last activity: 2026-02-28 - Completed 16.5-02: Hub integration hardening (reopenDB handle propagation, storage health emission, eviction notification, driftReconciler cleanup)
+Status: Plan 17-02 complete
+Last activity: 2026-03-01 - Completed 17-02: Gateway error classification (mid-stream detection via receivedAnyData, prevents duplicate retries on partial SSE responses)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 39 (Phases 1-16.5 + Phase 13 gap closure)
-- Total tests: 436 (all passing)
+- Total plans completed: 40 (Phases 1-17 + Phase 13 gap closure)
+- Total tests: 441 (all passing)
 - Total LOC: ~10,800 TypeScript (66 files)
 - Total execution time: ~5.2 hours
 
@@ -43,6 +43,7 @@ Last activity: 2026-02-28 - Completed 16.5-02: Hub integration hardening (reopen
 | 15 | 2/2 (write verification + error escalation + partial save + hub error escalation + partial response preservation) | ~19m | 9.5m |
 | 16 | 2/2 (sync monitor + drift reconciler + countMessages TDD + boot wiring) | ~8m | 4m |
 | 16.5 | 2/2 (glasses + hub integration hardening: reopenDB propagation + eviction + health + cleanup) | ~12m | 6m |
+| 17 | 1/2 (gateway error classification: mid-stream detection + receivedAnyData flag) | ~2m | 2m |
 
 ## Accumulated Context
 
@@ -124,6 +125,10 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - Hub reopenDB handler recreates only ConversationStore (not SessionManager) -- full recreation too complex for gap closure (16.5-02)
 - Hub uses addLog + showToast for persistence notifications (no event bus, deferred to Phase 18) (16.5-02)
 - DriftReconciler type imported as DriftReconcilerType alias and stored in module-level hubDriftReconciler for beforeunload cleanup (16.5-02)
+- streamState object shared via closure between streamSSEResponse and handleTurnError catch block (17-02)
+- receivedAnyData defaults to false in handleTurnError for backward compatibility (17-02)
+- Mid-stream errors emit 'Response interrupted' message, distinct from connection error messages (17-02)
+- 'mid-stream' return value falls through retry logic naturally (no explicit skip needed) (17-02)
 
 ### Pending Todos
 
@@ -150,6 +155,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-28
-Stopped at: Completed 16.5-02-PLAN.md (hub integration hardening -- Phase 16.5 complete)
+Last session: 2026-03-01
+Stopped at: Completed 17-02-PLAN.md (gateway error classification -- mid-stream detection via receivedAnyData)
 Resume file: None
