@@ -9,18 +9,18 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 17-fsm-gateway-resilience
+Phase: 18-error-ux
 Current Plan: 2 of 2
-Status: Phase 17 complete
-Last activity: 2026-03-01 - Completed 17-01: FSM watchdog timer (45s auto-reset for stuck transient states, response_delta keepalive, fsm:watchdog-reset event)
+Status: Phase 18 in progress (Plan 02 complete)
+Last activity: 2026-03-01 - Completed 18-02: Hub error presenter with toast/banner, health indicator pure functions, storage+sync health page rows
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 41 (Phases 1-17 + Phase 13 gap closure)
-- Total tests: 445 (all passing)
-- Total LOC: ~10,800 TypeScript (66 files)
-- Total execution time: ~5.2 hours
+- Total plans completed: 42 (Phases 1-17 + Phase 13 gap closure + 18-02)
+- Total tests: 484 (all passing)
+- Total LOC: ~10,900 TypeScript (68 files)
+- Total execution time: ~5.3 hours
 
 **By Phase:**
 
@@ -44,6 +44,7 @@ Last activity: 2026-03-01 - Completed 17-01: FSM watchdog timer (45s auto-reset 
 | 16 | 2/2 (sync monitor + drift reconciler + countMessages TDD + boot wiring) | ~8m | 4m |
 | 16.5 | 2/2 (glasses + hub integration hardening: reopenDB propagation + eviction + health + cleanup) | ~12m | 6m |
 | 17 | 2/2 (FSM watchdog timer + gateway error classification) | ~5m | 2.5m |
+| 18 | 1/2 (hub error presenter + health indicator) | ~6m | 6m |
 
 ## Accumulated Context
 
@@ -132,6 +133,9 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - receivedAnyData defaults to false in handleTurnError for backward compatibility (17-02)
 - Mid-stream errors emit 'Response interrupted' message, distinct from connection error messages (17-02)
 - 'mid-stream' return value falls through retry logic naturally (no explicit skip needed) (17-02)
+- Hub event bus (hubBus) created at module level for error presenter wiring -- hub previously had no bus (18-02)
+- showBanner uses last-writer-wins (always replaces) rather than worst-severity-only filtering (18-02)
+- Hub error presenter subscribes to persistence:error and fsm:watchdog-reset only, not persistence:warning (18-02)
 
 ### Pending Todos
 
@@ -159,5 +163,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 17-01-PLAN.md (FSM watchdog timer -- Phase 17 complete)
+Stopped at: Completed 18-02-PLAN.md (Hub error presenter + health indicator)
 Resume file: None
