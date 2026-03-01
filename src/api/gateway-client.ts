@@ -158,7 +158,11 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
   // ── Shared SSE response streamer ───────────────────────────
   // Both sendVoiceTurn and sendTextTurn use the same SSE parsing loop.
 
-  async function streamSSEResponse(resp: Response, timeoutId: ReturnType<typeof setTimeout>): Promise<void> {
+  async function streamSSEResponse(
+    resp: Response,
+    timeoutId: ReturnType<typeof setTimeout>,
+    streamState: { receivedAnyData: boolean },
+  ): Promise<void> {
     const reader = resp.body?.getReader();
     if (!reader) {
       emitChunk({ type: 'error', error: 'No response body stream' });
@@ -173,6 +177,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
+      streamState.receivedAnyData = true;
 
       // Process complete SSE events (terminated by double newline)
       const parts = buffer.split('\n\n');
@@ -213,7 +218,8 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
   function handleTurnError(
     err: unknown,
     timeoutId: ReturnType<typeof setTimeout>,
-  ): 'abort' | 'timeout' | 'retry' | 'fatal' {
+    receivedAnyData: boolean = false,
+  ): 'abort' | 'timeout' | 'retry' | 'mid-stream' | 'fatal' {
     clearTimeout(timeoutId);
 
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -230,6 +236,13 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
       setStatus('error');
       return 'timeout';
+    }
+
+    // Mid-stream failure: data was being received, do NOT retry (Pitfall P7)
+    if (receivedAnyData) {
+      emitChunk({ type: 'error', error: 'Response interrupted \u2014 tap to ask again' });
+      setStatus('error');
+      return 'mid-stream';
     }
 
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -270,6 +283,8 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     formData.append('sessionId', request.sessionId);
     formData.append('sttProvider', request.sttProvider);
 
+    const streamState = { receivedAnyData: false };
+
     try {
       const resp = await fetch(`${settings.gatewayUrl}/voice/turn`, {
         method: 'POST',
@@ -292,9 +307,9 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       setStatus('connected');
       health.reconnectAttempts = 0;
 
-      await streamSSEResponse(resp, timeoutId);
+      await streamSSEResponse(resp, timeoutId, streamState);
     } catch (err: unknown) {
-      const result = handleTurnError(err, timeoutId);
+      const result = handleTurnError(err, timeoutId, streamState.receivedAnyData);
       if (result === 'retry') {
         health.reconnectAttempts++;
         setStatus('connecting');
@@ -327,6 +342,8 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     const combinedSignal = abortController.signal;
     setStatus('connecting');
 
+    const streamState = { receivedAnyData: false };
+
     try {
       const resp = await fetch(`${settings.gatewayUrl}/text/turn`, {
         method: 'POST',
@@ -350,9 +367,9 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       setStatus('connected');
       health.reconnectAttempts = 0;
 
-      await streamSSEResponse(resp, timeoutId);
+      await streamSSEResponse(resp, timeoutId, streamState);
     } catch (err: unknown) {
-      const result = handleTurnError(err, timeoutId);
+      const result = handleTurnError(err, timeoutId, streamState.receivedAnyData);
       if (result === 'retry') {
         health.reconnectAttempts++;
         setStatus('connecting');
