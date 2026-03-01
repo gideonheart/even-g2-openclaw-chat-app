@@ -287,6 +287,124 @@ describe('gateway-client', () => {
       expect(chunks).toHaveLength(0);
       expect(client.getHealth().reconnectAttempts).toBe(0);
     });
+
+    describe('mid-stream error classification', () => {
+      it('does NOT retry when reader throws after receiving data', async () => {
+        let readCount = 0;
+        const encoder = new TextEncoder();
+        globalThis.fetch = vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          body: new ReadableStream({
+            pull(controller) {
+              readCount++;
+              if (readCount === 1) {
+                controller.enqueue(encoder.encode('data: {"type":"response_delta","text":"hi"}\n\n'));
+              } else {
+                controller.error(new Error('Connection reset'));
+              }
+            },
+          }),
+        });
+
+        const client = createGatewayClient({
+          maxReconnectAttempts: 3,
+          reconnectBaseDelayMs: 1,
+        });
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        // Should emit the delta chunk + the mid-stream error chunk
+        expect(chunks.some((c) => c.type === 'response_delta')).toBe(true);
+        const errorChunks = chunks.filter((c) => c.type === 'error');
+        expect(errorChunks).toHaveLength(1);
+        expect(errorChunks[0].error).toContain('interrupted');
+
+        // fetch called only once -- no retry
+        expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      it('sets status to error on mid-stream failure', async () => {
+        let readCount = 0;
+        const encoder = new TextEncoder();
+        globalThis.fetch = vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          body: new ReadableStream({
+            pull(controller) {
+              readCount++;
+              if (readCount === 1) {
+                controller.enqueue(encoder.encode('data: {"type":"response_start"}\n\n'));
+              } else {
+                controller.error(new Error('Stream broken'));
+              }
+            },
+          }),
+        });
+
+        const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
+        const statuses: string[] = [];
+        client.onStatusChange((s) => statuses.push(s));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        // Final status should be error
+        expect(statuses[statuses.length - 1]).toBe('error');
+      });
+
+      it('does NOT increment reconnectAttempts on mid-stream failure', async () => {
+        let readCount = 0;
+        const encoder = new TextEncoder();
+        globalThis.fetch = vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          body: new ReadableStream({
+            pull(controller) {
+              readCount++;
+              if (readCount === 1) {
+                controller.enqueue(encoder.encode('data: {"type":"response_delta","text":"data"}\n\n'));
+              } else {
+                controller.error(new Error('Connection lost'));
+              }
+            },
+          }),
+        });
+
+        const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        expect(client.getHealth().reconnectAttempts).toBe(0);
+      });
+
+      it('still retries when fetch rejects before any response (connection error)', async () => {
+        let callCount = 0;
+        const sseData = ['data: {"type":"response_end"}\n\n'];
+        globalThis.fetch = vi.fn().mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) return Promise.reject(new Error('Network failure'));
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            body: createSSEStream(sseData),
+          });
+        });
+
+        const client = createGatewayClient({
+          maxReconnectAttempts: 3,
+          reconnectBaseDelayMs: 1,
+        });
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        // Should have retried (2 calls total)
+        expect(callCount).toBe(2);
+      });
+    });
   });
 
   describe('sendTextTurn', () => {
@@ -418,6 +536,41 @@ describe('gateway-client', () => {
       expect(fetchCount).toBe(2);
       // The first request's signal should have been aborted by the second call
       expect(abortSignals[0].aborted).toBe(true);
+    });
+
+    it('does NOT retry mid-stream failures for text turns', async () => {
+      let readCount = 0;
+      const encoder = new TextEncoder();
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        body: new ReadableStream({
+          pull(controller) {
+            readCount++;
+            if (readCount === 1) {
+              controller.enqueue(encoder.encode('data: {"type":"response_delta","text":"hi"}\n\n'));
+            } else {
+              controller.error(new Error('Stream broken'));
+            }
+          },
+        }),
+      });
+
+      const client = createGatewayClient({
+        maxReconnectAttempts: 3,
+        reconnectBaseDelayMs: 1,
+      });
+      const chunks: VoiceTurnChunk[] = [];
+      client.onChunk((c) => chunks.push(c));
+
+      await client.sendTextTurn(testSettings, testTextRequest);
+
+      // Mid-stream error emits "interrupted" message, no retry
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks).toHaveLength(1);
+      expect(errorChunks[0].error).toContain('interrupted');
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
   });
 });
