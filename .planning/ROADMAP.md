@@ -140,7 +140,8 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
   - Wire hubBus.emit('persistence:error') in hub error paths (IDB close, save failure, eviction) so hub error presenter activates
   - Recreate driftReconciler + syncMonitor with new IDB handle after reopenDB() (matching glasses-side 16.5-01 pattern)
   - Emit persistence:health to hubBus after getQuota() + add computeStorageHealth() to refreshHealthDisplay() for storage health dot
-- **Plans:** [To be planned]
+- **Plans:** 1 plan
+  - [ ] 18.5-01-PLAN.md — Wire hubBus.emit persistence:error in error paths, recreate sync modules after reopenDB, emit persistence:health + storage dot in refreshHealthDisplay (Wave 1)
 
 ### Phase 19: Test Infrastructure & Resilience Coverage
 - **Goal:** Comprehensive failure scenario testing using existing tools -- test helpers for IDB failures and sync message loss, integration tests for all resilience features.
@@ -172,7 +173,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 | 16.5. Integration Hardening | 2/2 | Complete    | 2026-02-28 | -- |
 | 17. FSM & Gateway Resilience | 2/2 | Complete    | 2026-03-01 | -- |
 | 18. Error UX | 2/2 | Complete    | 2026-03-01 | -- |
-| 18.5. Hub Integration Wiring | v1.3 | 0/? | Not Started | -- |
+| 18.5. Hub Integration Wiring | v1.3 | 0/1 | Planned | -- |
 | 19. Test Infrastructure & Resilience Coverage | v1.3 | 0/? | Not Started | -- |
 
 ---
