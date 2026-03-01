@@ -9,16 +9,16 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 18.5-hub-integration-wiring
-Current Plan: 1 of 1
-Status: Phase 18.5 complete
-Last activity: 2026-03-01 - Completed 18.5-01: Hub integration wiring -- 5 error paths emit persistence:error, IDB module recreation after reopenDB, storage health dot wired (Phase 18.5 fully complete)
+Phase: 19-test-infrastructure-resilience-coverage
+Current Plan: 1 of 3
+Status: Plan 01 complete
+Last activity: 2026-03-01 - Completed 19-01: Failure injection helpers (createFailingStore, createQuotaExceededStore, createLossySyncBridge) + IDB integrity flow integration tests (5 passing, 489 total)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 44 (Phases 1-18 + Phase 13 gap closure + Phase 18.5 hub integration wiring)
-- Total tests: 484 (all passing)
+- Total plans completed: 45 (Phases 1-18 + Phase 13 gap closure + Phase 18.5 hub integration wiring + Phase 19 plan 01)
+- Total tests: 489 (all passing)
 - Total LOC: ~10,900 TypeScript (68 files)
 - Total execution time: ~5.3 hours
 
@@ -46,6 +46,7 @@ Last activity: 2026-03-01 - Completed 18.5-01: Hub integration wiring -- 5 error
 | 17 | 2/2 (FSM watchdog timer + gateway error classification) | ~5m | 2.5m |
 | 18 | 2/2 (glasses error presenter + hub error presenter + health indicator) | ~15m | 7.5m |
 | 18.5 | 1/1 (hub integration wiring: error bus, IDB module recreation, storage health) | ~5m | 5m |
+| 19 | 1/3 (failure injection helpers + IDB integrity flow integration tests) | ~2m | 2m |
 
 ## Accumulated Context
 
@@ -145,6 +146,10 @@ All decisions logged in PROJECT.md Key Decisions table (22 entries with outcomes
 - loadLiveConversation() moved to last call in reopenDB success handler after sync module recreation (18.5-01)
 - cachedQuota stored at module level so refreshHealthDisplay stays synchronous -- quota doesn't change rapidly within a session (18.5-01)
 - persistence:health emitted after subscriber registration in initHub to guarantee subscriber receives initial quota (18.5-01)
+- failure-helpers.ts in src/__tests__/helpers/ (no .test.ts suffix) to avoid Vitest auto-execution via include pattern (19-01)
+- createFailingStore wraps only addMessage and createConversation as write paths; updateConversation passes through (19-01)
+- createLossySyncBridge uses bind() for onMessage/destroy to preserve realBridge this context (19-01)
+- Integration tests compose real modules (openDB, createConversationStore, createIntegrityChecker) with only failure injection point wrapped (19-01)
 
 ### Pending Todos
 
@@ -172,5 +177,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 18.5-01-PLAN.md (Hub integration wiring -- Phase 18.5 fully complete)
+Stopped at: Completed 19-01-PLAN.md (Failure injection helpers + IDB integrity flow integration tests -- Plan 01 of Phase 19 complete)
 Resume file: None
