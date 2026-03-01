@@ -1,4 +1,4 @@
-import type { AppSettings, LogLevel, VoiceTurnChunk } from './types';
+import type { AppSettings, AppEventMap, LogLevel, VoiceTurnChunk } from './types';
 import {
   loadSettings,
   saveSettings as persistSettings,
@@ -26,6 +26,10 @@ import { createDriftReconciler } from './sync/drift-reconciler';
 import type { SyncBridge, SyncMonitor as SyncMonitorType, DriftReconciler as DriftReconcilerType } from './sync/sync-types';
 import { createGatewayClient } from './api/gateway-client';
 import type { GatewayClient } from './api/gateway-client';
+import { createHubErrorPresenter } from './hub-error-presenter';
+import type { HubErrorPresenter } from './hub-error-presenter';
+import { computeStorageHealth, computeSyncHealth } from './health-indicator';
+import { createEventBus } from './events';
 
 // ── App state ────────────────────────────────────────────────
 
@@ -42,6 +46,11 @@ let hubSyncMonitor: SyncMonitorType | null = null;
 let hubDriftReconciler: DriftReconcilerType | null = null;
 let hubConversationStore: ConversationStore | null = null;
 
+// ── Hub event bus (Phase 18) ─────────────────────────────────
+
+const hubBus = createEventBus<AppEventMap>();
+let hubErrorPresenter: HubErrorPresenter | null = null;
+
 // ── Hub gateway client for text turns ────────────────────────
 
 let hubGateway: GatewayClient | null = null;
@@ -56,12 +65,24 @@ function $(id: string): HTMLElement {
 
 // ── Toast ────────────────────────────────────────────────────
 
-function showToast(msg: string): void {
+function showToast(msg: string, durationMs = 2500): void {
   const container = $('toastContainer');
   $('toastText').textContent = msg;
   container.classList.remove('hidden');
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => container.classList.add('hidden'), 2500);
+  toastTimer = setTimeout(() => container.classList.add('hidden'), durationMs);
+}
+
+// ── Error banner ──────────────────────────────────────────────
+
+function showBanner(msg: string, severity: 'warn' | 'err'): void {
+  $('errorBannerText').textContent = msg;
+  const banner = $('errorBanner');
+  banner.className = `error-banner error-banner--${severity}`;
+}
+
+function hideBanner(): void {
+  $('errorBanner').classList.add('hidden');
 }
 
 // ── Logs ─────────────────────────────────────────────────────
@@ -116,6 +137,16 @@ function refreshHealthDisplay(): void {
 
   setHealthDot('hSessionDot', vm.session.dot);
   $('hSessionStatus').textContent = vm.session.label;
+
+  // Phase 18: Sync health
+  const stats = hubSyncMonitor?.getStats();
+  const syncSnap = computeSyncHealth(
+    hubSyncMonitor?.isAlive() ?? true,
+    stats?.heartbeatGaps ?? 0,
+    stats?.lastReceivedAt ?? 0,
+  );
+  setHealthDot('hSyncDot', syncSnap.dot);
+  $('hSyncStatus').textContent = syncSnap.label;
 }
 
 function setHealthDot(id: string, state: string): void {
@@ -933,6 +964,24 @@ export async function initHub(): Promise<void> {
     await loadLiveConversation();
   }
 
+  // Phase 18: Wire hub error presenter
+  hubErrorPresenter = createHubErrorPresenter({
+    bus: hubBus,
+    showToast,
+    showBanner,
+    hideBanner,
+  });
+
+  // Phase 18: Dismiss button for error banner
+  $('errorBannerDismiss').addEventListener('click', () => hideBanner());
+
+  // Phase 18: persistence:health event updates storage health row
+  hubBus.on('persistence:health', (quota) => {
+    const snap = computeStorageHealth(quota.usagePercent, quota.usageBytes, quota.quotaBytes, quota.isPersisted);
+    setHealthDot('hStorageDot', snap.dot);
+    $('hStorageStatus').textContent = snap.label;
+  });
+
   // Create hub gateway client for text turns
   hubGateway = createGatewayClient();
   hubGateway.onChunk(handleHubChunk);
@@ -954,6 +1003,7 @@ export async function initHub(): Promise<void> {
 
   // Clean up sync bridge and gateway on tab close
   window.addEventListener('beforeunload', () => {
+    hubErrorPresenter?.destroy();
     hubDriftReconciler?.destroy();
     hubSyncMonitor?.destroy();
     hubSyncBridge?.destroy();

@@ -171,10 +171,29 @@
       padding: 2px 6px; border-radius: 3px; text-transform: uppercase;
       font-weight: var(--weight-regular);
     }
+
+    /* ── Error banner ────────────────────────────────── */
+    .error-banner { position: sticky; top: 0; z-index: 150; display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; gap: 8px; background: #7b2d2d; color: #fff; font-size: var(--text-body-base-size); }
+    .error-banner--warn { background: #7b5e2d; }
+    .error-banner--err { background: #7b2d2d; }
+    .error-banner__content { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .error-banner__text { flex: 1; min-width: 0; word-break: break-word; }
+    .error-banner__actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .error-banner__dismiss { border: none; background: transparent; color: #fff; cursor: pointer; padding: 4px; font-size: 16px; }
   </style>
 </head>
 <body>
   <div id="app">
+    <!-- ── Error banner ───────────────────────────────── -->
+    <div id="errorBanner" class="error-banner hidden">
+      <div class="error-banner__content">
+        <span id="errorBannerText" class="error-banner__text"></span>
+      </div>
+      <div class="error-banner__actions">
+        <button id="errorBannerDismiss" class="error-banner__dismiss" aria-label="Dismiss">&#x2715;</button>
+      </div>
+    </div>
+
     <!-- ── Top bar ────────────────────────────────────── -->
     <header class="topbar">
       <h1 class="topbar__title">Even OpenClaw</h1>
@@ -324,6 +343,20 @@
             <div class="list-item__content">
               <div class="list-item__title">Active session</div>
               <div class="list-item__subtitle" id="hSessionStatus">No session</div>
+            </div>
+          </div>
+          <div class="list-item" id="hStorage">
+            <span class="list-item__leading"><span class="status-dot status-dot--off" id="hStorageDot"></span></span>
+            <div class="list-item__content">
+              <div class="list-item__title">Storage</div>
+              <div class="list-item__subtitle" id="hStorageStatus">Unknown</div>
+            </div>
+          </div>
+          <div class="list-item" id="hSync">
+            <span class="list-item__leading"><span class="status-dot status-dot--off" id="hSyncDot"></span></span>
+            <div class="list-item__content">
+              <div class="list-item__title">Sync</div>
+              <div class="list-item__subtitle" id="hSyncStatus">No heartbeat</div>
             </div>
           </div>
         </div>
