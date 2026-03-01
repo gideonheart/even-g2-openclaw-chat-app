@@ -5,7 +5,7 @@
 - ✅ **v1.0 MVP** — Phases 1-5 (shipped 2026-02-28)
 - ✅ **v1.1 Integration** — Phases 6-8 (shipped 2026-02-28)
 - ✅ **v1.2 Conversation Intelligence & Hub Interaction** — Phases 9-13 (shipped 2026-02-28)
-- **v1.3 Resilience & Error UX** — Phases 14-19 (active)
+- **v1.3 Resilience & Error UX** — Phases 14-19 incl. 16.5, 18.5 (active)
 
 ## Phases
 
@@ -59,6 +59,9 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
                          |
                          v
                   Phase 18 (Error UX)
+                         |
+                         v
+              Phase 18.5 (Hub Integration Wiring)
                          |
                          v
                   Phase 19 (Tests)
@@ -127,10 +130,22 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
   - [ ] 18-01-PLAN.md — Glasses error presenter: status bar auto-clear, icon animator pause/resume, RES-16/RES-19 (Wave 1)
   - [ ] 18-02-PLAN.md — Hub error display + health page: toast/banner, health-indicator pure functions, hStorage + hSync rows (Wave 1)
 
+### Phase 18.5: Hub Integration Wiring
+- **Goal:** Make hub-side error presenter, reopenDB handle propagation, and storage health dot fully functional -- closing 3 integration gaps and 2 broken E2E flows identified by milestone audit.
+- **Requirements:** [RES-17, RES-11, RES-15, RES-02, RES-18 (integration fixes for satisfied requirements)]
+- **Depends on:** Phase 18 (completed)
+- **Blocks:** Phase 19 (tests should exercise fully wired integration)
+- **Gap Closure:** Closes 3 integration issues + 2 broken flows from v1.3 audit
+- **Key deliverables:**
+  - Wire hubBus.emit('persistence:error') in hub error paths (IDB close, save failure, eviction) so hub error presenter activates
+  - Recreate driftReconciler + syncMonitor with new IDB handle after reopenDB() (matching glasses-side 16.5-01 pattern)
+  - Emit persistence:health to hubBus after getQuota() + add computeStorageHealth() to refreshHealthDisplay() for storage health dot
+- **Plans:** [To be planned]
+
 ### Phase 19: Test Infrastructure & Resilience Coverage
 - **Goal:** Comprehensive failure scenario testing using existing tools -- test helpers for IDB failures and sync message loss, integration tests for all resilience features.
 - **Requirements:** [RES-21]
-- **Depends on:** Phases 14-18 (tests exercise all resilience features)
+- **Depends on:** Phases 14-18.5 (tests exercise all resilience features including hub integration wiring)
 - **Key deliverables:** failure-helpers.ts, integration test suite for integrity/sync/error scenarios
 - **Plans:** [To be planned]
 
@@ -157,6 +172,7 @@ Phase 15 (Write)    Phase 16 (Sync)    Phase 17 (FSM/GW)
 | 16.5. Integration Hardening | 2/2 | Complete    | 2026-02-28 | -- |
 | 17. FSM & Gateway Resilience | 2/2 | Complete    | 2026-03-01 | -- |
 | 18. Error UX | 2/2 | Complete    | 2026-03-01 | -- |
+| 18.5. Hub Integration Wiring | v1.3 | 0/? | Not Started | -- |
 | 19. Test Infrastructure & Resilience Coverage | v1.3 | 0/? | Not Started | -- |
 
 ---
