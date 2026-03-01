@@ -11,13 +11,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: None (milestone v1.3 complete)
 Status: Between milestones
-Last activity: 2026-03-01 - Completed quick task 12: Self-review of tap-pipeline fix commit 6fe259e
+Last activity: 2026-03-01 - Completed quick task 13: Switch health check /healthz to /readyz, enrich health view with readyz detail
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 46 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure)
-- Total tests: 528 (all passing)
+- Total tests: 549 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -77,9 +77,10 @@ None.
 | 9 | Review 5 hotfix commits for risks/edge cases, resolve debug doc, add z-index reference | 2026-03-01 | 4fc26fc | [9-review-hotfix-commits-for-risks-edge-cas](./quick/9-review-hotfix-commits-for-risks-edge-cas/) |
 | 11 | Self-review of commit e89ede3: dual-boot fix strengths, 6 real-device risk assumptions, test recommendation | 2026-03-01 | 97cf3a4 | [11-self-review-commit-e89ede3-what-did-you-](./quick/11-self-review-commit-e89ede3-what-did-you-/) |
 | 12 | Self-review of tap-pipeline fix 6fe259e: isEventCapture safeguard assertions on hide/wake paths | 2026-03-01 | aaf5017 | [12-self-review-the-tap-pipeline-fix-commit-](./quick/12-self-review-the-tap-pipeline-fix-commit-/) |
+| 13 | Switch health check /healthz to /readyz, enrich health view with readyz detail, rename Gateway URL label | 2026-03-01 | dcbf44a | [13-update-health-section-rename-gateway-to-](./quick/13-update-health-section-rename-gateway-to-/) |
 
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed quick task 12 (self-review of tap-pipeline fix commit 6fe259e)
+Stopped at: Completed quick task 13 (switch health check /healthz to /readyz with readyz detail enrichment)
 Resume file: None
