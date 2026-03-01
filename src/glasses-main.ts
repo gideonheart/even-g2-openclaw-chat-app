@@ -1,6 +1,13 @@
 // ── Glasses runtime boot ────────────────────────────────────
 // Initializes all modules in strict Layer 0-5 dependency order.
 // Only runs inside Even App WebView (detected by main.ts router).
+//
+// Lifecycle: The Even Hub SDK reuses the same WebView across glasses
+// view open/close cycles. When the view is hidden (visibilitychange
+// -> hidden), all modules are destroyed to free resources. When the
+// view becomes visible again, boot() re-runs to reinitialize everything.
+// This ensures gestures, display, and persistence are always live when
+// the glasses view is active.
 
 import { createEventBus } from './events';
 import type { AppEventMap } from './types';
@@ -28,7 +35,24 @@ import { createSessionManager } from './sessions';
 import { createMenuController } from './menu/menu-controller';
 import { createGlassesErrorPresenter } from './display/error-presenter';
 
+// ── Module-level lifecycle state ────────────────────────────
+// Tracks cleanup callback and prevents duplicate listener registration
+// across multiple boot()/cleanup() cycles.
+let _activeCleanup: (() => void) | null = null;
+let _lifecycleRegistered = false;
+let _booting = false;
+
+/** Exported for tests: reset module-level lifecycle state. */
+export function _resetLifecycleState(): void {
+  _activeCleanup = null;
+  _lifecycleRegistered = false;
+  _booting = false;
+}
+
 export async function boot(): Promise<void> {
+  // Guard against concurrent boot calls (e.g. rapid hidden->visible transitions)
+  if (_booting) return;
+  _booting = true;
   // Layer 0: Foundation (no dependencies)
   const bus = createEventBus<AppEventMap>();
   const settings = loadSettings();
@@ -463,7 +487,8 @@ export async function boot(): Promise<void> {
   }
 
   // ── Lifecycle cleanup ───────────────────────────────────────
-  // Destroy all modules in reverse init order when the WebView closes.
+  // Destroy all modules in reverse init order when the WebView is hidden.
+  // On return to visible, boot() is re-called to reinitialize everything.
   // Double-call guard prevents duplicate teardown when both
   // visibilitychange and pagehide fire in sequence.
 
@@ -490,15 +515,34 @@ export async function boot(): Promise<void> {
     bus.clear();                 // clear all remaining subscriptions
   }
 
-  // Only register lifecycle cleanup in glasses mode (not devMode).
+  // Store cleanup reference at module level for visibility handler
+  _activeCleanup = cleanup;
+  _booting = false;
+
+  // Only register lifecycle handlers in glasses mode (not devMode).
   // In browser dev mode, tab switching fires visibilitychange with 'hidden',
   // which would destroy the voice loop during normal development.
-  if (!devMode) {
+  // Listeners are registered ONCE (module-level guard) to prevent duplicates
+  // across multiple boot()/cleanup() cycles.
+  if (!devMode && !_lifecycleRegistered) {
+    _lifecycleRegistered = true;
+
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
-        cleanup();
+        _activeCleanup?.();
+        _activeCleanup = null;
+      } else if (document.visibilityState === 'visible' && !_activeCleanup) {
+        // Previously cleaned up -- reboot to restore all modules.
+        // The Even Hub SDK reuses the same WebView, so without reboot
+        // all gesture handling, display, and menu remain dead.
+        boot().catch((err) => {
+          console.error('[glasses-main] Reboot on visibility change failed:', err);
+        });
       }
     });
-    window.addEventListener('pagehide', cleanup);
+    window.addEventListener('pagehide', () => {
+      _activeCleanup?.();
+      _activeCleanup = null;
+    });
   }
 }
