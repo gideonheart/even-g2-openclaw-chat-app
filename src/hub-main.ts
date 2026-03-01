@@ -625,11 +625,16 @@ function init(): void {
   void refreshBridgeStatus();
   renderGlassesStatus();
 
-  // Session modal cancel
-  document.querySelector('[data-action="close-session-modal"]')?.addEventListener('click', closeSessionModal);
-
-  // Confirm modal — defensive: ensure hidden on boot (Even SDK .modal{display:flex}
+  // Session modal — defensive: ensure hidden on boot (Even SDK .modal{display:flex}
   // can leak through if CSS load order puts external sheet after inline styles)
+  $('sessionModal').classList.remove('active');
+  document.querySelector('[data-action="close-session-modal"]')?.addEventListener('click', closeSessionModal);
+  // Backdrop click dismisses session modal
+  $('sessionModal').addEventListener('click', (e) => {
+    if (e.target === $('sessionModal')) closeSessionModal();
+  });
+
+  // Confirm modal — defensive: ensure hidden on boot
   $('confirmModal').classList.remove('active');
   $('confirmOk').addEventListener('click', confirmAction);
   document.querySelector('[data-action="close-confirm"]')?.addEventListener('click', closeConfirm);

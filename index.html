@@ -8,7 +8,11 @@
   <style>
     /* ── App layout ──────────────────────────────────── */
     body { background: var(--bc-3rd); overscroll-behavior: none; }
-    #app { max-width: 600px; margin: 0 auto; padding: 0 var(--space-page-gutter) 96px; }
+    /* padding-bottom:96px clears the fixed bottom nav bar (56px + padding).
+       Even SDK sets #app{padding:12px} at equal specificity — the external
+       <link> loads later in Vite builds, so its rule wins.  !important
+       ensures our padding survives regardless of load order. */
+    #app { max-width: 600px; margin: 0 auto; padding: 0 var(--space-page-gutter) 96px !important; }
 
     /* ── Top bar ─────────────────────────────────────── */
     .topbar {
@@ -139,11 +143,15 @@
     .toast-container.hidden { opacity: 0; pointer-events: none; }
 
     /* ── Modal overlay ───────────────────────────────── */
-    /* display:none must override Even SDK .modal{display:flex} regardless of
-       stylesheet load order (Vite build moves <link> after <style>).
-       Using #app ancestor for higher specificity instead of !important. */
-    #app ~ .modal { display: none; z-index: 300; }
-    #app ~ .modal.active { display: flex; }
+    /* Even SDK defines .modal{display:flex;position:fixed;inset:0} which creates
+       full-screen overlays blocking ALL pointer events.  In Vite production builds
+       the external <link> loads AFTER inline <style>, so equal-specificity rules
+       from the SDK win.  We use #app sibling selector for higher specificity AND
+       add pointer-events:none + visibility:hidden as defense-in-depth so that even
+       if a future CSS change re-introduces a specificity conflict the modals can
+       never silently eat clicks across the entire viewport. */
+    #app ~ .modal { display: none !important; pointer-events: none; visibility: hidden; z-index: 300; }
+    #app ~ .modal.active { display: flex !important; pointer-events: auto; visibility: visible; }
 
     /* ── Chat messages ────────────────────────────────── */
     .chat-msg { padding: 6px 10px; margin-bottom: 4px; border-radius: var(--radius-base); font-size: var(--text-body-base-size); line-height: 1.4; word-break: break-word; }
