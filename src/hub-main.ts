@@ -857,7 +857,8 @@ function handleHubChunk(chunk: VoiceTurnChunk): void {
             }
           }).catch(() => {
             console.error('[hub] Failed to save assistant response');
-            showToast('Message may not be saved');
+            // Phase 18.5: Path D -- emit to hub error presenter (RES-17)
+            hubBus.emit('persistence:error', { type: 'write-failed', recoverable: true, message: 'Failed to save assistant response' });
           });
         }
       } else {
@@ -923,7 +924,8 @@ async function handleTextSubmit(text: string): Promise<void> {
       });
     } catch {
       console.error('[hub] Failed to save user message');
-      showToast('Message may not be saved');
+      // Phase 18.5: Path E -- emit to hub error presenter (RES-17)
+      hubBus.emit('persistence:error', { type: 'write-failed', recoverable: true, message: 'Failed to save user message' });
     }
   }
 
@@ -1042,7 +1044,8 @@ async function initPersistence(): Promise<{
       if (hadPreviousData && report.conversationCount === 0) {
         console.warn('[hub] Storage eviction detected');
         addLog('error', 'Storage eviction detected -- previous conversations were lost');
-        showToast('Previous data was cleared by system');
+        // Phase 18.5: Path C -- emit to hub error presenter (RES-17)
+        hubBus.emit('persistence:error', { type: 'database-closed', recoverable: true, message: 'Storage eviction detected' });
       }
       await integrityChecker.writeSentinel();
     }
@@ -1103,6 +1106,8 @@ async function initPersistence(): Promise<{
     setOnUnexpectedClose(() => {
       console.error('[hub] Database connection unexpectedly closed');
       addLog('error', 'Database connection unexpectedly closed');
+      // Phase 18.5: Path A -- emit to hub error presenter (RES-17)
+      hubBus.emit('persistence:error', { type: 'database-closed', recoverable: true, message: 'Database connection unexpectedly closed' });
 
       // Attempt to reopen the database (RES-15)
       reopenDB().then((newDb) => {
@@ -1112,13 +1117,41 @@ async function initPersistence(): Promise<{
         // Update module-level reference used by all hub chat/search functions
         hubConversationStore = newConversationStore;
 
-        addLog('info', 'Database reconnected -- stores refreshed');
+        // Phase 18.5: Recreate driftReconciler with new store (RES-11)
+        hubDriftReconciler?.destroy();
+        hubDriftReconciler = createDriftReconciler({
+          store: newConversationStore,
+          onDriftDetected: (info) => {
+            console.warn(`[hub] Sync drift: local=${info.localCount} remote=${info.remoteCount}`);
+          },
+          onReconciled: () => {
+            loadLiveConversation();
+          },
+        });
+
+        // Phase 18.5: Recreate syncMonitor with new store (RES-15)
+        if (hubSyncBridge) {
+          hubSyncMonitor?.destroy();
+          hubSyncMonitor = createSyncMonitor({
+            bridge: hubSyncBridge,
+            store: newConversationStore,
+            origin: 'hub',
+            getActiveConversationId: () => sessionManager?.getActiveSessionId() ?? '',
+            onHeartbeat: (conversationId, remoteCount) => {
+              hubDriftReconciler!.handleHeartbeat(conversationId, remoteCount).catch(() => {});
+            },
+          });
+          hubSyncMonitor.startHeartbeat();
+        }
+
+        addLog('info', 'Database reconnected -- all modules refreshed');
 
         // Reload live conversation from fresh store
         loadLiveConversation();
       }).catch(() => {
         addLog('error', 'Database reopen failed -- restart required');
-        showToast('Database error -- please restart the app');
+        // Phase 18.5: Path B -- emit non-recoverable error to hub error presenter (RES-17)
+        hubBus.emit('persistence:error', { type: 'database-closed', recoverable: false, message: 'Failed to reopen database after max retries' });
       });
     });
 
