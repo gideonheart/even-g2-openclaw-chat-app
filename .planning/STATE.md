@@ -11,7 +11,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: None (milestone v1.3 complete)
 Status: Between milestones
-Last activity: 2026-03-01 - Completed quick task 17: Implement robust CORS support for Even WebView Origin: null
+Last activity: 2026-03-02 - Completed quick task 19: FSM re-record after response_end, queue during streaming, emit user transcript
 
 ## Performance Metrics
 
