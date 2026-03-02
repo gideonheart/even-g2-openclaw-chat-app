@@ -3,8 +3,7 @@
 // Subscribes to gesture:tap/double-tap/scroll-up/scroll-down on the event bus,
 // drives the gesture FSM, dispatches actions to bridge/audio services.
 // Includes 275ms tap debounce to prevent false double-tap triggers.
-//
-// Phase 2 scope: produces hint text strings only. Display rendering is Phase 3.
+// Gateway lifecycle events (response_end/error) only reset FSM from sent/thinking states.
 
 import { gestureTransition, type GestureState, type GestureInput, type GestureAction } from './gesture-fsm';
 import type { EventBus } from '../events';
@@ -22,7 +21,7 @@ export interface GestureHandlerAPI {
 
 /**
  * Hint bar text for each FSM state.
- * Pure function — Phase 3 will call this to render on the glasses display.
+ * Pure function — called by the display controller to render on glasses.
  */
 export function getHintText(state: GestureState): string {
   switch (state) {
@@ -31,7 +30,7 @@ export function getHintText(state: GestureState): string {
     case 'recording':
       return 'Tap to stop recording';
     case 'sent':
-      return 'Processing...';
+      return 'Processing... | Tap to record next';
     case 'thinking':
       return 'AI is thinking... | Double-tap for menu';
     case 'menu':
@@ -157,7 +156,7 @@ export function createGestureHandler(opts: {
       case 'SCROLL_UP':
       case 'SCROLL_DOWN':
         // These events are already on the bus from the bridge.
-        // The handler only advances FSM state here. Phase 3 display
+        // The handler only advances FSM state here. The display controller
         // listens directly for scroll events.
         break;
     }

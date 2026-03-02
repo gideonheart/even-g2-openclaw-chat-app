@@ -1,8 +1,9 @@
 // ── VoiceLoopController — bridges gateway client events to the app event bus ──
 //
 // Subscribes to gateway.onChunk and gateway.onStatusChange, forwarding events
-// to the typed bus. Listens for audio:recording-stop on the bus and dispatches
-// voice turns to the gateway client using current settings (via getter).
+// to the typed bus. Listens for audio:recording-stop on the bus and enqueues
+// voice turns into a bounded FIFO queue for sequential execution via the
+// gateway client. Uses current settings (via getter) at send time.
 
 import type { EventBus } from './events';
 import type { AppEventMap, AppSettings } from './types';
@@ -55,7 +56,10 @@ export function createVoiceLoopController(opts: {
     }
     bus.emit('gateway:chunk', chunk);
 
-    // Drain queue on response_end or error (turn lifecycle is complete)
+    // Drain queue on response_end or error (turn lifecycle is complete).
+    // Queue state (busy flag, pendingTurns) is independent of the gesture FSM
+    // state. If a watchdog reset fires in gesture-handler (resetting FSM to idle),
+    // the queue continues to drain correctly when response_end/error arrives.
     if (chunk.type === 'response_end' || chunk.type === 'error') {
       busy = false;
       processQueue();

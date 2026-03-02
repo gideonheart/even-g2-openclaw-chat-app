@@ -458,7 +458,7 @@ describe('getHintText', () => {
   });
 
   it('returns correct text for sent', () => {
-    expect(getHintText('sent')).toBe('Processing...');
+    expect(getHintText('sent')).toBe('Processing... | Tap to record next');
   });
 
   it('returns correct text for thinking', () => {

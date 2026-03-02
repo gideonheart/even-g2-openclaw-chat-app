@@ -42,8 +42,10 @@ const TRANSITIONS: Record<GestureState, Partial<Record<GestureInput, GestureTran
     'double-tap': { nextState: 'menu',      action: { type: 'TOGGLE_MENU' } },
     'reset':      { nextState: 'idle',      action: null },
     // Tap starts a new recording while previous turn is processing
-    // (auto-transitions to 'thinking' externally via event bus)
   },
+  // NOTE: No FSM transition currently produces nextState 'thinking'. This state
+  // exists for forward compatibility. Display-controller uses a separate IconState
+  // type for the thinking icon.
   thinking: {
     'tap':        { nextState: 'recording', action: { type: 'START_RECORDING' } },
     'double-tap': { nextState: 'menu',      action: { type: 'TOGGLE_MENU' } },
