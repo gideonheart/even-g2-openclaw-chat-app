@@ -5,19 +5,20 @@
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Users can have natural voice conversations with an AI assistant through their Even G2 glasses, seeing streaming responses as compact bubble chat on the glasses display.
-**Current focus:** Planning next milestone
+**Current focus:** v1.4 Voice Loop Polish -- Decoupled Input + Voice Queue
 
 ## Current Position
 
-Phase: None (milestone v1.3 complete)
-Status: Between milestones
-Last activity: 2026-03-02 - Completed quick task 19: FSM re-record after response_end, queue during streaming, emit user transcript
+Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
+Current Plan: 2 of 3
+Status: Executing
+Last activity: 2026-03-02 - Completed plan 01-01: State-aware reset guard in gesture-handler
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 46 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure)
-- Total tests: 579 (all passing)
+- Total plans completed: 47 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plan 01)
+- Total tests: 585 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -46,6 +47,7 @@ Last activity: 2026-03-02 - Completed quick task 19: FSM re-record after respons
 | 18 | 2/2 (glasses error presenter + hub error presenter + health indicator) | ~15m | 7.5m |
 | 18.5 | 1/1 (hub integration wiring: error bus, IDB module recreation, storage health) | ~5m | 5m |
 | 19 | 2/2 (failure injection helpers + IDB integrity flow + sync resilience + error escalation integration tests) | ~8m | 4m |
+| Phase 01 P01 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -54,6 +56,8 @@ Last activity: 2026-03-02 - Completed quick task 19: FSM re-record after respons
 All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes).
 - [Phase quick-17]: Null origin CORS branch before strict mode; allowNullOrigin defaults false; reflect literal 'null' per RFC 6454
 - [Phase quick-19]: response_end resets FSM to idle via handleInput('reset'); transcript chunk emitted before response_start for user bubble display
+- [Phase 01-01]: State-aware reset guard checks state === 'sent' || state === 'thinking' before reset; recording/idle/menu immune to response_end/error
+- [Phase 01-01]: State-aware reset guard: only reset FSM on response_end/error when state is sent or thinking; recording/idle/menu are immune
 
 ### Roadmap Evolution
 
@@ -94,5 +98,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed quick-22: Critical analysis of phase 1 plans with 5 concrete edits
+Stopped at: Completed 01-01-PLAN.md (state-aware reset guard)
 Resume file: None
