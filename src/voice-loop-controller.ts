@@ -10,6 +10,7 @@ import type { GatewayClient } from './api/gateway-client';
 
 export interface VoiceLoopController {
   destroy(): void;
+  getQueueLength(): number;
 }
 
 export function createVoiceLoopController(opts: {
@@ -20,6 +21,30 @@ export function createVoiceLoopController(opts: {
   const { bus, gateway, settings } = opts;
   const unsubs: Array<() => void> = [];
 
+  // Voice turn queue -- ensures sequential execution, no abort of in-flight requests.
+  // Gateway client calls abort() on every sendVoiceTurn, so concurrent sends would cancel
+  // the in-flight turn. The queue holds pending turns and drains one at a time.
+  const MAX_QUEUE = 5;
+  interface PendingTurn { sessionId: string; blob: Blob }
+  const pendingTurns: PendingTurn[] = [];
+  let busy = false;
+
+  function processQueue(): void {
+    if (busy || pendingTurns.length === 0) return;
+    busy = true;
+    const turn = pendingTurns.shift()!;
+    const s = settings();
+    bus.emit('log', {
+      level: 'info',
+      msg: `Sending voice turn: ${turn.blob.size} bytes ${turn.blob.type} to ${s.gatewayUrl || '(not set)'} stt=${s.sttProvider} (queue: ${pendingTurns.length} remaining)`,
+    });
+    gateway.sendVoiceTurn(s, {
+      sessionId: turn.sessionId,
+      audio: turn.blob,
+      sttProvider: s.sttProvider,
+    });
+  }
+
   // Forward gateway chunks to bus (with error logging)
   unsubs.push(gateway.onChunk((chunk) => {
     if (chunk.type === 'error') {
@@ -29,6 +54,12 @@ export function createVoiceLoopController(opts: {
       });
     }
     bus.emit('gateway:chunk', chunk);
+
+    // Drain queue on response_end or error (turn lifecycle is complete)
+    if (chunk.type === 'response_end' || chunk.type === 'error') {
+      busy = false;
+      processQueue();
+    }
   }));
 
   // Forward gateway status changes to bus (with logging)
@@ -40,18 +71,14 @@ export function createVoiceLoopController(opts: {
     bus.emit('gateway:status', { status });
   }));
 
-  // When recording stops, send voice turn to gateway
+  // When recording stops, enqueue voice turn (sequential, not immediate send)
   unsubs.push(bus.on('audio:recording-stop', ({ sessionId, blob }) => {
-    const s = settings();
-    bus.emit('log', {
-      level: 'info',
-      msg: `Sending voice turn: ${blob.size} bytes ${blob.type} to ${s.gatewayUrl || '(not set)'} stt=${s.sttProvider}`,
-    });
-    gateway.sendVoiceTurn(s, {
-      sessionId,
-      audio: blob,
-      sttProvider: s.sttProvider,
-    });
+    if (pendingTurns.length >= MAX_QUEUE) {
+      bus.emit('log', { level: 'warn', msg: `Voice queue full (${MAX_QUEUE}), dropping oldest turn` });
+      pendingTurns.shift();
+    }
+    pendingTurns.push({ sessionId, blob });
+    processQueue();
   }));
 
   function destroy(): void {
@@ -59,7 +86,9 @@ export function createVoiceLoopController(opts: {
       unsub();
     }
     unsubs.length = 0;
+    pendingTurns.length = 0;
+    busy = false;
   }
 
-  return { destroy };
+  return { destroy, getQueueLength: () => pendingTurns.length };
 }

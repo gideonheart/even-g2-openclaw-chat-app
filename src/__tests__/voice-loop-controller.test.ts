@@ -110,6 +110,9 @@ describe('VoiceLoopController', () => {
     const blob2 = new Blob(['audio2']);
     bus.emit('audio:recording-stop', { sessionId: 's2', blob: blob2 });
 
+    // Second turn is queued (not sent yet) -- drain queue via response_end
+    gateway.simulateChunk({ type: 'response_end' });
+
     expect(gateway.sendVoiceTurn.mock.calls[1][1].sttProvider).toBe('openai');
   });
 
