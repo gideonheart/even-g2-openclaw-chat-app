@@ -80,20 +80,20 @@ describe('gestureTransition', () => {
 
   // ── sent state ──────────────────────────────────────────────
 
-  describe('sent state (all inputs ignored)', () => {
-    it('tap -> sent with null action', () => {
+  describe('sent state', () => {
+    it('tap -> recording with START_RECORDING (re-record while processing)', () => {
       const result = gestureTransition('sent', 'tap');
       expect(result).toEqual({
-        nextState: 'sent',
-        action: null,
+        nextState: 'recording',
+        action: { type: 'START_RECORDING' },
       });
     });
 
-    it('double-tap -> sent with null action', () => {
+    it('double-tap -> menu with TOGGLE_MENU', () => {
       const result = gestureTransition('sent', 'double-tap');
       expect(result).toEqual({
-        nextState: 'sent',
-        action: null,
+        nextState: 'menu',
+        action: { type: 'TOGGLE_MENU' },
       });
     });
 

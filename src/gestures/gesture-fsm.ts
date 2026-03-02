@@ -38,8 +38,10 @@ const TRANSITIONS: Record<GestureState, Partial<Record<GestureInput, GestureTran
     // double-tap, scroll-up, scroll-down ignored during recording
   },
   sent: {
-    'reset': { nextState: 'idle', action: null },
-    // All other inputs ignored while audio is being processed
+    'tap':        { nextState: 'recording', action: { type: 'START_RECORDING' } },
+    'double-tap': { nextState: 'menu',      action: { type: 'TOGGLE_MENU' } },
+    'reset':      { nextState: 'idle',      action: null },
+    // Tap starts a new recording while previous turn is processing
     // (auto-transitions to 'thinking' externally via event bus)
   },
   thinking: {
