@@ -10,15 +10,15 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
-Current Plan: 2 of 3
+Current Plan: 3 of 3
 Status: Executing
-Last activity: 2026-03-02 - Completed plan 01-01: State-aware reset guard in gesture-handler
+Last activity: 2026-03-02 - Completed plan 01-02: FIFO voice turn queue in VoiceLoopController
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 47 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plan 01)
-- Total tests: 585 (all passing)
+- Total plans completed: 48 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-02)
+- Total tests: 595 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -48,6 +48,7 @@ Last activity: 2026-03-02 - Completed plan 01-01: State-aware reset guard in ges
 | 18.5 | 1/1 (hub integration wiring: error bus, IDB module recreation, storage health) | ~5m | 5m |
 | 19 | 2/2 (failure injection helpers + IDB integrity flow + sync resilience + error escalation integration tests) | ~8m | 4m |
 | Phase 01 P01 | 3min | 2 tasks | 2 files |
+| Phase 01 P02 | 6min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -58,6 +59,8 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-19]: response_end resets FSM to idle via handleInput('reset'); transcript chunk emitted before response_start for user bubble display
 - [Phase 01-01]: State-aware reset guard checks state === 'sent' || state === 'thinking' before reset; recording/idle/menu immune to response_end/error
 - [Phase 01-01]: State-aware reset guard: only reset FSM on response_end/error when state is sent or thinking; recording/idle/menu are immune
+- [Phase 01-02]: Synchronous busy-flag queue (not Promise-based) because gateway signals completion via synchronous chunk events
+- [Phase 01-02]: Drop-oldest overflow strategy when queue exceeds MAX_QUEUE (5); queue drains on both response_end and error
 
 ### Roadmap Evolution
 
@@ -98,5 +101,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 01-01-PLAN.md (state-aware reset guard)
+Stopped at: Completed 01-02-PLAN.md (FIFO voice turn queue)
 Resume file: None
