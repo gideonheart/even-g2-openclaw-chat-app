@@ -170,13 +170,14 @@ export function createGestureHandler(opts: {
   unsubs.push(bus.on('gesture:scroll-up', (p) => handleInput('scroll-up', p.timestamp)));
   unsubs.push(bus.on('gesture:scroll-down', (p) => handleInput('scroll-down', p.timestamp)));
 
-  // Reset FSM to idle on gateway error chunks (error recovery)
-  // Keep watchdog alive during active streaming (Pitfall P2 prevention)
+  // Only reset FSM on response_end/error when in sent or thinking states.
+  // Recording, idle, and menu states are immune — prevents aborting an active
+  // recording when a previous turn's response completes mid-capture.
   unsubs.push(bus.on('gateway:chunk', (chunk) => {
-    if (chunk.type === 'error') {
-      handleInput('reset', Date.now());
-    } else if (chunk.type === 'response_end') {
-      handleInput('reset', Date.now());
+    if (chunk.type === 'error' || chunk.type === 'response_end') {
+      if (state === 'sent' || state === 'thinking') {
+        handleInput('reset', Date.now());
+      }
     } else if (chunk.type === 'response_delta') {
       startWatchdog(); // Keep watchdog alive during active streaming
     }
