@@ -74,6 +74,7 @@ const DEFAULT_OPTIONS: Required<GatewayClientOptions> = {
 
 interface GatewayReply {
   turnId?: string;
+  transcript?: string;
   assistant?: {
     fullText?: string;
   };
@@ -127,8 +128,8 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       try {
         const body = await resp.json();
         health.readyStatus = body.status === 'ready' ? 'ready' : 'not_ready';
-        health.sttReady = body.checks?.stt?.status === 'ok' || body.checks?.stt?.status === 'ready';
-        health.openclawReady = body.checks?.openclaw?.status === 'ok' || body.checks?.openclaw?.status === 'ready';
+        health.sttReady = body.checks?.stt?.healthy === true;
+        health.openclawReady = body.checks?.openclaw?.healthy === true;
       } catch {
         // Non-JSON response -- clear detail fields
         health.readyStatus = undefined;
@@ -170,6 +171,9 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
   const TURN_TIMEOUT_MS = 30_000;
 
   function emitFromGatewayReply(reply: GatewayReply): void {
+    if (reply.transcript) {
+      emitChunk({ type: 'transcript', text: reply.transcript, turnId: reply.turnId });
+    }
     emitChunk({ type: 'response_start', turnId: reply.turnId });
     const text = reply.assistant?.fullText?.trim();
     if (text) emitChunk({ type: 'response_delta', text, turnId: reply.turnId });

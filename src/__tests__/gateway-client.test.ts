@@ -126,7 +126,7 @@ describe('gateway-client', () => {
     it('fetches /readyz (not /healthz)', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ status: 'ready', checks: { stt: { status: 'ok' }, openclaw: { status: 'ok' } } }),
+        json: () => Promise.resolve({ status: 'ready', checks: { stt: { healthy: true }, openclaw: { healthy: true } } }),
       });
 
       const client = createGatewayClient();
@@ -143,7 +143,7 @@ describe('gateway-client', () => {
         ok: true,
         json: () => Promise.resolve({
           status: 'ready',
-          checks: { stt: { status: 'ok' }, openclaw: { status: 'ready' } },
+          checks: { stt: { healthy: true }, openclaw: { healthy: true } },
         }),
       });
 
@@ -164,7 +164,7 @@ describe('gateway-client', () => {
         ok: false,
         json: () => Promise.resolve({
           status: 'not_ready',
-          checks: { stt: { status: 'ok' }, openclaw: { status: 'error' } },
+          checks: { stt: { healthy: true }, openclaw: { healthy: false } },
         }),
       });
 
@@ -233,6 +233,7 @@ describe('gateway-client', () => {
     it('successful voice turn emits chunks from JSON gateway reply', async () => {
       const gatewayReply = {
         turnId: 't1',
+        transcript: 'Hello there',
         assistant: { fullText: 'hi' },
       };
 
@@ -251,14 +252,38 @@ describe('gateway-client', () => {
 
       await client.sendVoiceTurn(testSettings, testRequest);
 
-      expect(chunks).toHaveLength(3);
-      expect(chunks[0].type).toBe('response_start');
-      expect(chunks[0].turnId).toBe('t1');
-      expect(chunks[1].type).toBe('response_delta');
-      expect(chunks[1].text).toBe('hi');
-      expect(chunks[2].type).toBe('response_end');
+      expect(chunks).toHaveLength(4);
+      expect(chunks[0]).toEqual({ type: 'transcript', text: 'Hello there', turnId: 't1' });
+      expect(chunks[1]).toEqual({ type: 'response_start', turnId: 't1' });
+      expect(chunks[2]).toEqual({ type: 'response_delta', text: 'hi', turnId: 't1' });
+      expect(chunks[3]).toEqual({ type: 'response_end', turnId: 't1' });
       expect(statuses).toContain('connected');
       expect(client.getHealth().reconnectAttempts).toBe(0);
+    });
+
+    it('successful voice turn without transcript emits 3 chunks (backward compat)', async () => {
+      const gatewayReply = {
+        turnId: 't1',
+        assistant: { fullText: 'hi' },
+      };
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: () => Promise.resolve(gatewayReply),
+      });
+
+      const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
+      const chunks: VoiceTurnChunk[] = [];
+      client.onChunk((c) => chunks.push(c));
+
+      await client.sendVoiceTurn(testSettings, testRequest);
+
+      expect(chunks).toHaveLength(3);
+      expect(chunks[0].type).toBe('response_start');
+      expect(chunks[1].type).toBe('response_delta');
+      expect(chunks[2].type).toBe('response_end');
     });
 
     it('emits error on network failure', async () => {
@@ -428,6 +453,33 @@ describe('gateway-client', () => {
     it('emits chunks from the JSON gateway reply', async () => {
       const gatewayReply = {
         turnId: 't1',
+        transcript: 'Hello, assistant!',
+        assistant: { fullText: 'Hi there' },
+      };
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: () => Promise.resolve(gatewayReply),
+      });
+
+      const client = createGatewayClient();
+      const chunks: VoiceTurnChunk[] = [];
+      client.onChunk((c) => chunks.push(c));
+
+      await client.sendTextTurn(testSettings, testTextRequest);
+
+      expect(chunks).toHaveLength(4);
+      expect(chunks[0]).toEqual({ type: 'transcript', text: 'Hello, assistant!', turnId: 't1' });
+      expect(chunks[1]).toEqual({ type: 'response_start', turnId: 't1' });
+      expect(chunks[2]).toEqual({ type: 'response_delta', text: 'Hi there', turnId: 't1' });
+      expect(chunks[3]).toEqual({ type: 'response_end', turnId: 't1' });
+    });
+
+    it('emits 3 chunks without transcript (backward compat)', async () => {
+      const gatewayReply = {
+        turnId: 't1',
         assistant: { fullText: 'Hi there' },
       };
 
@@ -446,9 +498,7 @@ describe('gateway-client', () => {
 
       expect(chunks).toHaveLength(3);
       expect(chunks[0].type).toBe('response_start');
-      expect(chunks[0].turnId).toBe('t1');
       expect(chunks[1].type).toBe('response_delta');
-      expect(chunks[1].text).toBe('Hi there');
       expect(chunks[2].type).toBe('response_end');
     });
 
