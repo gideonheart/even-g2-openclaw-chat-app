@@ -11,13 +11,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
-Status: Executing
-Last activity: 2026-03-02 - Completed plan 01-02: FIFO voice turn queue in VoiceLoopController
+Status: Complete
+Last activity: 2026-03-02 - Completed plan 01-03: Codebase polish (hint text, stale comments, FSM/queue docs)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 48 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-02)
+- Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
 - Total tests: 595 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
@@ -49,6 +49,7 @@ Last activity: 2026-03-02 - Completed plan 01-02: FIFO voice turn queue in Voice
 | 19 | 2/2 (failure injection helpers + IDB integrity flow + sync resilience + error escalation integration tests) | ~8m | 4m |
 | Phase 01 P01 | 3min | 2 tasks | 2 files |
 | Phase 01 P02 | 6min | 2 tasks | 2 files |
+| Phase 01 P03 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -61,6 +62,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase 01-01]: State-aware reset guard: only reset FSM on response_end/error when state is sent or thinking; recording/idle/menu are immune
 - [Phase 01-02]: Synchronous busy-flag queue (not Promise-based) because gateway signals completion via synchronous chunk events
 - [Phase 01-02]: Drop-oldest overflow strategy when queue exceeds MAX_QUEUE (5); queue drains on both response_end and error
+- [Phase 01-03]: Kept unreachable thinking state with NOTE comment rather than removing (cascading type impact); documented queue/FSM independence
 
 ### Roadmap Evolution
 
@@ -101,5 +103,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 01-02-PLAN.md (FIFO voice turn queue)
+Stopped at: Completed 01-03-PLAN.md (codebase polish, phase 01 complete)
 Resume file: None
