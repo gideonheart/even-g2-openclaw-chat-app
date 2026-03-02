@@ -236,15 +236,15 @@ describe('createGestureHandler', () => {
       expect(handler.getState()).toBe('idle');
     });
 
-    it('gateway:chunk error resets FSM from recording to idle', () => {
+    it('gateway:chunk error does NOT reset FSM from recording (preserves active recording)', () => {
       const handler = createHandler();
       // idle -> recording
       bus.emit('gesture:tap', { timestamp: 1000 });
       expect(handler.getState()).toBe('recording');
 
-      // Error chunk should reset to idle (and trigger STOP_RECORDING action)
+      // Error chunk while recording should NOT abort the active recording
       bus.emit('gateway:chunk', { type: 'error', error: 'connection lost' });
-      expect(handler.getState()).toBe('idle');
+      expect(handler.getState()).toBe('recording');
     });
 
     it('gateway:chunk response_end resets FSM to idle', () => {
@@ -268,6 +268,38 @@ describe('createGestureHandler', () => {
 
       bus.emit('gateway:chunk', { type: 'response_delta', text: 'hello' });
       expect(handler.getState()).toBe('sent');
+    });
+
+    it('gateway:chunk response_end does NOT reset FSM from recording', () => {
+      const handler = createHandler();
+      // idle -> recording
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('recording');
+
+      // response_end while recording should NOT abort the active recording
+      bus.emit('gateway:chunk', { type: 'response_end' });
+      expect(handler.getState()).toBe('recording');
+    });
+
+    it('gateway:chunk error does NOT reset FSM from idle', () => {
+      const handler = createHandler();
+      // Handler starts in idle (default)
+      expect(handler.getState()).toBe('idle');
+
+      // Stale error chunk arriving while idle should be silently ignored
+      bus.emit('gateway:chunk', { type: 'error', error: 'stale error' });
+      expect(handler.getState()).toBe('idle');
+    });
+
+    it('gateway:chunk response_end does NOT reset FSM from menu', () => {
+      const handler = createHandler();
+      // idle -> menu
+      bus.emit('gesture:double-tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('menu');
+
+      // response_end while in menu should NOT affect menu state
+      bus.emit('gateway:chunk', { type: 'response_end' });
+      expect(handler.getState()).toBe('menu');
     });
   });
 
