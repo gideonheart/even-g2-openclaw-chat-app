@@ -53,6 +53,7 @@ Last activity: 2026-03-01 - Completed quick task 17: Implement robust CORS suppo
 
 All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes).
 - [Phase quick-17]: Null origin CORS branch before strict mode; allowNullOrigin defaults false; reflect literal 'null' per RFC 6454
+- [Phase quick-19]: response_end resets FSM to idle via handleInput('reset'); transcript chunk emitted before response_start for user bubble display
 
 ### Pending Todos
 
@@ -83,9 +84,10 @@ None.
 | 15 | Self-review commit 4cad75a: localhost detection regex verified, 8 risk scenarios assessed, 0.0.0.0 follow-up recommended | 2026-03-01 | 2b41c8d | [15-self-review-commit-4cad75a-confirm-local](./quick/15-self-review-commit-4cad75a-confirm-local/) |
 | 16 | Extend LOOPBACK_RE to include 0.0.0.0 as non-routable address, add 4 test cases | 2026-03-01 | 3a410ba | [16-extend-loopback-re-to-include-0-0-0-0-ad](./quick/16-extend-loopback-re-to-include-0-0-0-0-ad/) |
 | 17 | Implement robust CORS support for Even WebView Origin: null with allowNullOrigin flag | 2026-03-01 | 7106723 | [17-implement-robust-cors-support-for-even-w](./quick/17-implement-robust-cors-support-for-even-w/) |
+| 19 | FSM re-record after response_end + queue during thinking + transcript chunk emission | 2026-03-02 | 49bd755 | [19-fsm-re-record-after-response-end-queue-d](./quick/19-fsm-re-record-after-response-end-queue-d/) |
 
 ## Session Continuity
 
-Last session: 2026-03-01
-Stopped at: Completed quick task 17 tasks 1-2; checkpoint at task 3 (human-verify WebView CORS)
+Last session: 2026-03-02
+Stopped at: Completed quick-19: FSM re-record after response_end + transcript emission
 Resume file: None
