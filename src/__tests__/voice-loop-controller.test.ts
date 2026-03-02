@@ -152,4 +152,204 @@ describe('VoiceLoopController', () => {
     expect(handler.mock.calls[1][0].type).toBe('response_delta');
     expect(handler.mock.calls[2][0].type).toBe('response_end');
   });
+
+  describe('voice turn queue', () => {
+    it('queues second voice turn while first is in-flight', () => {
+      const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      const blob1 = new Blob(['audio1']);
+      const blob2 = new Blob(['audio2']);
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: blob1 });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: blob2 });
+
+      // Only first turn should have been sent
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
+      expect(gateway.sendVoiceTurn.mock.calls[0][1].sessionId).toBe('s1');
+      expect(controller.getQueueLength()).toBe(1);
+    });
+
+    it('drains queued turn after response_end', () => {
+      const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      const blob1 = new Blob(['audio1']);
+      const blob2 = new Blob(['audio2']);
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: blob1 });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: blob2 });
+
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
+
+      // Complete first turn
+      gateway.simulateChunk({ type: 'response_end' });
+
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledTimes(2);
+      expect(gateway.sendVoiceTurn.mock.calls[1][1].sessionId).toBe('s2');
+      expect(controller.getQueueLength()).toBe(0);
+    });
+
+    it('drains queued turn after error chunk', () => {
+      const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      const blob1 = new Blob(['audio1']);
+      const blob2 = new Blob(['audio2']);
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: blob1 });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: blob2 });
+
+      // Error on first turn should still drain queue (no deadlock)
+      gateway.simulateChunk({ type: 'error', error: 'timeout' });
+
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledTimes(2);
+      expect(gateway.sendVoiceTurn.mock.calls[1][1].sessionId).toBe('s2');
+      expect(controller.getQueueLength()).toBe(0);
+    });
+
+    it('processes three turns sequentially', () => {
+      const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob(['a1']) });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: new Blob(['a2']) });
+      bus.emit('audio:recording-stop', { sessionId: 's3', blob: new Blob(['a3']) });
+
+      // Only first fires immediately
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
+
+      gateway.simulateChunk({ type: 'response_end' });
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledTimes(2);
+      expect(gateway.sendVoiceTurn.mock.calls[1][1].sessionId).toBe('s2');
+
+      gateway.simulateChunk({ type: 'response_end' });
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledTimes(3);
+      expect(gateway.sendVoiceTurn.mock.calls[2][1].sessionId).toBe('s3');
+
+      expect(controller.getQueueLength()).toBe(0);
+    });
+
+    it('destroy clears pending queue and prevents drain', () => {
+      const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob(['a1']) });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: new Blob(['a2']) });
+
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
+
+      controller.destroy();
+
+      // Stale response_end after destroy should NOT drain queue
+      gateway.simulateChunk({ type: 'response_end' });
+
+      // Still only the initial immediate send
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
+      expect(controller.getQueueLength()).toBe(0);
+    });
+
+    it('drops oldest turn when queue is full (MAX_QUEUE=5)', () => {
+      const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      // First turn fires immediately (busy=true)
+      bus.emit('audio:recording-stop', { sessionId: 'first', blob: new Blob(['first']) });
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
+
+      // Emit 6 more turns (exceeds MAX_QUEUE of 5)
+      for (let i = 1; i <= 6; i++) {
+        bus.emit('audio:recording-stop', { sessionId: `q${i}`, blob: new Blob([`q${i}`]) });
+      }
+
+      // Still only the first turn sent
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
+      // Queue should be capped at 5 (q1 was dropped, q2-q6 remain)
+      expect(controller.getQueueLength()).toBe(5);
+
+      // Drain all 5 and verify the oldest (q1) was dropped
+      const drainedSessionIds: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        gateway.simulateChunk({ type: 'response_end' });
+        const lastCall = gateway.sendVoiceTurn.mock.calls[gateway.sendVoiceTurn.mock.calls.length - 1];
+        drainedSessionIds.push(lastCall[1].sessionId);
+      }
+
+      // q1 should have been dropped; drained order should be q2, q3, q4, q5, q6
+      expect(drainedSessionIds).toEqual(['q2', 'q3', 'q4', 'q5', 'q6']);
+      expect(controller.getQueueLength()).toBe(0);
+    });
+
+    it('drops oldest turn when queue is full and logs warning', () => {
+      createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      const logSpy = vi.fn();
+      bus.on('log', logSpy);
+
+      // First turn fires immediately
+      bus.emit('audio:recording-stop', { sessionId: 'first', blob: new Blob(['first']) });
+
+      // Fill queue to max (5 turns)
+      for (let i = 1; i <= 5; i++) {
+        bus.emit('audio:recording-stop', { sessionId: `q${i}`, blob: new Blob([`q${i}`]) });
+      }
+
+      // 6th queued turn should trigger warning
+      bus.emit('audio:recording-stop', { sessionId: 'overflow', blob: new Blob(['overflow']) });
+
+      const warnCalls = logSpy.mock.calls.filter(
+        (args) => args[0].level === 'warn' && args[0].msg.includes('Voice queue full'),
+      );
+      expect(warnCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('response_delta does NOT drain queue (only response_end and error)', () => {
+      createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob(['a1']) });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: new Blob(['a2']) });
+
+      // response_delta should NOT trigger drain
+      gateway.simulateChunk({ type: 'response_delta', text: 'hello' });
+
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
+    });
+
+    it('getQueueLength returns current queue size', () => {
+      const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      expect(controller.getQueueLength()).toBe(0);
+
+      // First fires immediately (queue stays empty)
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob(['a1']) });
+      expect(controller.getQueueLength()).toBe(0);
+
+      // Second is queued
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: new Blob(['a2']) });
+      expect(controller.getQueueLength()).toBe(1);
+
+      // Third is queued
+      bus.emit('audio:recording-stop', { sessionId: 's3', blob: new Blob(['a3']) });
+      expect(controller.getQueueLength()).toBe(2);
+
+      // Drain one
+      gateway.simulateChunk({ type: 'response_end' });
+      expect(controller.getQueueLength()).toBe(1);
+    });
+
+    it('logs queue remaining count when sending', () => {
+      createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      const logSpy = vi.fn();
+      bus.on('log', logSpy);
+
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob(['a1']) });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: new Blob(['a2']) });
+
+      // Drain queue
+      gateway.simulateChunk({ type: 'response_end' });
+
+      // Check log messages contain queue remaining info
+      const sendLogs = logSpy.mock.calls.filter(
+        (args) =>
+          args[0].level === 'info' && args[0].msg.includes('Sending voice turn') && args[0].msg.includes('remaining'),
+      );
+      expect(sendLogs.length).toBeGreaterThanOrEqual(1);
+
+      // Verify at least one log shows the queue count
+      const msgs = sendLogs.map((args) => args[0].msg as string);
+      expect(msgs.some((m) => m.includes('(queue: 0 remaining)'))).toBe(true);
+    });
+  });
 });
