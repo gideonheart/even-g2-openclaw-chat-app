@@ -98,32 +98,51 @@ export function createGestureHandler(opts: {
     startWatchdog(); // Reset/clear watchdog on every transition
 
     if (transition.action !== null) {
-      dispatchAction(transition.action);
+      dispatchAction(transition.action).catch((err) => {
+        console.error('[GestureHandler] dispatchAction failed:', err);
+        handleInput('reset', Date.now());
+      });
     }
   }
 
-  function dispatchAction(action: GestureAction): void {
+  async function dispatchAction(action: GestureAction): Promise<void> {
     if (action === null) return;
 
     switch (action.type) {
       case 'START_RECORDING': {
         const sessionId = activeSessionId();
+        bus.emit('log', { level: 'info', msg: `Recording start: session=${sessionId}` });
         audioCapture.startRecording(sessionId);
-        bridge.startAudio();
+        try {
+          const audioOk = await bridge.startAudio();
+          bus.emit('log', { level: 'info', msg: `audioControl(true) => ${audioOk}` });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          bus.emit('log', { level: 'error', msg: `audioControl(true) FAILED: ${msg}` });
+        }
         bus.emit('audio:recording-start', { sessionId });
         break;
       }
       case 'STOP_RECORDING': {
-        bridge.stopAudio();
+        bus.emit('log', { level: 'info', msg: 'Recording stop requested' });
+        try {
+          const stopOk = await bridge.stopAudio();
+          bus.emit('log', { level: 'info', msg: `audioControl(false) => ${stopOk}` });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          bus.emit('log', { level: 'error', msg: `audioControl(false) FAILED: ${msg}` });
+        }
         audioCapture.stopRecording()
           .then((blob) => {
+            bus.emit('log', { level: 'info', msg: `Audio blob: ${blob.size} bytes, type=${blob.type}` });
             bus.emit('audio:recording-stop', {
               sessionId: activeSessionId(),
               blob,
             });
           })
           .catch((err) => {
-            console.error('[GestureHandler] stopRecording failed:', err);
+            const msg = err instanceof Error ? err.message : String(err);
+            bus.emit('log', { level: 'error', msg: `stopRecording FAILED: ${msg}` });
           });
         break;
       }
@@ -155,6 +174,8 @@ export function createGestureHandler(opts: {
   // Keep watchdog alive during active streaming (Pitfall P2 prevention)
   unsubs.push(bus.on('gateway:chunk', (chunk) => {
     if (chunk.type === 'error') {
+      handleInput('reset', Date.now());
+    } else if (chunk.type === 'response_end') {
       handleInput('reset', Date.now());
     } else if (chunk.type === 'response_delta') {
       startWatchdog(); // Keep watchdog alive during active streaming

@@ -125,11 +125,11 @@ describe('gestureTransition', () => {
       });
     });
 
-    it('tap -> thinking with null action (ignored)', () => {
+    it('tap -> recording with START_RECORDING (queue re-record)', () => {
       const result = gestureTransition('thinking', 'tap');
       expect(result).toEqual({
-        nextState: 'thinking',
-        action: null,
+        nextState: 'recording',
+        action: { type: 'START_RECORDING' },
       });
     });
 

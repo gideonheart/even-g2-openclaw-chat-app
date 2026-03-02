@@ -151,13 +151,16 @@ describe('createGestureHandler', () => {
   // ── Action dispatch ────────────────────────────────────────
 
   describe('action dispatch', () => {
-    it('tap in idle emits audio:recording-start', () => {
+    it('tap in idle emits audio:recording-start', async () => {
       const handler = createHandler();
       const spy = vi.fn();
       bus.on('audio:recording-start', spy);
       bus.emit('gesture:tap', { timestamp: 1000 });
-      expect(spy).toHaveBeenCalledWith({ sessionId: 'test-session-1' });
       expect(handler.getState()).toBe('recording');
+      // audio:recording-start emits after awaited bridge.startAudio() resolves
+      await vi.waitFor(() => {
+        expect(spy).toHaveBeenCalledWith({ sessionId: 'test-session-1' });
+      });
     });
 
     it('tap in recording emits audio:recording-stop with blob', async () => {
@@ -206,12 +209,15 @@ describe('createGestureHandler', () => {
       expect(bridge.startAudio).toHaveBeenCalledTimes(1);
     });
 
-    it('STOP_RECORDING calls bridge.stopAudio and audioCapture.stopRecording', () => {
+    it('STOP_RECORDING calls bridge.stopAudio and audioCapture.stopRecording', async () => {
       createHandler();
       bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
       bus.emit('gesture:tap', { timestamp: 1300 }); // recording -> sent
       expect(bridge.stopAudio).toHaveBeenCalledTimes(1);
-      expect(audioCapture.stopRecording).toHaveBeenCalledTimes(1);
+      // audioCapture.stopRecording is called after awaited bridge.stopAudio() resolves
+      await vi.waitFor(() => {
+        expect(audioCapture.stopRecording).toHaveBeenCalledTimes(1);
+      });
     });
   });
 
@@ -241,21 +247,26 @@ describe('createGestureHandler', () => {
       expect(handler.getState()).toBe('idle');
     });
 
-    it('gateway:chunk non-error types do NOT reset FSM', () => {
+    it('gateway:chunk response_end resets FSM to idle', () => {
       const handler = createHandler();
-      // idle -> recording -> sent
       bus.emit('gesture:tap', { timestamp: 1000 });
       bus.emit('gesture:tap', { timestamp: 1300 });
       expect(handler.getState()).toBe('sent');
 
-      // Non-error chunk types should not trigger reset
+      bus.emit('gateway:chunk', { type: 'response_end' });
+      expect(handler.getState()).toBe('idle');
+    });
+
+    it('gateway:chunk response_start and response_delta do NOT reset FSM', () => {
+      const handler = createHandler();
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      bus.emit('gesture:tap', { timestamp: 1300 });
+      expect(handler.getState()).toBe('sent');
+
       bus.emit('gateway:chunk', { type: 'response_start' });
       expect(handler.getState()).toBe('sent');
 
       bus.emit('gateway:chunk', { type: 'response_delta', text: 'hello' });
-      expect(handler.getState()).toBe('sent');
-
-      bus.emit('gateway:chunk', { type: 'response_end' });
       expect(handler.getState()).toBe('sent');
     });
   });

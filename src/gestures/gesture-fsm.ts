@@ -43,9 +43,10 @@ const TRANSITIONS: Record<GestureState, Partial<Record<GestureInput, GestureTran
     // (auto-transitions to 'thinking' externally via event bus)
   },
   thinking: {
-    'double-tap': { nextState: 'menu', action: { type: 'TOGGLE_MENU' } },
-    'reset':      { nextState: 'idle', action: null },
-    // tap, scroll-up, scroll-down ignored during thinking
+    'tap':        { nextState: 'recording', action: { type: 'START_RECORDING' } },
+    'double-tap': { nextState: 'menu',      action: { type: 'TOGGLE_MENU' } },
+    'reset':      { nextState: 'idle',      action: null },
+    // scroll-up, scroll-down ignored during thinking
   },
   menu: {
     'double-tap':  { nextState: 'idle', action: { type: 'TOGGLE_MENU' } },
