@@ -80,5 +80,17 @@
 | 18.5. Hub Integration Wiring | v1.3 | 1/1 | Complete | 2026-03-01 |
 | 19. Test Infrastructure & Resilience Coverage | v1.3 | 2/2 | Complete | 2026-03-01 |
 
+### Phase 1: v1.4 Voice Loop Polish — Decoupled Input + Voice Queue
+
+**Goal:** Decouple the input FSM from the gateway response lifecycle and add a FIFO voice turn queue, so taps are never blocked by backend processing and multiple turns execute sequentially without aborting in-flight requests
+**Depends on:** Phase 0
+**Requirements:** [VLQ-01, VLQ-02, VLQ-03, VLQ-04, VLQ-05, VLQ-06, VLQ-07, VLQ-08]
+**Plans:** 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — State-aware reset guard in gesture-handler (response_end/error immune in recording)
+- [ ] 01-02-PLAN.md — Voice turn queue in voice-loop-controller (FIFO, bounded, sequential drain)
+- [ ] 01-03-PLAN.md — Polish: hint text update, dead code removal, typecheck + regression verification
+
 ---
 *Full phase details archived to `.planning/milestones/`*
