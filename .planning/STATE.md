@@ -55,6 +55,10 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-17]: Null origin CORS branch before strict mode; allowNullOrigin defaults false; reflect literal 'null' per RFC 6454
 - [Phase quick-19]: response_end resets FSM to idle via handleInput('reset'); transcript chunk emitted before response_start for user bubble display
 
+### Roadmap Evolution
+
+- Phase 1 added: v1.4 Voice Loop Polish — Decoupled Input + Voice Queue
+
 ### Pending Todos
 
 None.
@@ -85,9 +89,10 @@ None.
 | 16 | Extend LOOPBACK_RE to include 0.0.0.0 as non-routable address, add 4 test cases | 2026-03-01 | 3a410ba | [16-extend-loopback-re-to-include-0-0-0-0-ad](./quick/16-extend-loopback-re-to-include-0-0-0-0-ad/) |
 | 17 | Implement robust CORS support for Even WebView Origin: null with allowNullOrigin flag | 2026-03-01 | 7106723 | [17-implement-robust-cors-support-for-even-w](./quick/17-implement-robust-cors-support-for-even-w/) |
 | 19 | FSM re-record after response_end + queue during thinking + transcript chunk emission | 2026-03-02 | 49bd755 | [19-fsm-re-record-after-response-end-queue-d](./quick/19-fsm-re-record-after-response-end-queue-d/) |
+| 22 | Critical analysis of phase 1 plans: unreachable thinking state, path fix blocker, 5 plan edits | 2026-03-02 | 5b6e7c5 | [22-analyze-phase-plans-critically-and-propo](./quick/22-analyze-phase-plans-critically-and-propo/) |
 
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed quick-19: FSM re-record after response_end + transcript emission
+Stopped at: Completed quick-22: Critical analysis of phase 1 plans with 5 concrete edits
 Resume file: None
