@@ -183,7 +183,9 @@ export function createGestureHandler(opts: {
   }));
 
   // When the menu closes (command execution, auto-close, or sync), reset FSM to idle.
-  // Guard prevents spurious resets if menu:close fires when FSM is already in another state.
+  // Narrow guard: state === 'menu' (not state !== 'idle') because menu:close only fires
+  // from the menu controller when it closes the menu. The FSM is always in 'menu' state
+  // at that point. Contrast with session:switched below, which uses a broad guard.
   unsubs.push(bus.on('menu:close', () => {
     if (state === 'menu') {
       handleInput('reset', Date.now());
@@ -191,9 +193,16 @@ export function createGestureHandler(opts: {
   }));
 
   // When sessions switch (glasses menu /switch, hub sync, or any source), reset FSM to idle.
-  // Prevents stale FSM state (menu/sent/thinking/recording) from blocking tap-to-record
-  // in the new session context. The reset input correctly handles all states:
+  // Broad guard: state !== 'idle' (not a narrow check like menu:close above) because
+  // session:switched can fire from ANY state -- recording, sent, thinking, or menu --
+  // since the user can switch sessions at any time via multiple UI paths.
+  // The reset input correctly handles all states:
   // recording -> idle (with STOP_RECORDING action), all others -> idle (null action).
+  //
+  // Watchdog timer dependency: if FSM is in 'sent' with a running watchdog timer,
+  // handleInput('reset') transitions to idle, then startWatchdog() (line 97) calls
+  // clearWatchdog() at its top (line 70), cancelling the pending timer. Without this
+  // chain, the watchdog would fire later on an already-idle handler and spuriously reset.
   unsubs.push(bus.on('session:switched', () => {
     if (state !== 'idle') {
       handleInput('reset', Date.now());
