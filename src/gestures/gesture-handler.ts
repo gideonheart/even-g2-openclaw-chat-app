@@ -2,7 +2,7 @@
 //
 // Subscribes to gesture:tap/double-tap/scroll-up/scroll-down on the event bus,
 // drives the gesture FSM, dispatches actions to bridge/audio services.
-// Includes 275ms tap debounce to prevent false double-tap triggers.
+// Includes 275ms debounce for both tap and double-tap to prevent SDK duplicate events.
 // Gateway lifecycle events (response_end/error) only reset FSM from sent/thinking states.
 
 import { gestureTransition, type GestureState, type GestureInput, type GestureAction } from './gesture-fsm';
@@ -54,6 +54,7 @@ export function createGestureHandler(opts: {
 
   let state: GestureState = 'idle';
   let lastTapTs = 0;
+  let lastDoubleTapTs = 0;
 
   const WATCHDOG_MS = 45_000;
   const TRANSIENT_STATES: ReadonlySet<GestureState> = new Set(['recording', 'sent', 'thinking']);
@@ -83,13 +84,22 @@ export function createGestureHandler(opts: {
   }
 
   function handleInput(input: GestureInput, timestamp: number): void {
-    // Debounce: suppress rapid tap within DEBOUNCE_MS of a previous tap
+    // Debounce: suppress rapid tap within DEBOUNCE_MS of a previous tap/double-tap.
+    // Tap debounce: prevents trailing SDK CLICK after DOUBLE_CLICK (~50ms later).
+    // Double-tap debounce: prevents duplicate SDK DOUBLE_CLICK events that cause
+    // menu to toggle on then immediately off (idle -> menu -> idle = blink).
     if (input === 'tap' && (timestamp - lastTapTs) < DEBOUNCE_MS) {
+      return; // suppressed
+    }
+    if (input === 'double-tap' && (timestamp - lastDoubleTapTs) < DEBOUNCE_MS) {
       return; // suppressed
     }
 
     if (input === 'tap' || input === 'double-tap') {
       lastTapTs = timestamp;
+    }
+    if (input === 'double-tap') {
+      lastDoubleTapTs = timestamp;
     }
 
     const transition = gestureTransition(state, input);

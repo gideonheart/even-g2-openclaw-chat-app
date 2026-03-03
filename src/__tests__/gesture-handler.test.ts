@@ -101,11 +101,68 @@ describe('createGestureHandler', () => {
       expect(handler.getState()).toBe('recording');
     });
 
-    it('does not debounce double-tap input', () => {
+    it('processes first double-tap normally', () => {
       const handler = createHandler();
-      // double-tap is never debounced; only taps are
+      // First double-tap from idle is never debounced
       bus.emit('gesture:double-tap', { timestamp: 1000 }); // idle -> menu
       expect(handler.getState()).toBe('menu');
+    });
+
+    it('suppresses duplicate double-tap within 275ms (SDK duplicate DOUBLE_CLICK fix)', () => {
+      const handler = createHandler();
+      const menuToggleSpy = vi.fn();
+      bus.on('gesture:menu-toggle', menuToggleSpy);
+
+      // First double-tap: idle -> menu
+      bus.emit('gesture:double-tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('menu');
+      expect(menuToggleSpy).toHaveBeenCalledTimes(1);
+      expect(menuToggleSpy).toHaveBeenLastCalledWith({ active: true });
+
+      // Duplicate double-tap within 275ms: should be debounced
+      bus.emit('gesture:double-tap', { timestamp: 1050 });
+      expect(handler.getState()).toBe('menu'); // still menu, NOT toggled back to idle
+      expect(menuToggleSpy).toHaveBeenCalledTimes(1); // NOT called again
+    });
+
+    it('allows double-tap after 275ms (intentional menu close)', () => {
+      const handler = createHandler();
+      const menuToggleSpy = vi.fn();
+      bus.on('gesture:menu-toggle', menuToggleSpy);
+
+      // First double-tap: idle -> menu
+      bus.emit('gesture:double-tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('menu');
+
+      // Intentional double-tap well after debounce window: menu -> idle
+      bus.emit('gesture:double-tap', { timestamp: 1300 }); // 300ms later -> processed
+      expect(handler.getState()).toBe('idle');
+      expect(menuToggleSpy).toHaveBeenCalledTimes(2);
+      expect(menuToggleSpy).toHaveBeenLastCalledWith({ active: false });
+    });
+
+    it('suppresses duplicate double-tap with same timestamp (SDK hardware quirk)', () => {
+      const handler = createHandler();
+      const menuToggleSpy = vi.fn();
+      bus.on('gesture:menu-toggle', menuToggleSpy);
+
+      // SDK fires DOUBLE_CLICK twice with identical timestamp
+      bus.emit('gesture:double-tap', { timestamp: 1000 });
+      bus.emit('gesture:double-tap', { timestamp: 1000 }); // same timestamp!
+      expect(handler.getState()).toBe('menu'); // menu stays open, not toggled back
+      expect(menuToggleSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('tap is not affected by double-tap debounce (independent debounce tracks)', () => {
+      const handler = createHandler();
+
+      // Double-tap to open menu
+      bus.emit('gesture:double-tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('menu');
+
+      // Tap after debounce window should still work (select menu item)
+      bus.emit('gesture:tap', { timestamp: 1300 }); // 300ms later
+      expect(handler.getState()).toBe('menu'); // MENU_SELECT keeps in menu
     });
 
     it('suppresses trailing tap within 275ms after double-tap (SDK quirk)', () => {
