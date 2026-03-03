@@ -12,13 +12,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-03 - Completed quick task 26: Scroll viewport hardening (getViewportState debug accessor, autoScroll audit, direct state assertions)
+Last activity: 2026-03-03 - Completed quick task 28: Audio pipeline diagnostics and empty-audio guard
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
-- Total tests: 613 (all passing)
+- Total tests: 621 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -68,6 +68,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-25]: Conditional autoScroll reset in endStreaming: only reset when scrollOffset===0 (user at bottom); preserves manual scroll position across turn boundaries
 - [Phase quick-26]: Readonly<ViewportState> return type on getViewportState() prevents test mutation of internal state; additive test assertions kept alongside existing mock-call assertions
 - [Phase quick-27]: Comments-only: documented guard asymmetry (menu:close narrow vs session:switched broad) and watchdog timer clearance chain in gesture-handler.ts
+- [Phase quick-28]: Empty-audio guard: WAV header-only blobs (<=44 bytes) dropped before gateway send; MIN_AUDIO_BYTES=1600 threshold for short-audio warning
 
 ### Roadmap Evolution
 
@@ -109,9 +110,10 @@ None.
 | 25 | Fix glasses UI scroll jump: conditional autoScroll reset in endStreaming | 2026-03-03 | 4bea031 | [25-bug-3-fix-glasses-ui-scroll-jump-anchor-](./quick/25-bug-3-fix-glasses-ui-scroll-jump-anchor-/) |
 | 26 | Scroll viewport hardening: getViewportState debug accessor, autoScroll audit, direct state assertions | 2026-03-03 | d5159c6 | [26-fix-scroll-viewport-expose-viewport-stat](./quick/26-fix-scroll-viewport-expose-viewport-stat/) |
 | 27 | Guard asymmetry and watchdog dependency inline comments in gesture-handler.ts | 2026-03-03 | 5e0dac3 | [27-dry-srp-fixes-guard-asymmetry-comments-w](./quick/27-dry-srp-fixes-guard-asymmetry-comments-w/) |
+| 28 | Audio pipeline diagnostics: empty-audio guard, frame counting, bridge logging | 2026-03-03 | 2414337 | [28-fix-audio-transcription-pipeline-recorde](./quick/28-fix-audio-transcription-pipeline-recorde/) |
 
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed quick-27 (guard asymmetry and watchdog dependency comments in gesture-handler.ts)
+Stopped at: Completed quick-28 (audio pipeline diagnostics and empty-audio guard)
 Resume file: None
