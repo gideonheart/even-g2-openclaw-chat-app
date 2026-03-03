@@ -120,7 +120,31 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     }
   }
 
-  const TURN_TIMEOUT_MS = 30_000;
+  /**
+   * Text turns only need LLM generation time -- 30 seconds is generous.
+   */
+  const TEXT_TURN_TIMEOUT_MS = 30_000;
+
+  /**
+   * Voice turn timeout must cover upload + STT transcription + LLM generation.
+   * STT processing time is roughly proportional to audio duration (a 30-second
+   * recording can take 10-30 seconds to transcribe depending on the provider).
+   * Base: 60 seconds (covers upload + LLM overhead).
+   * Extra: +1 second per second of audio (estimated from blob size).
+   *
+   * 16 kHz, 16-bit, mono PCM = 32,000 bytes/second + 44-byte WAV header.
+   * A 30-second recording = ~960 KB -> timeout = 60 + 30 = 90 seconds.
+   * A 60-second recording = ~1.9 MB -> timeout = 60 + 60 = 120 seconds.
+   */
+  const VOICE_TURN_BASE_TIMEOUT_MS = 60_000;
+  const VOICE_TURN_MAX_TIMEOUT_MS = 180_000;
+  const PCM_BYTES_PER_SECOND = 32_000; // 16 kHz * 16-bit * mono
+
+  function voiceTurnTimeout(audioBlob: Blob): number {
+    const audioDurationSec = Math.max(0, audioBlob.size - 44) / PCM_BYTES_PER_SECOND;
+    const timeout = VOICE_TURN_BASE_TIMEOUT_MS + audioDurationSec * 1000;
+    return Math.min(timeout, VOICE_TURN_MAX_TIMEOUT_MS);
+  }
 
   /**
    * Read the JSON error body from a non-OK gateway response.
@@ -219,9 +243,10 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
 
     abort();
     abortController = new AbortController();
+    const timeoutMs = voiceTurnTimeout(request.audio);
     const timeoutId = setTimeout(() => {
       abortController?.abort(new DOMException('signal timed out', 'TimeoutError'));
-    }, TURN_TIMEOUT_MS);
+    }, timeoutMs);
 
     setStatus('connecting');
 
@@ -268,7 +293,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     abortController = new AbortController();
     const timeoutId = setTimeout(() => {
       abortController?.abort(new DOMException('signal timed out', 'TimeoutError'));
-    }, TURN_TIMEOUT_MS);
+    }, TEXT_TURN_TIMEOUT_MS);
 
     setStatus('connecting');
 

@@ -555,23 +555,44 @@ describe('createGestureHandler', () => {
       vi.useRealTimers();
     });
 
-    it('resets FSM to idle after 45s in recording state', () => {
+    // State-dependent watchdog: recording = 120s, sent/thinking = 210s
+
+    it('resets FSM to idle after 120s in recording state', () => {
       const handler = createHandler();
       bus.emit('gesture:tap', { timestamp: 1000 });
       expect(handler.getState()).toBe('recording');
 
-      vi.advanceTimersByTime(45_000);
+      vi.advanceTimersByTime(120_000);
       expect(handler.getState()).toBe('idle');
     });
 
-    it('resets FSM to idle after 45s in sent state', () => {
+    it('does NOT reset FSM before 120s in recording state', () => {
+      const handler = createHandler();
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('recording');
+
+      vi.advanceTimersByTime(119_999);
+      expect(handler.getState()).toBe('recording');
+    });
+
+    it('resets FSM to idle after 210s in sent state', () => {
       const handler = createHandler();
       bus.emit('gesture:tap', { timestamp: 1000 });
       bus.emit('gesture:tap', { timestamp: 1300 });
       expect(handler.getState()).toBe('sent');
 
-      vi.advanceTimersByTime(45_000);
+      vi.advanceTimersByTime(210_000);
       expect(handler.getState()).toBe('idle');
+    });
+
+    it('does NOT reset FSM before 210s in sent state', () => {
+      const handler = createHandler();
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      bus.emit('gesture:tap', { timestamp: 1300 });
+      expect(handler.getState()).toBe('sent');
+
+      vi.advanceTimersByTime(209_999);
+      expect(handler.getState()).toBe('sent');
     });
 
     it('emits fsm:watchdog-reset event with previousState and elapsed', () => {
@@ -580,12 +601,12 @@ describe('createGestureHandler', () => {
       bus.on('fsm:watchdog-reset', spy);
 
       bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
-      vi.advanceTimersByTime(45_000);
+      vi.advanceTimersByTime(120_000);
 
       expect(spy).toHaveBeenCalledOnce();
       expect(spy).toHaveBeenCalledWith({
         previousState: 'recording',
-        elapsed: 45_000,
+        elapsed: 120_000,
       });
     });
 
@@ -595,7 +616,7 @@ describe('createGestureHandler', () => {
       bus.on('log', logSpy);
 
       bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
-      vi.advanceTimersByTime(45_000);
+      vi.advanceTimersByTime(120_000);
 
       expect(logSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -610,7 +631,7 @@ describe('createGestureHandler', () => {
       const spy = vi.fn();
       bus.on('fsm:watchdog-reset', spy);
 
-      vi.advanceTimersByTime(60_000);
+      vi.advanceTimersByTime(300_000);
       expect(spy).not.toHaveBeenCalled();
     });
 
@@ -620,7 +641,7 @@ describe('createGestureHandler', () => {
       bus.on('fsm:watchdog-reset', spy);
 
       bus.emit('gesture:double-tap', { timestamp: 1000 }); // idle -> menu
-      vi.advanceTimersByTime(60_000);
+      vi.advanceTimersByTime(300_000);
       expect(spy).not.toHaveBeenCalled();
     });
 
@@ -632,16 +653,16 @@ describe('createGestureHandler', () => {
       bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
       bus.emit('gesture:tap', { timestamp: 1300 }); // recording -> sent
 
-      // Advance 30s, then send a delta (resets the 45s window)
-      vi.advanceTimersByTime(30_000);
+      // Advance 200s, then send a delta (resets the 210s window)
+      vi.advanceTimersByTime(200_000);
       bus.emit('gateway:chunk', { type: 'response_delta', text: 'hello' });
 
-      // Advance another 30s -- only 30s since last delta, should NOT fire
-      vi.advanceTimersByTime(30_000);
+      // Advance another 200s -- only 200s since last delta, should NOT fire
+      vi.advanceTimersByTime(200_000);
       expect(spy).not.toHaveBeenCalled();
 
-      // Advance remaining 15s to hit 45s since last delta -- NOW it fires
-      vi.advanceTimersByTime(15_000);
+      // Advance remaining 10s to hit 210s since last delta -- NOW it fires
+      vi.advanceTimersByTime(10_000);
       expect(spy).toHaveBeenCalledOnce();
     });
 
@@ -657,8 +678,8 @@ describe('createGestureHandler', () => {
       vi.advanceTimersByTime(10_000);
       bus.emit('gateway:chunk', { type: 'error', error: 'test error' });
 
-      // Advance past 45s -- watchdog should NOT fire (was cleared on reset)
-      vi.advanceTimersByTime(45_000);
+      // Advance past 210s -- watchdog should NOT fire (was cleared on reset)
+      vi.advanceTimersByTime(210_000);
       expect(spy).not.toHaveBeenCalled();
     });
 
@@ -670,7 +691,7 @@ describe('createGestureHandler', () => {
       bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
       handler.destroy();
 
-      vi.advanceTimersByTime(45_000);
+      vi.advanceTimersByTime(120_000);
       expect(spy).not.toHaveBeenCalled();
     });
   });

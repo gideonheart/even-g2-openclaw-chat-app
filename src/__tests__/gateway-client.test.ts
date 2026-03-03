@@ -365,6 +365,91 @@ describe('gateway-client', () => {
       expect(init.headers['Content-Type']).toBe('audio/webm');
       expect(init.headers['X-Session-Key']).toBe('key-123');
     });
+
+    it('voice turn timeout scales with audio blob size (large blob does not timeout at 30s)', async () => {
+      vi.useFakeTimers();
+      try {
+        // Simulate a 30-second recording: 30 * 32000 bytes PCM + 44 WAV header
+        const largeBlob = new Blob([new ArrayBuffer(30 * 32_000 + 44)], { type: 'audio/wav' });
+        const largeRequest: VoiceTurnRequest = {
+          sessionId: 'sess-1',
+          audio: largeBlob,
+          sttProvider: 'whisperx',
+        };
+
+        // Fetch that resolves only after 60s (well past the old 30s timeout but
+        // within the new scaled timeout of 60 + 30 = 90s)
+        let resolveFetch!: (value: unknown) => void;
+        globalThis.fetch = vi.fn().mockImplementation(() =>
+          new Promise((resolve) => { resolveFetch = resolve; }),
+        );
+
+        const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        const turnPromise = client.sendVoiceTurn(testSettings, largeRequest);
+
+        // Advance 35s -- old timeout (30s) would have fired, new timeout should not
+        await vi.advanceTimersByTimeAsync(35_000);
+        expect(chunks.filter((c) => c.type === 'error')).toHaveLength(0);
+
+        // Resolve the fetch at 35s
+        resolveFetch({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ turnId: 't1', assistant: { fullText: 'done' } }),
+        });
+
+        await turnPromise;
+        expect(chunks.filter((c) => c.type === 'response_end')).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('voice turn with small audio blob uses base timeout of 60s', async () => {
+      vi.useFakeTimers();
+      try {
+        // Small blob: 1 second of audio
+        const smallBlob = new Blob([new ArrayBuffer(32_000 + 44)], { type: 'audio/wav' });
+        const smallRequest: VoiceTurnRequest = {
+          sessionId: 'sess-1',
+          audio: smallBlob,
+          sttProvider: 'whisperx',
+        };
+
+        // Fetch that respects the abort signal (rejects when aborted)
+        globalThis.fetch = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+          return new Promise((_resolve, reject) => {
+            if (init?.signal) {
+              init.signal.addEventListener('abort', () => {
+                reject(init.signal!.reason ?? new DOMException('Aborted', 'AbortError'));
+              });
+            }
+          });
+        });
+
+        const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        const turnPromise = client.sendVoiceTurn(testSettings, smallRequest);
+
+        // At 59s -- should NOT have timed out (base=60s + 1s audio = 61s total)
+        await vi.advanceTimersByTimeAsync(59_000);
+        expect(chunks.filter((c) => c.type === 'error')).toHaveLength(0);
+
+        // At 62s -- should have timed out (61s timeout)
+        await vi.advanceTimersByTimeAsync(3_000);
+        expect(chunks.filter((c) => c.type === 'error')).toHaveLength(1);
+        expect(chunks.find((c) => c.type === 'error')?.error).toContain('timed out');
+
+        await turnPromise;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('sendTextTurn', () => {
