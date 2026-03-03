@@ -182,6 +182,14 @@ export function createGestureHandler(opts: {
     }
   }));
 
+  // When the menu closes (command execution, auto-close, or sync), reset FSM to idle.
+  // Guard prevents spurious resets if menu:close fires when FSM is already in another state.
+  unsubs.push(bus.on('menu:close', () => {
+    if (state === 'menu') {
+      handleInput('reset', Date.now());
+    }
+  }));
+
   function destroy(): void {
     clearWatchdog();
     for (const unsub of unsubs) {
