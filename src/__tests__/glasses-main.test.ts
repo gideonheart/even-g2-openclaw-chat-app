@@ -50,6 +50,7 @@ const mockAudioCapture = {
   stopRecording: mockStopRecording,
   onFrame: vi.fn(),
   isRecording: vi.fn().mockReturnValue(false),
+  getFrameCount: vi.fn().mockReturnValue(0),
 };
 
 vi.mock('../audio/audio-capture', () => ({

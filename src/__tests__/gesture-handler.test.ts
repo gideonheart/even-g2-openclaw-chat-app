@@ -23,6 +23,7 @@ function makeMockAudioCapture(): AudioCapture {
     stopRecording: vi.fn<() => Promise<Blob>>().mockResolvedValue(blob),
     onFrame: vi.fn<(pcm: Uint8Array) => void>(),
     isRecording: vi.fn<() => boolean>().mockReturnValue(false),
+    getFrameCount: vi.fn<() => number>().mockReturnValue(0),
   };
 }
 
