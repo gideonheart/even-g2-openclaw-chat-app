@@ -563,6 +563,90 @@ describe('GlassesRenderer', () => {
       expect(lastText).not.toContain('[Error] test error');
     });
 
+    it('addUserMessage snaps to bottom when user scrolled up', async () => {
+      await renderer.init();
+
+      // Add 3 messages, scroll up twice (scrollOffset=2, autoScroll=false)
+      renderer.addUserMessage('Msg 1');
+      renderer.addUserMessage('Msg 2');
+      renderer.addUserMessage('Msg 3');
+      renderer.scrollUp();
+      renderer.scrollUp();
+
+      const stateBefore = renderer.getViewportState();
+      expect(stateBefore.scrollOffset).toBe(2);
+      expect(stateBefore.autoScroll).toBe(false);
+
+      // addUserMessage should snap to bottom regardless of scroll state
+      renderer.addUserMessage('New question');
+
+      const stateAfter = renderer.getViewportState();
+      expect(stateAfter.scrollOffset).toBe(0);
+      expect(stateAfter.autoScroll).toBe(true);
+
+      // Rendered text should contain the new user message
+      const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+        (c: unknown[]) => c[0] === 2,
+      );
+      expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+      const lastText = chatCalls[chatCalls.length - 1][1] as string;
+      expect(lastText).toContain('New question');
+    });
+
+    it('addUserMessage during scrolled-up state renders the new message', async () => {
+      await renderer.init();
+
+      // Add 3 messages, scroll up once
+      renderer.addUserMessage('Msg A');
+      renderer.addUserMessage('Msg B');
+      renderer.addUserMessage('Msg C');
+      renderer.scrollUp();
+      bridge.textContainerUpgrade.mockClear();
+
+      // addUserMessage should render (snap to bottom)
+      renderer.addUserMessage('Visible');
+
+      const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+        (c: unknown[]) => c[0] === 2,
+      );
+      expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+      const lastText = chatCalls[chatCalls.length - 1][1] as string;
+      expect(lastText).toContain('> Visible');
+    });
+
+    it('after addUserMessage snap, streaming response is visible (autoScroll re-enabled)', async () => {
+      await renderer.init();
+
+      // Add 2 messages, scroll up (autoScroll=false)
+      renderer.addUserMessage('First');
+      renderer.addUserMessage('Second');
+      renderer.scrollUp();
+
+      const stateBefore = renderer.getViewportState();
+      expect(stateBefore.autoScroll).toBe(false);
+
+      // addUserMessage snaps to bottom, re-enabling autoScroll
+      renderer.addUserMessage('Question');
+
+      const stateAfterAdd = renderer.getViewportState();
+      expect(stateAfterAdd.autoScroll).toBe(true);
+      expect(stateAfterAdd.scrollOffset).toBe(0);
+
+      bridge.textContainerUpgrade.mockClear();
+
+      // Streaming response should be visible because autoScroll was re-enabled
+      renderer.startStreaming();
+      renderer.appendStreamChunk('Answer');
+      vi.advanceTimersByTime(200);
+
+      const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+        (c: unknown[]) => c[0] === 2,
+      );
+      expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+      const lastText = chatCalls[chatCalls.length - 1][1] as string;
+      expect(lastText).toContain('Answer');
+    });
+
     it('getViewportState() reflects full scroll lifecycle', async () => {
       await renderer.init();
 
