@@ -408,6 +408,31 @@ export async function boot(): Promise<void> {
     if (msg.origin === 'glasses') return; // ignore own echoes
 
     switch (msg.type) {
+      case 'message:added': {
+        if (msg.conversationId === activeConversationId) {
+          if (msg.role === 'user') {
+            renderer.addUserMessage(msg.text);
+          } else if (msg.role === 'assistant') {
+            // Hub sends full assistant text at response_end (between streaming:start and streaming:end).
+            // Use appendStreamChunk to display it -- endStreaming will finalize the bubble.
+            renderer.appendStreamChunk(msg.text);
+          }
+        }
+        break;
+      }
+      case 'streaming:start': {
+        if (msg.conversationId === activeConversationId) {
+          renderer.startStreaming();
+          renderer.setIconState('thinking');
+        }
+        break;
+      }
+      case 'streaming:end': {
+        if (msg.conversationId === activeConversationId) {
+          renderer.endStreaming();
+        }
+        break;
+      }
       case 'session:switched': {
         // Hub switched session -- load new session into display
         switchToSession(msg.sessionId).catch(() => {
