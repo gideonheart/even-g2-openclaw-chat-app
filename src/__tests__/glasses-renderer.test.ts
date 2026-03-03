@@ -361,17 +361,15 @@ describe('GlassesRenderer', () => {
 
   // ── auto-scroll reset ──────────────────────────────────────
 
-  it('endStreaming resets auto-scroll to true', async () => {
+  it('endStreaming resets auto-scroll when user is at bottom (scrollOffset=0)', async () => {
     await renderer.init();
 
     renderer.addUserMessage('Test');
     renderer.startStreaming();
     renderer.appendStreamChunk('Response');
 
-    // Scroll up pauses auto-scroll
-    renderer.scrollUp();
-
-    // End streaming should reset auto-scroll
+    // User is at bottom (scrollOffset=0, autoScroll=true by default)
+    // End streaming should keep auto-scroll true
     renderer.endStreaming();
     bridge.textContainerUpgrade.mockClear();
 

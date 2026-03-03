@@ -236,8 +236,12 @@ export function createGlassesRenderer(opts: {
       last.complete = true;
     }
 
-    // Reset auto-scroll at end of turn (per user decision)
-    viewport.autoScroll = true;
+    // Only reset auto-scroll if user is already at the bottom (scrollOffset === 0).
+    // If user manually scrolled up (scrollOffset > 0), preserve their position --
+    // they will re-enable auto-scroll by scrolling back down to offset 0.
+    if (viewport.scrollOffset === 0) {
+      viewport.autoScroll = true;
+    }
 
     // Re-render with the complete marker
     renderAndPush();
