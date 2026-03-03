@@ -56,18 +56,8 @@ export function createGestureHandler(opts: {
   let lastTapTs = 0;
   let lastDoubleTapTs = 0;
 
-  /**
-   * Watchdog timeout per state. Recording uses a shorter timeout (user forgot
-   * to stop). Sent/thinking use a longer timeout to accommodate voice turns
-   * where STT transcription + LLM generation can take 2-3 minutes for long
-   * audio recordings.
-   */
-  const WATCHDOG_RECORDING_MS = 120_000; // 2 min: reasonable max recording length
-  const WATCHDOG_SENT_MS = 210_000;      // 3.5 min: above max voice turn timeout (180s)
-
-  function watchdogMs(): number {
-    return state === 'recording' ? WATCHDOG_RECORDING_MS : WATCHDOG_SENT_MS;
-  }
+  /** Watchdog timeout: resets FSM if stuck in any transient state for 2 minutes. */
+  const WATCHDOG_MS = 120_000;
 
   const TRANSIENT_STATES: ReadonlySet<GestureState> = new Set(['recording', 'sent', 'thinking']);
   let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
@@ -83,7 +73,7 @@ export function createGestureHandler(opts: {
     clearWatchdog();
     if (TRANSIENT_STATES.has(state)) {
       const watchedState = state; // capture for closure
-      const ms = watchdogMs();
+      const ms = WATCHDOG_MS;
       watchdogTimer = setTimeout(() => {
         watchdogTimer = null;
         bus.emit('fsm:watchdog-reset', { previousState: watchedState, elapsed: ms });
