@@ -2,58 +2,10 @@ import type {
   AppSettings,
   ConnectionStatus,
   GatewayHealthState,
-  SSEEvent,
   TextTurnRequest,
   VoiceTurnChunk,
   VoiceTurnRequest,
 } from '../types';
-
-// ── SSE line parser (kept for tests/backward compatibility) ──
-
-export function parseSSELines(raw: string): SSEEvent[] {
-  const events: SSEEvent[] = [];
-  let current: Partial<SSEEvent> = {};
-
-  for (const line of raw.split(/\r?\n/)) {
-    if (line === '') {
-      if (current.data !== undefined) {
-        events.push({
-          event: current.event || 'message',
-          data: current.data,
-          id: current.id,
-        });
-      }
-      current = {};
-      continue;
-    }
-
-    if (line.startsWith(':')) continue;
-
-    const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) continue;
-
-    const field = line.slice(0, colonIdx);
-    const value = line.slice(colonIdx + 1).trimStart();
-
-    if (field === 'data') {
-      current.data = current.data !== undefined ? `${current.data}\n${value}` : value;
-    } else if (field === 'event') {
-      current.event = value;
-    } else if (field === 'id') {
-      current.id = value;
-    }
-  }
-
-  if (current.data !== undefined) {
-    events.push({
-      event: current.event || 'message',
-      data: current.data,
-      id: current.id,
-    });
-  }
-
-  return events;
-}
 
 // ── Gateway client ───────────────────────────────────────────
 
@@ -211,6 +163,33 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     }
   }
 
+  /**
+   * Shared error handler for sendVoiceTurn and sendTextTurn catch blocks.
+   * Classifies errors into three categories:
+   *
+   * 1. DOMException (AbortError / TimeoutError) -- request was cancelled or
+   *    timed out.  Status → 'error' (gateway may be unreachable or slow).
+   *
+   * 2. GatewayAppError (4xx/5xx HTTP response) -- the gateway IS reachable,
+   *    but the request was rejected by the server.  Status stays 'connected'
+   *    because the gateway responded; only the request failed.
+   *
+   * 3. Everything else (TypeError from fetch, CORS block, network failure) --
+   *    the gateway is genuinely unreachable.  Status → 'error'.
+   */
+  function handleTurnError(err: unknown): void {
+    if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+      emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
+      setStatus('error');
+    } else if (err instanceof GatewayAppError) {
+      emitChunk({ type: 'error', error: err.message });
+      setStatus('connected');
+    } else {
+      emitChunk({ type: 'error', error: err instanceof Error ? err.message : 'Gateway request failed' });
+      setStatus('error');
+    }
+  }
+
   async function postVoiceTurn(settings: AppSettings, audio: Blob): Promise<GatewayReply> {
     const headers: Record<string, string> = {
       'Content-Type': audio.type || 'audio/wav',
@@ -254,19 +233,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       emitFromGatewayReply(reply);
     } catch (err) {
       clearTimeout(timeoutId);
-      if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
-        emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
-        setStatus('error');
-      } else if (err instanceof GatewayAppError) {
-        // Gateway responded with an error (4xx/5xx) -- it IS reachable.
-        // Emit the error for display but keep status as 'connected'.
-        emitChunk({ type: 'error', error: err.message });
-        setStatus('connected');
-      } else {
-        // Network error, CORS block, or other fetch failure -- truly unreachable.
-        emitChunk({ type: 'error', error: err instanceof Error ? err.message : 'Gateway request failed' });
-        setStatus('error');
-      }
+      handleTurnError(err);
     }
   }
 
@@ -313,19 +280,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       emitFromGatewayReply(reply);
     } catch (err) {
       clearTimeout(timeoutId);
-      if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
-        emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
-        setStatus('error');
-      } else if (err instanceof GatewayAppError) {
-        // Gateway responded with an error (4xx/5xx) -- it IS reachable.
-        // Emit the error for display but keep status as 'connected'.
-        emitChunk({ type: 'error', error: err.message });
-        setStatus('connected');
-      } else {
-        // Network error, CORS block, or other fetch failure -- truly unreachable.
-        emitChunk({ type: 'error', error: err instanceof Error ? err.message : 'Gateway request failed' });
-        setStatus('error');
-      }
+      handleTurnError(err);
     }
   }
 

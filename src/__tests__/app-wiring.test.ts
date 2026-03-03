@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   createAppState,
-  connectGlasses,
-  disconnectGlasses,
   setGlassesConnecting,
   setGlassesConnected,
   setGlassesDisconnected,
@@ -123,41 +121,6 @@ describe('app-wiring', () => {
       setGlassesDisconnected(state, logFn);
 
       expect(logs[0][1]).toBe('Glasses disconnected');
-    });
-  });
-
-  // ── Deprecated (backward compat) ──
-
-  describe('connectGlasses (deprecated)', () => {
-    it('sets state.glassesConnected to true and calls log', () => {
-      const state = createAppState(makeSettings());
-      const { logFn, logs } = makeLogFn();
-
-      const result = connectGlasses(state, logFn);
-
-      expect(state.glassesConnected).toBe(true);
-      expect(result.connected).toBe(true);
-      expect(result.battery).toBe('87 %');
-      expect(logs).toHaveLength(1);
-      expect(logs[0][0]).toBe('info');
-      expect(logs[0][1]).toContain('Glasses connected');
-    });
-  });
-
-  describe('disconnectGlasses (deprecated)', () => {
-    it('sets state.glassesConnected to false and calls log', () => {
-      const state = createAppState(makeSettings());
-      state.glassesConnected = true;
-      const { logFn, logs } = makeLogFn();
-
-      const result = disconnectGlasses(state, logFn);
-
-      expect(state.glassesConnected).toBe(false);
-      expect(result.connected).toBe(false);
-      expect(result.battery).toBe('-- %');
-      expect(logs).toHaveLength(1);
-      expect(logs[0][0]).toBe('info');
-      expect(logs[0][1]).toContain('Glasses disconnected');
     });
   });
 

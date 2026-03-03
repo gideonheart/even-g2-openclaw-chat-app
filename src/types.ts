@@ -67,12 +67,6 @@ export interface GatewayHealthState {
   openclawReady?: boolean;
 }
 
-export interface SSEEvent {
-  event: string;
-  data: string;
-  id?: string;
-}
-
 export interface VoiceTurnRequest {
   sessionId: string;
   audio: Blob;

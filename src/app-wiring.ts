@@ -76,26 +76,6 @@ export function setGlassesDisconnected(
   return { connectionState: 'disconnected', battery: '-- %', deviceName: '' };
 }
 
-// ── DEPRECATED — kept only for backward compat in tests ──
-
-/** @deprecated Use setGlassesConnected instead */
-export function connectGlasses(
-  state: AppState,
-  log: LogFn,
-): { connected: true; battery: string } {
-  setGlassesConnected(state, log, 'Even G2 (mock)', '87 %');
-  return { connected: true, battery: '87 %' };
-}
-
-/** @deprecated Use setGlassesDisconnected instead */
-export function disconnectGlasses(
-  state: AppState,
-  log: LogFn,
-): { connected: false; battery: string } {
-  setGlassesDisconnected(state, log);
-  return { connected: false, battery: '-- %' };
-}
-
 // ── Session switching (pure logic) ────────────────────────
 
 export interface SwitchResult {
