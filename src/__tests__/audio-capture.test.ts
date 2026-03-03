@@ -133,6 +133,46 @@ describe('AudioCapture - glasses mode (devMode=false)', () => {
     const result = capture.onFrame(new Uint8Array([1]));
     expect(result).toBeUndefined();
   });
+
+  it('getFrameCount returns 0 before any recording', () => {
+    expect(capture.getFrameCount()).toBe(0);
+  });
+
+  it('getFrameCount tracks frames during recording', () => {
+    capture.startRecording('sess-1');
+    capture.onFrame(new Uint8Array([1, 2]));
+    capture.onFrame(new Uint8Array([3, 4]));
+    capture.onFrame(new Uint8Array([5]));
+    expect(capture.getFrameCount()).toBe(3);
+  });
+
+  it('getFrameCount resets on new recording', async () => {
+    capture.startRecording('sess-1');
+    capture.onFrame(new Uint8Array([1]));
+    capture.onFrame(new Uint8Array([2]));
+    await capture.stopRecording();
+
+    // Start a new recording — frame count should reset
+    capture.startRecording('sess-2');
+    expect(capture.getFrameCount()).toBe(0);
+  });
+
+  it('stopRecording with zero frames produces a valid WAV header', async () => {
+    capture.startRecording('sess-1');
+    const blob = await capture.stopRecording();
+
+    // WAV header only, no data
+    expect(blob.size).toBe(44);
+  });
+
+  it('stopRecording with minimal frames produces valid WAV', async () => {
+    capture.startRecording('sess-1');
+    capture.onFrame(new Uint8Array(40)); // one 40-byte frame
+    const blob = await capture.stopRecording();
+
+    // 44-byte WAV header + 40-byte PCM data
+    expect(blob.size).toBe(84);
+  });
 });
 
 describe('AudioCapture - dev mode (devMode=true)', () => {

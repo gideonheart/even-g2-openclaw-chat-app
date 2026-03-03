@@ -18,7 +18,15 @@ export interface AudioCapture {
   stopRecording(): Promise<Blob>;
   onFrame(pcm: Uint8Array): void;
   isRecording(): boolean;
+  getFrameCount(): number;
 }
+
+/**
+ * Minimum audio payload in bytes for meaningful speech.
+ * 50ms of 16 kHz, 16-bit, mono PCM = 1600 bytes.
+ * Anything shorter will almost certainly produce hallucinated STT output.
+ */
+export const MIN_AUDIO_BYTES = 1600;
 
 /**
  * Wrap raw PCM bytes in a WAV (RIFF) container.
@@ -69,10 +77,12 @@ export function createAudioCapture(devMode: boolean): AudioCapture {
   let mediaRecorder: MediaRecorder | null = null;
   let mediaChunks: Blob[] = [];
   let recording = false;
+  let frameCount = 0;
 
   function startRecording(_sessionId: string): void {
     frames = [];
     mediaChunks = [];
+    frameCount = 0;
     recording = true;
 
     if (devMode) {
@@ -93,6 +103,7 @@ export function createAudioCapture(devMode: boolean): AudioCapture {
     // This must be fully synchronous — no await, no async.
     if (recording && !devMode) {
       frames.push(pcm);
+      frameCount++;
     }
   }
 
@@ -114,6 +125,11 @@ export function createAudioCapture(devMode: boolean): AudioCapture {
     // Even G2 sends 16 kHz / 16-bit / mono PCM. Raw PCM is not decodable by
     // standard STT backends -- it must be wrapped in a WAV (RIFF) container.
     const totalLen = frames.reduce((sum, f) => sum + f.length, 0);
+
+    if (totalLen < MIN_AUDIO_BYTES) {
+      console.warn(`[AudioCapture] Warning: only ${totalLen} bytes (${frameCount} frames) captured — audio may be empty/silent`);
+    }
+
     const pcm = new Uint8Array(totalLen);
     let offset = 0;
     for (const frame of frames) {
@@ -128,10 +144,15 @@ export function createAudioCapture(devMode: boolean): AudioCapture {
     return recording;
   }
 
+  function getFrameCount(): number {
+    return frameCount;
+  }
+
   return {
     startRecording,
     stopRecording,
     onFrame,
     isRecording: isRecordingFn,
+    getFrameCount,
   };
 }
