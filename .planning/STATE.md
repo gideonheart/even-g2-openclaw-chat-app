@@ -12,13 +12,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-03 - Completed quick task 30: Fix hub text turn messages not showing on glasses display
+Last activity: 2026-03-03 - Completed quick task 31: Fix G2 glasses UI auto-scroll to start on addUserMessage
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
-- Total tests: 619 (all passing)
+- Total tests: 622 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -71,6 +71,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-28]: Empty-audio guard: WAV header-only blobs (<=44 bytes) dropped before gateway send; MIN_AUDIO_BYTES=1600 threshold for short-audio warning
 - [Phase quick-29]: Shared handleTurnError extracted from duplicated catch blocks; parseSSELines/SSEEvent/connectGlasses/disconnectGlasses dead code removed
 - [Phase quick-30]: Direct renderer calls (not bus.emit) for sync bridge text turn display to avoid auto-save double-write of hub-saved messages
+- [Phase quick-31]: addUserMessage unconditionally resets scrollOffset=0 and autoScroll=true -- user-initiated actions always snap to bottom
 
 ### Roadmap Evolution
 
@@ -115,9 +116,10 @@ None.
 | 28 | Audio pipeline diagnostics: empty-audio guard, frame counting, bridge logging | 2026-03-03 | 2414337 | [28-fix-audio-transcription-pipeline-recorde](./quick/28-fix-audio-transcription-pipeline-recorde/) |
 | 29 | DRY/SRP cleanup: handleTurnError extraction, dead SSE/glasses code removal, root cause analysis | 2026-03-03 | 519b4dd | [29-analyze-recent-changes-for-dry-srp-remov](./quick/29-analyze-recent-changes-for-dry-srp-remov/) |
 | 30 | Fix hub text turn messages not showing on glasses: sync bridge handlers + 6 tests | 2026-03-03 | d44b41f | [30-fix-sendtextturn-messages-not-showing-in](./quick/30-fix-sendtextturn-messages-not-showing-in/) |
+| 31 | Fix G2 glasses UI auto-scroll: addUserMessage always snaps to bottom + 3 tests | 2026-03-03 | d9e4309 | [31-fix-g2-glasses-ui-auto-scroll-to-start-a](./quick/31-fix-g2-glasses-ui-auto-scroll-to-start-a/) |
 
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed quick-30 (Fix hub text turn messages not showing on glasses display)
+Stopped at: Completed quick-31 (Fix G2 glasses UI auto-scroll to start on addUserMessage)
 Resume file: None
