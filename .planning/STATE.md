@@ -12,13 +12,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-03 - Completed quick task 28: Audio pipeline diagnostics and empty-audio guard
+Last activity: 2026-03-03 - Completed quick task 29: DRY/SRP cleanup and root cause analysis
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
-- Total tests: 621 (all passing)
+- Total tests: 613 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -69,6 +69,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-26]: Readonly<ViewportState> return type on getViewportState() prevents test mutation of internal state; additive test assertions kept alongside existing mock-call assertions
 - [Phase quick-27]: Comments-only: documented guard asymmetry (menu:close narrow vs session:switched broad) and watchdog timer clearance chain in gesture-handler.ts
 - [Phase quick-28]: Empty-audio guard: WAV header-only blobs (<=44 bytes) dropped before gateway send; MIN_AUDIO_BYTES=1600 threshold for short-audio warning
+- [Phase quick-29]: Shared handleTurnError extracted from duplicated catch blocks; parseSSELines/SSEEvent/connectGlasses/disconnectGlasses dead code removed
 
 ### Roadmap Evolution
 
@@ -111,9 +112,10 @@ None.
 | 26 | Scroll viewport hardening: getViewportState debug accessor, autoScroll audit, direct state assertions | 2026-03-03 | d5159c6 | [26-fix-scroll-viewport-expose-viewport-stat](./quick/26-fix-scroll-viewport-expose-viewport-stat/) |
 | 27 | Guard asymmetry and watchdog dependency inline comments in gesture-handler.ts | 2026-03-03 | 5e0dac3 | [27-dry-srp-fixes-guard-asymmetry-comments-w](./quick/27-dry-srp-fixes-guard-asymmetry-comments-w/) |
 | 28 | Audio pipeline diagnostics: empty-audio guard, frame counting, bridge logging | 2026-03-03 | 2414337 | [28-fix-audio-transcription-pipeline-recorde](./quick/28-fix-audio-transcription-pipeline-recorde/) |
+| 29 | DRY/SRP cleanup: handleTurnError extraction, dead SSE/glasses code removal, root cause analysis | 2026-03-03 | 519b4dd | [29-analyze-recent-changes-for-dry-srp-remov](./quick/29-analyze-recent-changes-for-dry-srp-remov/) |
 
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed quick-28 (audio pipeline diagnostics and empty-audio guard)
+Stopped at: Completed quick-29 (DRY/SRP cleanup: handleTurnError extraction + dead code removal)
 Resume file: None
