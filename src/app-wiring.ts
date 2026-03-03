@@ -224,14 +224,28 @@ export function buildHealthViewModel(
     gwLabel = truncate(settings.gatewayUrl, 35);
   }
 
+  // STT health: combine configuration + readyz detail from gateway
+  let sttDot: HealthDotState;
+  let sttLabel: string;
+
+  if (!sttOk) {
+    sttDot = 'off';
+    sttLabel = 'Not configured';
+  } else if (readyzDetail?.sttReady === true) {
+    sttDot = 'ok';
+    sttLabel = STT_LABELS[settings.sttProvider] || settings.sttProvider;
+  } else if (readyzDetail?.sttReady === false) {
+    sttDot = 'err';
+    sttLabel = `${STT_LABELS[settings.sttProvider] || settings.sttProvider} — unreachable`;
+  } else {
+    // No readyz detail yet -- show configured but unverified
+    sttDot = 'ok';
+    sttLabel = STT_LABELS[settings.sttProvider] || settings.sttProvider;
+  }
+
   return {
     gateway: { dot: gwDot, label: gwLabel },
-    stt: {
-      dot: sttOk ? 'ok' : 'off',
-      label: sttOk
-        ? STT_LABELS[settings.sttProvider] || settings.sttProvider
-        : 'Not configured',
-    },
+    stt: { dot: sttDot, label: sttLabel },
     session: {
       dot: sessOk ? 'ok' : 'off',
       label: sessOk ? activeSession : 'No session',

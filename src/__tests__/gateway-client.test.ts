@@ -355,7 +355,7 @@ describe('gateway-client', () => {
       expect(client.getHealth().reconnectAttempts).toBe(0);
     });
 
-    it('emits error on non-ok response (no JSON body)', async () => {
+    it('emits error on non-ok response (no JSON body) but stays connected', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 502,
@@ -364,16 +364,20 @@ describe('gateway-client', () => {
 
       const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
       const chunks: VoiceTurnChunk[] = [];
+      const statuses: string[] = [];
       client.onChunk((c) => chunks.push(c));
+      client.onStatusChange((s) => statuses.push(s));
 
       await client.sendVoiceTurn(testSettings, testRequest);
 
       const errorChunks = chunks.filter((c) => c.type === 'error');
       expect(errorChunks).toHaveLength(1);
       expect(errorChunks[0].error).toContain('502');
+      // Gateway responded (even with error) -- it IS reachable
+      expect(statuses[statuses.length - 1]).toBe('connected');
     });
 
-    it('surfaces gateway JSON error message on non-ok response', async () => {
+    it('surfaces gateway JSON error message on non-ok response and stays connected', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 400,
@@ -386,7 +390,9 @@ describe('gateway-client', () => {
 
       const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
       const chunks: VoiceTurnChunk[] = [];
+      const statuses: string[] = [];
       client.onChunk((c) => chunks.push(c));
+      client.onStatusChange((s) => statuses.push(s));
 
       await client.sendVoiceTurn(testSettings, testRequest);
 
@@ -395,6 +401,8 @@ describe('gateway-client', () => {
       expect(errorChunks[0].error).toBe(
         'Transcription returned empty text. The audio may be silent or too short.',
       );
+      // Gateway responded with a meaningful error -- it IS reachable
+      expect(statuses[statuses.length - 1]).toBe('connected');
     });
 
     it('sends correct request format', async () => {
@@ -575,7 +583,7 @@ describe('gateway-client', () => {
       expect(abortSignals[0].aborted).toBe(true);
     });
 
-    it('emits error chunk on gateway failure (no JSON body)', async () => {
+    it('emits error chunk on gateway failure (no JSON body) but stays connected', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 502,
@@ -584,16 +592,20 @@ describe('gateway-client', () => {
 
       const client = createGatewayClient();
       const chunks: VoiceTurnChunk[] = [];
+      const statuses: string[] = [];
       client.onChunk((c) => chunks.push(c));
+      client.onStatusChange((s) => statuses.push(s));
 
       await client.sendTextTurn(testSettings, testTextRequest);
 
       const errorChunks = chunks.filter((c) => c.type === 'error');
       expect(errorChunks).toHaveLength(1);
       expect(errorChunks[0].error).toContain('502');
+      // Gateway responded (even with error) -- it IS reachable
+      expect(statuses[statuses.length - 1]).toBe('connected');
     });
 
-    it('surfaces gateway JSON error message on non-ok response', async () => {
+    it('surfaces gateway JSON error message on non-ok response and stays connected', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 400,
@@ -606,13 +618,17 @@ describe('gateway-client', () => {
 
       const client = createGatewayClient();
       const chunks: VoiceTurnChunk[] = [];
+      const statuses: string[] = [];
       client.onChunk((c) => chunks.push(c));
+      client.onStatusChange((s) => statuses.push(s));
 
       await client.sendTextTurn(testSettings, testTextRequest);
 
       const errorChunks = chunks.filter((c) => c.type === 'error');
       expect(errorChunks).toHaveLength(1);
       expect(errorChunks[0].error).toBe('Text must not be empty');
+      // Gateway responded with a meaningful error -- it IS reachable
+      expect(statuses[statuses.length - 1]).toBe('connected');
     });
   });
 });

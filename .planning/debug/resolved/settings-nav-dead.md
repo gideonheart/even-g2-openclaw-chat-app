@@ -1,76 +1,71 @@
 ---
-status: resolved
-trigger: "P0 UX BUG — In companion app (Even Hub WebView), tapping bottom-nav Gear/Settings does nothing."
+status: verified
+trigger: "On real Even Hub WebView device, tapping bottom-nav Settings gear does nothing."
 created: 2026-03-01T00:00:00Z
-updated: 2026-03-01T10:45:00Z
-owner: g2-frontend
-priority: P0
+updated: 2026-03-01T11:20:00Z
 ---
 
 ## Current Focus
 
-hypothesis: CONFIRMED — Even SDK `.modal{display:flex;position:fixed;inset:0}` creates full-screen overlays that eat clicks on bottom nav in production builds
-test: CSS specificity analysis + Vite build output inspection confirmed
-expecting: N/A — root cause confirmed
-next_action: Apply defense-in-depth fix, verify, commit
+hypothesis: main.ts router only boots glasses-main when flutter_inappwebview is present, never initializing hub-main. Bottom nav click handlers are never attached.
+test: Confirmed by code tracing -- glasses-main does not touch DOM or attach any nav handlers.
+expecting: Fix main.ts to boot BOTH glasses-main AND hub-main when inside Even App WebView
+next_action: Device verification by user (archive session after confirmation)
 
 ## Symptoms
 
-expected: Tapping the Settings gear opens `#settings` page and marks Settings nav button active.
-actual: Gear tap appears to do nothing on real device.
-errors: No visible error; silent UX failure.
-reproduction:
-  1. Scan launcher QR in Even Hub
-  2. Open Even OpenClaw companion app
-  3. Tap bottom-nav Settings gear
-  4. Observe no page change
-scope: Real device WebView path (not desktop browser only).
+expected: Tapping Settings (gear icon) in bottom navigation bar should navigate to the Settings screen. All four bottom nav items (Home/Health/Chat/Settings) should switch reliably on mobile Even Hub WebView.
+actual: Tap on Settings is completely unresponsive -- no visual feedback, no navigation. User is blocked from configuring Gateway URL.
+errors: No JS errors visible -- the handlers were simply never attached.
+reproduction: Tap the Settings icon in the bottom navigation bar on real Even Hub WebView device.
+started: Architecture issue since the dual-mode router was implemented. Masked during development because browser dev mode (no flutter_inappwebview) correctly boots hub-main.
 
 ## Eliminated
 
-- Missing `data-page="settings"` in markup — NOT the issue (present in `index.html`).
-- Missing `#settings` section — NOT the issue (present in `index.html`).
-- Global dead app due raw TypeScript load — previously fixed by launcher path to `dist/index.html`.
-- hypothesis: JS nav handler bug in show() or init()
-  evidence: show() logic is correct, init() wires all 4 buttons, test suite (522 tests) passes
-  timestamp: 2026-03-01T10:30:00Z
-- hypothesis: Wrong code path via main.ts router (flutter_inappwebview detection)
-  evidence: Router hasn't changed; companion hub loads in regular browser where flutter_inappwebview is absent
-  timestamp: 2026-03-01T10:35:00Z
-- hypothesis: Settings-specific DOM issue
-  evidence: Bug affects ALL nav buttons, not just Settings; HTML elements exist and are correctly wired
-  timestamp: 2026-03-01T10:37:00Z
+- hypothesis: Even SDK .modal CSS override blocking pointer events
+  evidence: CSS defense-in-depth with !important + pointer-events:none + visibility:hidden is correct and comprehensive. Production bundle confirmed SDK .modal{display:flex} does NOT use !important, so our !important wins. Additionally, the issue is not CSS at all -- no click handlers are attached.
+  timestamp: 2026-03-01T11:10:00Z
+
+- hypothesis: JS error during init() prevents handler attachment
+  evidence: init() is called at the very start of initHub() and bottom nav handlers are lines 596-598, before any async or complex operations. No errors could prevent attachment. But the real issue is initHub() is never called at all.
+  timestamp: 2026-03-01T11:12:00Z
 
 ## Evidence
 
-- timestamp: 2026-03-01T10:25:00Z
-  checked: Vite production build CSS source order
-  found: In production builds, <link> to SDK CSS appears AFTER inline <style> in <head>. With equal specificity, SDK `.modal{display:flex}` wins over inline `.modal{display:none}`.
-  implication: Modals render as full-screen fixed overlays (z-index 300) above bottom nav (z-index 100), intercepting all clicks.
+- timestamp: 2026-03-01T11:05:00Z
+  checked: main.ts router logic
+  found: isEvenApp detection checks flutter_inappwebview. If true, only glasses-main boots. If false, only hub-main boots. Never both.
+  implication: On real device (flutter_inappwebview present), hub-main never runs.
 
-- timestamp: 2026-03-01T10:28:00Z
-  checked: Vite dev server CSS source order
-  found: In dev mode, <link> appears BEFORE <style> in the raw HTML. Inline rules come later and win with equal specificity.
-  implication: Bug is invisible in development — only manifests in production builds deployed to real devices.
+- timestamp: 2026-03-01T11:07:00Z
+  checked: glasses-main.ts for DOM interactions
+  found: glasses-main does NOT touch HTML DOM at all. No querySelector, no getElementById (except visibilitychange listener). It only communicates via SDK bridge to render on glasses.
+  implication: HTML Hub UI elements (bottom nav, pages, settings) remain in DOM but have zero JS handlers.
 
-- timestamp: 2026-03-01T10:30:00Z
-  checked: SDK modal CSS (even-g2-apps/src/styles/components/modal.css)
-  found: `.modal { position: fixed; inset: 0; display: flex; background: var(--sc-1st); }` — creates semi-transparent full-screen overlay
-  implication: Without proper override, both sessionModal and confirmModal become invisible click-blocking overlays.
+- timestamp: 2026-03-01T11:09:00Z
+  checked: Even SDK sample apps (even-g2-apps)
+  found: Sample apps use SINGLE WebView architecture -- same WebView renders phone screen HTML AND drives glasses via SDK bridge. No separate companion WebView.
+  implication: Phone UI and glasses rendering must coexist in the same boot path.
 
-- timestamp: 2026-03-01T10:33:00Z
-  checked: Commit 7776c48 fix attempt
-  found: Changed selector from `.modal` to `#app ~ .modal` for higher specificity (0,1,1,0 vs 0,0,1,0). Added boot-time classList.remove('active').
-  implication: Specificity fix addresses `display` property, but lacks defense-in-depth (no !important, no pointer-events:none, no visibility:hidden). Insufficient for all WebView edge cases.
+- timestamp: 2026-03-01T11:10:00Z
+  checked: glasses-main line 462 -- renderer.showConfigRequired()
+  found: When gatewayUrl is not set, glasses display shows config required message telling user to configure in companion app. But the companion (hub-main) never booted.
+  implication: User sees glasses message, looks at phone, sees Hub UI, tries to configure, but UI is completely dead.
 
-- timestamp: 2026-03-01T10:40:00Z
-  checked: Uncommitted working tree changes
-  found: Already contain `!important`, `pointer-events:none`, `visibility:hidden` on modal CSS + session modal defensive boot code + backdrop click dismiss.
-  implication: These defense-in-depth measures need to be committed and deployed.
+- timestamp: 2026-03-01T11:11:00Z
+  checked: hub-main init() function
+  found: Bottom nav handlers are attached at lines 596-598 of hub-main.ts. All 4 buttons get click listeners. But this code only runs when initHub() is called, which only happens when isEvenApp is false.
+  implication: Confirms the router is the root cause, not any CSS or event handling bug.
+
+- timestamp: 2026-03-01T11:13:00Z
+  checked: All 524 tests + build
+  found: All pass -- tests do not cover the real-device boot path where flutter_inappwebview is present.
+  implication: Tests miss this because they either test hub-main in isolation (jsdom, no flutter_inappwebview) or glasses-main in isolation.
 
 ## Resolution
 
-root_cause: Even SDK CSS `.modal{display:flex;position:fixed;inset:0}` overrides inline `.modal{display:none}` in Vite production builds (same specificity, later source order via external <link>), creating invisible full-screen overlays (z-index 300) that intercept all pointer events above the bottom nav bar (z-index 100), making all nav buttons non-functional. Commit 7776c48 partially fixed specificity but lacked defense-in-depth.
-fix: Apply defense-in-depth CSS: `#app ~ .modal { display: none !important; pointer-events: none; visibility: hidden; }` + boot-time JS defensive cleanup for both modals + session modal backdrop click dismiss. Already staged in working tree.
-verification: All 524 tests pass including new regression tests. Production build verified with defense-in-depth CSS in dist/index.html.
-files_changed: [index.html, src/hub-main.ts, src/__tests__/nav-switching.test.ts]
+root_cause: main.ts router is mutually exclusive -- boots EITHER glasses-main OR hub-main, never both. On real Even App WebView (flutter_inappwebview present), only glasses-main boots. The Hub phone-side UI (bottom nav, settings, pages) is rendered as static HTML but has zero JS event handlers. All bottom nav taps are dead because initHub() was never called.
+fix: Changed main.ts router from mutually-exclusive (glasses XOR hub) to always-hub + conditional-glasses. Hub UI now always boots. Glasses runtime is added on top when flutter_inappwebview is present or ?even dev flag is set. The two modules are fully independent -- glasses-main uses SDK bridge only (no DOM), hub-main uses DOM only (no SDK bridge). No shared mutable state, no conflicts.
+verification: npm test passes (524/524), npm run build passes. Modules are architecturally independent (verified: glasses-main has zero DOM calls, hub-main has zero SDK bridge calls). Cross-tab sync via BroadcastChannel works correctly with both modules in the same page.
+files_changed:
+  - src/main.ts

@@ -197,6 +197,20 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     emitChunk({ type: 'response_end', turnId: reply.turnId });
   }
 
+  /**
+   * Sentinel error subclass for application-level gateway errors (4xx/5xx).
+   * The gateway WAS reachable (we got an HTTP response), but the request
+   * was rejected by the server.  This is distinct from network errors
+   * (TypeError from fetch) and timeouts (DOMException) which mean the
+   * gateway is genuinely unreachable.
+   */
+  class GatewayAppError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'GatewayAppError';
+    }
+  }
+
   async function postVoiceTurn(settings: AppSettings, audio: Blob): Promise<GatewayReply> {
     const headers: Record<string, string> = {
       'Content-Type': audio.type || 'audio/wav',
@@ -211,7 +225,8 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     });
 
     if (!resp.ok) {
-      throw new Error(await readGatewayError(resp));
+      // Server responded with an error -- gateway IS reachable, request was rejected.
+      throw new GatewayAppError(await readGatewayError(resp));
     }
 
     return (await resp.json()) as GatewayReply;
@@ -241,10 +256,17 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       clearTimeout(timeoutId);
       if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
         emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
+        setStatus('error');
+      } else if (err instanceof GatewayAppError) {
+        // Gateway responded with an error (4xx/5xx) -- it IS reachable.
+        // Emit the error for display but keep status as 'connected'.
+        emitChunk({ type: 'error', error: err.message });
+        setStatus('connected');
       } else {
+        // Network error, CORS block, or other fetch failure -- truly unreachable.
         emitChunk({ type: 'error', error: err instanceof Error ? err.message : 'Gateway request failed' });
+        setStatus('error');
       }
-      setStatus('error');
     }
   }
 
@@ -262,7 +284,8 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     });
 
     if (!resp.ok) {
-      throw new Error(await readGatewayError(resp));
+      // Server responded with an error -- gateway IS reachable, request was rejected.
+      throw new GatewayAppError(await readGatewayError(resp));
     }
 
     return (await resp.json()) as GatewayReply;
@@ -292,10 +315,17 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       clearTimeout(timeoutId);
       if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
         emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
+        setStatus('error');
+      } else if (err instanceof GatewayAppError) {
+        // Gateway responded with an error (4xx/5xx) -- it IS reachable.
+        // Emit the error for display but keep status as 'connected'.
+        emitChunk({ type: 'error', error: err.message });
+        setStatus('connected');
       } else {
+        // Network error, CORS block, or other fetch failure -- truly unreachable.
         emitChunk({ type: 'error', error: err instanceof Error ? err.message : 'Gateway request failed' });
+        setStatus('error');
       }
-      setStatus('error');
     }
   }
 

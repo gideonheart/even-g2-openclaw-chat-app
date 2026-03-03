@@ -141,7 +141,15 @@ function refreshSettingsDisplay(): void {
 }
 
 function refreshHealthDisplay(): void {
-  const vm = buildHealthViewModel(appState.settings, appState.activeSession, gatewayLiveStatus, undefined, isRealDeviceRuntime());
+  // Pull readyz detail from the hub gateway client's health state so the
+  // health panel shows actual STT/OpenClaw readiness, not just "configured".
+  const gwHealth = hubGateway?.getHealth();
+  const readyzDetail = gwHealth ? {
+    readyStatus: gwHealth.readyStatus,
+    sttReady: gwHealth.sttReady,
+    openclawReady: gwHealth.openclawReady,
+  } : undefined;
+  const vm = buildHealthViewModel(appState.settings, appState.activeSession, gatewayLiveStatus, readyzDetail, isRealDeviceRuntime());
 
   setHealthDot('hGatewayDot', vm.gateway.dot);
   $('hGatewayStatus').textContent = vm.gateway.label;
