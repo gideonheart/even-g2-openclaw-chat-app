@@ -190,6 +190,16 @@ export function createGestureHandler(opts: {
     }
   }));
 
+  // When sessions switch (glasses menu /switch, hub sync, or any source), reset FSM to idle.
+  // Prevents stale FSM state (menu/sent/thinking/recording) from blocking tap-to-record
+  // in the new session context. The reset input correctly handles all states:
+  // recording -> idle (with STOP_RECORDING action), all others -> idle (null action).
+  unsubs.push(bus.on('session:switched', () => {
+    if (state !== 'idle') {
+      handleInput('reset', Date.now());
+    }
+  }));
+
   function destroy(): void {
     clearWatchdog();
     for (const unsub of unsubs) {
