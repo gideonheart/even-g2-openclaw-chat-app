@@ -384,6 +384,158 @@ describe('GlassesRenderer', () => {
     expect(chatCalls.length).toBeGreaterThanOrEqual(1);
   });
 
+  // ── scroll anchoring (bug fix: scroll jump) ────────────────
+
+  describe('scroll anchoring (bug fix: scroll jump)', () => {
+    it('endStreaming preserves scroll position when user scrolled up', async () => {
+      await renderer.init();
+
+      // Add 3 user messages so we have enough to scroll
+      renderer.addUserMessage('Message 1');
+      renderer.addUserMessage('Message 2');
+      renderer.addUserMessage('Message 3');
+
+      // Scroll up twice (scrollOffset=2, autoScroll=false)
+      renderer.scrollUp();
+      renderer.scrollUp();
+
+      // Stream a full response cycle
+      renderer.startStreaming();
+      renderer.appendStreamChunk('Response text');
+      renderer.endStreaming();
+      bridge.textContainerUpgrade.mockClear();
+
+      // Start another stream cycle
+      renderer.startStreaming();
+      renderer.appendStreamChunk('new chunk');
+      vi.advanceTimersByTime(200);
+
+      // The rendered text should NOT contain the newest content because
+      // scrollOffset is preserved > 0 (user's scroll position is honored)
+      const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+        (c: unknown[]) => c[0] === 2,
+      );
+      expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+      const lastText = chatCalls[chatCalls.length - 1][1] as string;
+      // The newest streaming message ('new chunk') should not be visible
+      // because scrollOffset=2 pushes the viewport window up
+      expect(lastText).not.toContain('new chunk');
+    });
+
+    it('endStreaming resets autoScroll when user is at bottom (scrollOffset=0)', async () => {
+      await renderer.init();
+
+      // Add 1 user message (at bottom, scrollOffset=0)
+      renderer.addUserMessage('Test');
+
+      // Stream cycle -- user stays at bottom
+      renderer.startStreaming();
+      renderer.appendStreamChunk('First response');
+      renderer.endStreaming();
+      bridge.textContainerUpgrade.mockClear();
+
+      // New cycle: auto-scroll should be active
+      renderer.startStreaming();
+      renderer.appendStreamChunk('Next response');
+      vi.advanceTimersByTime(200);
+
+      const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+        (c: unknown[]) => c[0] === 2,
+      );
+      // Auto-scroll active means textContainerUpgrade IS called with new content
+      expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+      const lastText = chatCalls[chatCalls.length - 1][1] as string;
+      expect(lastText).toContain('Next response');
+    });
+
+    it('scroll position survives multiple rapid response cycles', async () => {
+      await renderer.init();
+
+      // Add 3 messages and scroll up once
+      renderer.addUserMessage('Msg A');
+      renderer.addUserMessage('Msg B');
+      renderer.addUserMessage('Msg C');
+      renderer.scrollUp(); // scrollOffset=1, autoScroll=false
+
+      // Run 5 rapid response cycles
+      for (let i = 0; i < 5; i++) {
+        renderer.startStreaming();
+        renderer.appendStreamChunk(`Cycle ${i} response`);
+        vi.advanceTimersByTime(200);
+        renderer.endStreaming();
+      }
+
+      bridge.textContainerUpgrade.mockClear();
+
+      // After all 5 cycles, trigger one more render to check final state
+      renderer.startStreaming();
+      renderer.appendStreamChunk('Final cycle');
+      vi.advanceTimersByTime(200);
+
+      const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+        (c: unknown[]) => c[0] === 2,
+      );
+      expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+      const lastText = chatCalls[chatCalls.length - 1][1] as string;
+      // The latest content should NOT be visible because scrollOffset stayed > 0
+      expect(lastText).not.toContain('Final cycle');
+    });
+
+    it('scrolling back to bottom re-enables auto-scroll after preserved scroll', async () => {
+      await renderer.init();
+
+      // Add 2 messages and scroll up
+      renderer.addUserMessage('First');
+      renderer.addUserMessage('Second');
+      renderer.scrollUp(); // scrollOffset=1, autoScroll=false
+
+      // endStreaming from a previous stream -- autoScroll should stay false
+      renderer.startStreaming();
+      renderer.appendStreamChunk('Old response');
+      renderer.endStreaming();
+
+      // Now scroll down to offset=0 (autoScroll becomes true)
+      renderer.scrollDown();
+      bridge.textContainerUpgrade.mockClear();
+
+      // Start new cycle -- auto-scroll should be active again
+      renderer.startStreaming();
+      renderer.appendStreamChunk('New content visible');
+      vi.advanceTimersByTime(200);
+
+      const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+        (c: unknown[]) => c[0] === 2,
+      );
+      expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+      const lastText = chatCalls[chatCalls.length - 1][1] as string;
+      expect(lastText).toContain('New content visible');
+    });
+
+    it('showError does not jump scroll when user scrolled up', async () => {
+      await renderer.init();
+
+      // Add 3 messages and scroll up twice
+      renderer.addUserMessage('Msg 1');
+      renderer.addUserMessage('Msg 2');
+      renderer.addUserMessage('Msg 3');
+      renderer.scrollUp();
+      renderer.scrollUp(); // scrollOffset=2, autoScroll=false
+      bridge.textContainerUpgrade.mockClear();
+
+      // Show error -- should NOT jump to bottom
+      renderer.showError('test error');
+
+      const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+        (c: unknown[]) => c[0] === 2,
+      );
+      expect(chatCalls.length).toBeGreaterThanOrEqual(1);
+      const lastText = chatCalls[chatCalls.length - 1][1] as string;
+      // Error is at the end of messages array but viewport window is scrolled up
+      // so it should NOT be visible in the rendered output
+      expect(lastText).not.toContain('[Error] test error');
+    });
+  });
+
   // ── CHAT-07: 2000-char limit ──────────────────────────────
 
   it('no textContainerUpgrade call exceeds 2000 characters', async () => {

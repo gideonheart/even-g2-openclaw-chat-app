@@ -199,3 +199,36 @@ describe('scrollDown', () => {
     expect(s.scrollOffset).toBe(1);
   });
 });
+
+// ── scroll anchoring (viewport preservation) ─────────────────
+
+describe('renderViewport scroll anchoring', () => {
+  it('with autoScroll=false and scrollOffset>0, new messages do not appear in viewport', () => {
+    // Create 5 messages with scrollOffset=2, autoScroll=false
+    const msgs = [
+      msg('user', 'msg-1'),
+      msg('assistant', 'msg-2'),
+      msg('user', 'msg-3'),
+      msg('assistant', 'msg-4'),
+      msg('user', 'msg-5'),
+    ];
+    const s = state(msgs, { scrollOffset: 2, autoScroll: false });
+
+    // With 5 messages and scrollOffset=2: endIdx = 5 - 2 = 3
+    // So viewport shows messages[0..2] = msg-1, msg-2, msg-3
+    const rendered1 = renderViewport(s);
+    expect(rendered1).toContain('msg-3');
+    expect(rendered1).not.toContain('msg-5');
+
+    // Add a 6th message, keep scrollOffset=2
+    msgs.push(msg('assistant', 'msg-6'));
+    const s2 = state(msgs, { scrollOffset: 2, autoScroll: false });
+
+    // With 6 messages and scrollOffset=2: endIdx = 6 - 2 = 4
+    // So viewport shows messages[0..3] = msg-1, msg-2, msg-3, msg-4
+    // msg-6 is NOT visible because scrollOffset pushes the window up
+    const rendered2 = renderViewport(s2);
+    expect(rendered2).toContain('msg-4');
+    expect(rendered2).not.toContain('msg-6');
+  });
+});
