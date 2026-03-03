@@ -383,6 +383,98 @@ describe('createGestureHandler', () => {
     });
   });
 
+  // ── session:switched FSM reset (bug #24) ────────────────────
+
+  describe('session:switched FSM reset (bug #24)', () => {
+    it('session:switched resets FSM from menu to idle', () => {
+      const handler = createHandler();
+      // Enter menu state via double-tap
+      bus.emit('gesture:double-tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('menu');
+
+      // Session switch (e.g., glasses /switch command)
+      bus.emit('session:switched', { id: 'new-sess', previousId: 'old-sess' });
+      expect(handler.getState()).toBe('idle');
+    });
+
+    it('tap works after session:switched (regression: /switch command)', () => {
+      const handler = createHandler();
+      // Enter menu state via double-tap
+      bus.emit('gesture:double-tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('menu');
+
+      // Session switch
+      bus.emit('session:switched', { id: 'new-sess', previousId: 'old-sess' });
+      expect(handler.getState()).toBe('idle');
+
+      // Tap to record -- must work immediately (this was the reported bug)
+      bus.emit('gesture:tap', { timestamp: 2000 }); // well past debounce window
+      expect(handler.getState()).toBe('recording');
+      expect(audioCapture.startRecording).toHaveBeenCalledWith('test-session-1');
+    });
+
+    it('session:switched resets FSM from sent to idle', () => {
+      const handler = createHandler();
+      // idle -> recording -> sent
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      bus.emit('gesture:tap', { timestamp: 1300 });
+      expect(handler.getState()).toBe('sent');
+
+      // Session switch while voice turn in-flight
+      bus.emit('session:switched', { id: 'new-sess', previousId: 'old-sess' });
+      expect(handler.getState()).toBe('idle');
+
+      // Tap to record works in new session
+      bus.emit('gesture:tap', { timestamp: 2300 }); // well past debounce
+      expect(handler.getState()).toBe('recording');
+    });
+
+    it('session:switched stops recording if FSM in recording state', () => {
+      const handler = createHandler();
+      // Enter recording via tap
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('recording');
+
+      // Session switch while recording
+      bus.emit('session:switched', { id: 'new-sess', previousId: 'old-sess' });
+      expect(handler.getState()).toBe('idle');
+
+      // STOP_RECORDING action should have fired (recording + reset -> idle with STOP_RECORDING)
+      expect(bridge.stopAudio).toHaveBeenCalled();
+    });
+
+    it('session:switched is no-op when FSM already idle', () => {
+      const handler = createHandler();
+      // Start in idle (default)
+      expect(handler.getState()).toBe('idle');
+
+      // Spurious session:switched should be ignored
+      bus.emit('session:switched', { id: 'new-sess', previousId: 'old-sess' });
+      expect(handler.getState()).toBe('idle');
+
+      // Tap still works
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('recording');
+    });
+
+    it('session:switched from hub sync resets FSM (simulated hub-initiated switch)', () => {
+      const handler = createHandler();
+      // Enter recording via tap
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('recording');
+
+      // Hub sync pushes a session change
+      bus.emit('session:switched', { id: 'new-session-2', previousId: 'old-sess' });
+      expect(handler.getState()).toBe('idle');
+
+      // Update sessionId to new session and tap to record
+      sessionId = 'new-session-2';
+      bus.emit('gesture:tap', { timestamp: 2000 }); // well past debounce
+      expect(handler.getState()).toBe('recording');
+      expect(audioCapture.startRecording).toHaveBeenCalledWith('new-session-2');
+    });
+  });
+
   // ── Destroy ────────────────────────────────────────────────
 
   describe('destroy', () => {
