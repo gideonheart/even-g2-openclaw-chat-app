@@ -112,7 +112,7 @@ export function createGlassesRenderer(opts: {
   //   WRITE: scrollUp()         -> false (via viewport.ts pure fn)
   //   WRITE: scrollDown()       -> true when offset reaches 0 (via viewport.ts pure fn)
   //   READ:  flushStreamBuffer() -> gates scrollOffset=0 reset
-  //   READ:  addUserMessage()    -> gates scrollOffset=0 + render
+  //   WRITE: addUserMessage()    -> true + scrollOffset=0 (new turn snaps to bottom)
   //   READ:  showError()         -> gates scrollOffset=0 reset
   //   NOTE:  startStreaming()    -> does NOT touch autoScroll (safe, see guard below)
   let viewport: ViewportState = {
@@ -212,10 +212,13 @@ export function createGlassesRenderer(opts: {
     };
     viewport.messages.push(msg);
 
-    if (viewport.autoScroll) {
-      viewport.scrollOffset = 0;
-      renderAndPush();
-    }
+    // A new user message means a new turn was initiated (voice tap, hub text input,
+    // or sync message). Always snap to bottom so the user sees their own message
+    // and the upcoming response. This overrides manual scroll position intentionally --
+    // the user actively started a new interaction.
+    viewport.scrollOffset = 0;
+    viewport.autoScroll = true;
+    renderAndPush();
   }
 
   function startStreaming(): void {
