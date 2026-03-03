@@ -132,6 +132,34 @@ vi.mock('../voice-loop-controller', () => ({
   })),
 }));
 
+// ── Sync bridge mock: capture onMessage handler for test-driven sync messages ──
+let syncMessageHandler: ((msg: any) => void) | null = null;
+const mockSyncBridge = {
+  postMessage: vi.fn(),
+  onMessage: vi.fn((handler: (msg: any) => void) => {
+    syncMessageHandler = handler;
+    return vi.fn(); // unsubscribe
+  }),
+  destroy: vi.fn(),
+};
+
+vi.mock('../sync/sync-bridge', () => ({
+  createSyncBridge: vi.fn(() => mockSyncBridge),
+}));
+
+// ── Boot-restore mock: predictable conversation ID ──────────
+const TEST_CONV_ID = 'test-conv-id';
+
+vi.mock('../persistence/boot-restore', () => ({
+  restoreOrCreateConversation: vi.fn().mockResolvedValue({
+    conversationId: 'test-conv-id',
+    restored: false,
+    messages: [],
+    storageAvailable: false,
+  }),
+  writeActiveConversationId: vi.fn(),
+}));
+
 // ── Import boot AFTER all mocks are in place ──────────────────
 import { boot, _resetLifecycleState } from '../glasses-main';
 
@@ -160,6 +188,10 @@ describe('glasses-main lifecycle cleanup', () => {
     mockGateway.checkHealth.mockResolvedValue(true);
     mockErrorPresenterDestroy.mockClear();
     mockBridge.init.mockClear();
+    syncMessageHandler = null;
+    mockSyncBridge.onMessage.mockClear();
+    mockSyncBridge.postMessage.mockClear();
+    mockSyncBridge.destroy.mockClear();
 
     visibilityChangeCallback = null;
     pagehideCallback = null;
@@ -420,5 +452,142 @@ describe('glasses-main lifecycle cleanup', () => {
 
     // bridge.init should only be called once (second boot was a no-op)
     expect(mockBridge.init).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Sync bridge text turn rendering tests ───────────────────────
+describe('sync bridge text turn rendering', () => {
+  let docAddEventSpy: ReturnType<typeof vi.spyOn>;
+  let winAddEventSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    _resetLifecycleState();
+
+    // Dev mode (no flutter_inappwebview) -- avoids lifecycle listener complexity
+    delete (window as any).flutter_inappwebview;
+
+    // Reset all mock call counters
+    mockVoiceLoopDestroy.mockClear();
+    mockGatewayDestroy.mockClear();
+    mockDisplayControllerDestroy.mockClear();
+    mockGestureHandlerDestroy.mockClear();
+    mockStopRecording.mockClear();
+    mockStopRecording.mockResolvedValue(new Blob());
+    mockBridgeDestroy.mockClear();
+    mockBusClear.mockClear();
+    mockGateway.checkHealth.mockResolvedValue(true);
+    mockErrorPresenterDestroy.mockClear();
+    mockBridge.init.mockClear();
+    syncMessageHandler = null;
+    mockSyncBridge.onMessage.mockClear();
+    mockSyncBridge.postMessage.mockClear();
+    mockSyncBridge.destroy.mockClear();
+
+    // Clear renderer mocks to isolate from boot-time calls (welcome message etc)
+    mockRenderer.addUserMessage.mockClear();
+    mockRenderer.startStreaming.mockClear();
+    mockRenderer.appendStreamChunk.mockClear();
+    mockRenderer.endStreaming.mockClear();
+    mockRenderer.setIconState.mockClear();
+
+    // Suppress lifecycle listener registration in dev mode
+    docAddEventSpy = vi.spyOn(document, 'addEventListener').mockImplementation(() => {});
+    winAddEventSpy = vi.spyOn(window, 'addEventListener').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    docAddEventSpy.mockRestore();
+    winAddEventSpy.mockRestore();
+    delete (window as any).flutter_inappwebview;
+  });
+
+  it('message:added (role=user, origin=hub) calls renderer.addUserMessage', async () => {
+    await boot();
+    // Clear renderer mocks after boot (showWelcome etc)
+    mockRenderer.addUserMessage.mockClear();
+
+    expect(syncMessageHandler).not.toBeNull();
+    syncMessageHandler!({
+      type: 'message:added',
+      origin: 'hub',
+      conversationId: TEST_CONV_ID,
+      role: 'user',
+      text: 'Hello from hub',
+    });
+
+    expect(mockRenderer.addUserMessage).toHaveBeenCalledWith('Hello from hub');
+  });
+
+  it('streaming:start (origin=hub) calls renderer.startStreaming and setIconState', async () => {
+    await boot();
+    mockRenderer.startStreaming.mockClear();
+    mockRenderer.setIconState.mockClear();
+
+    syncMessageHandler!({
+      type: 'streaming:start',
+      origin: 'hub',
+      conversationId: TEST_CONV_ID,
+    });
+
+    expect(mockRenderer.startStreaming).toHaveBeenCalledOnce();
+    expect(mockRenderer.setIconState).toHaveBeenCalledWith('thinking');
+  });
+
+  it('message:added (role=assistant, origin=hub) calls renderer.appendStreamChunk', async () => {
+    await boot();
+    mockRenderer.appendStreamChunk.mockClear();
+
+    syncMessageHandler!({
+      type: 'message:added',
+      origin: 'hub',
+      conversationId: TEST_CONV_ID,
+      role: 'assistant',
+      text: 'AI response',
+    });
+
+    expect(mockRenderer.appendStreamChunk).toHaveBeenCalledWith('AI response');
+  });
+
+  it('streaming:end (origin=hub) calls renderer.endStreaming', async () => {
+    await boot();
+    mockRenderer.endStreaming.mockClear();
+
+    syncMessageHandler!({
+      type: 'streaming:end',
+      origin: 'hub',
+      conversationId: TEST_CONV_ID,
+    });
+
+    expect(mockRenderer.endStreaming).toHaveBeenCalledOnce();
+  });
+
+  it('messages for different conversation are ignored', async () => {
+    await boot();
+    mockRenderer.addUserMessage.mockClear();
+
+    syncMessageHandler!({
+      type: 'message:added',
+      origin: 'hub',
+      conversationId: 'different-id',
+      role: 'user',
+      text: 'wrong session',
+    });
+
+    expect(mockRenderer.addUserMessage).not.toHaveBeenCalled();
+  });
+
+  it('own-origin (glasses) messages are ignored', async () => {
+    await boot();
+    mockRenderer.addUserMessage.mockClear();
+
+    syncMessageHandler!({
+      type: 'message:added',
+      origin: 'glasses',
+      conversationId: TEST_CONV_ID,
+      role: 'user',
+      text: 'echo',
+    });
+
+    expect(mockRenderer.addUserMessage).not.toHaveBeenCalled();
   });
 });
