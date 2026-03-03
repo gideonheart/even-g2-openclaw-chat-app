@@ -12,13 +12,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-03 - Completed quick task 23: Bug fix: tap-to-record inactive after /new session from glasses menu
+Last activity: 2026-03-03 - Completed quick task 24: Bug fix: switching sessions disables tap-to-record (session:switched FSM reset)
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
-- Total tests: 600 (all passing)
+- Total tests: 606 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -64,6 +64,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase 01-02]: Drop-oldest overflow strategy when queue exceeds MAX_QUEUE (5); queue drains on both response_end and error
 - [Phase 01-03]: Kept unreachable thinking state with NOTE comment rather than removing (cascading type impact); documented queue/FSM independence
 - [Phase quick-23]: menu:close bus listener with state === 'menu' guard resets FSM to idle; uses handleInput('reset') not direct mutation
+- [Phase quick-24]: session:switched bus listener with state !== 'idle' guard resets FSM to idle; covers glasses /switch and hub sync origins
 
 ### Roadmap Evolution
 
@@ -101,9 +102,10 @@ None.
 | 19 | FSM re-record after response_end + queue during thinking + transcript chunk emission | 2026-03-02 | 49bd755 | [19-fsm-re-record-after-response-end-queue-d](./quick/19-fsm-re-record-after-response-end-queue-d/) |
 | 22 | Critical analysis of phase 1 plans: unreachable thinking state, path fix blocker, 5 plan edits | 2026-03-02 | 5b6e7c5 | [22-analyze-phase-plans-critically-and-propo](./quick/22-analyze-phase-plans-critically-and-propo/) |
 | 23 | Fix tap-to-record inactive after /new: menu:close bus listener resets FSM to idle | 2026-03-03 | 1fac332 | [23-bug-fix-tap-to-record-inactive-after-new](./quick/23-bug-fix-tap-to-record-inactive-after-new/) |
+| 24 | Fix switching sessions disables tap-to-record: session:switched FSM reset | 2026-03-03 | 8eed501 | [24-bug-2-switching-sessions-disables-tap-to](./quick/24-bug-2-switching-sessions-disables-tap-to/) |
 
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed quick-23 (bug fix: tap-to-record inactive after /new session)
+Stopped at: Completed quick-24 (bug fix: switching sessions disables tap-to-record)
 Resume file: None
