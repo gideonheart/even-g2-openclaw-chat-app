@@ -303,6 +303,86 @@ describe('createGestureHandler', () => {
     });
   });
 
+  // ── menu:close FSM reset (bug #23) ──────────────────────────
+
+  describe('menu:close FSM reset (bug #23)', () => {
+    it('menu:close resets FSM from menu to idle', () => {
+      const handler = createHandler();
+      // Enter menu state via double-tap
+      bus.emit('gesture:double-tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('menu');
+
+      // Emit menu:close (simulates menu-controller closing after command)
+      bus.emit('menu:close', {});
+      expect(handler.getState()).toBe('idle');
+    });
+
+    it('tap works after menu:close (regression: /new session)', () => {
+      const handler = createHandler();
+      // Enter menu state via double-tap
+      bus.emit('gesture:double-tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('menu');
+
+      // Menu closes after command execution
+      bus.emit('menu:close', {});
+      expect(handler.getState()).toBe('idle');
+
+      // Tap to record -- must work immediately (this was the reported bug)
+      bus.emit('gesture:tap', { timestamp: 2000 }); // well past debounce window
+      expect(handler.getState()).toBe('recording');
+      expect(audioCapture.startRecording).toHaveBeenCalledWith('test-session-1');
+    });
+
+    it('menu:close does NOT reset FSM when already in idle', () => {
+      const handler = createHandler();
+      // Start in idle (default)
+      expect(handler.getState()).toBe('idle');
+
+      // Spurious menu:close should be ignored
+      bus.emit('menu:close', {});
+      expect(handler.getState()).toBe('idle');
+
+      // Tap still works
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('recording');
+    });
+
+    it('menu:close does NOT reset FSM when in recording state', () => {
+      const handler = createHandler();
+      // Enter recording via tap
+      bus.emit('gesture:tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('recording');
+
+      // menu:close while recording must NOT abort recording (guard prevents it)
+      bus.emit('menu:close', {});
+      expect(handler.getState()).toBe('recording');
+    });
+
+    it('menu:close resets FSM after menu select (simulated /new flow)', () => {
+      const handler = createHandler();
+      const menuSelectSpy = vi.fn();
+      bus.on('menu:select', menuSelectSpy);
+
+      // Double-tap to enter menu
+      bus.emit('gesture:double-tap', { timestamp: 1000 });
+      expect(handler.getState()).toBe('menu');
+
+      // Tap to select a menu item (FSM stays in menu, action is MENU_SELECT)
+      bus.emit('gesture:tap', { timestamp: 1300 }); // 300ms apart, past debounce
+      expect(handler.getState()).toBe('menu');
+      expect(menuSelectSpy).toHaveBeenCalledTimes(1);
+
+      // Menu controller executes /new and closes the menu
+      bus.emit('menu:close', {});
+      expect(handler.getState()).toBe('idle');
+
+      // Tap to record -- must work immediately
+      bus.emit('gesture:tap', { timestamp: 2300 }); // well past debounce window
+      expect(handler.getState()).toBe('recording');
+      expect(audioCapture.startRecording).toHaveBeenCalledWith('test-session-1');
+    });
+  });
+
   // ── Destroy ────────────────────────────────────────────────
 
   describe('destroy', () => {
