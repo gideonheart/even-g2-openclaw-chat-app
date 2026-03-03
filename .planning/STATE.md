@@ -18,7 +18,7 @@ Last activity: 2026-03-02 - Completed plan 01-03: Codebase polish (hint text, st
 
 **Velocity:**
 - Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
-- Total tests: 595 (all passing)
+- Total tests: 600 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -63,6 +63,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase 01-02]: Synchronous busy-flag queue (not Promise-based) because gateway signals completion via synchronous chunk events
 - [Phase 01-02]: Drop-oldest overflow strategy when queue exceeds MAX_QUEUE (5); queue drains on both response_end and error
 - [Phase 01-03]: Kept unreachable thinking state with NOTE comment rather than removing (cascading type impact); documented queue/FSM independence
+- [Phase quick-23]: menu:close bus listener with state === 'menu' guard resets FSM to idle; uses handleInput('reset') not direct mutation
 
 ### Roadmap Evolution
 
@@ -99,9 +100,10 @@ None.
 | 17 | Implement robust CORS support for Even WebView Origin: null with allowNullOrigin flag | 2026-03-01 | 7106723 | [17-implement-robust-cors-support-for-even-w](./quick/17-implement-robust-cors-support-for-even-w/) |
 | 19 | FSM re-record after response_end + queue during thinking + transcript chunk emission | 2026-03-02 | 49bd755 | [19-fsm-re-record-after-response-end-queue-d](./quick/19-fsm-re-record-after-response-end-queue-d/) |
 | 22 | Critical analysis of phase 1 plans: unreachable thinking state, path fix blocker, 5 plan edits | 2026-03-02 | 5b6e7c5 | [22-analyze-phase-plans-critically-and-propo](./quick/22-analyze-phase-plans-critically-and-propo/) |
+| 23 | Fix tap-to-record inactive after /new: menu:close bus listener resets FSM to idle | 2026-03-03 | 1fac332 | [23-bug-fix-tap-to-record-inactive-after-new](./quick/23-bug-fix-tap-to-record-inactive-after-new/) |
 
 ## Session Continuity
 
-Last session: 2026-03-02
-Stopped at: Completed 01-03-PLAN.md (codebase polish, phase 01 complete)
+Last session: 2026-03-03
+Stopped at: Completed quick-23 (bug fix: tap-to-record inactive after /new session)
 Resume file: None
