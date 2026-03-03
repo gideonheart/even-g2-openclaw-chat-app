@@ -67,6 +67,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-24]: session:switched bus listener with state !== 'idle' guard resets FSM to idle; covers glasses /switch and hub sync origins
 - [Phase quick-25]: Conditional autoScroll reset in endStreaming: only reset when scrollOffset===0 (user at bottom); preserves manual scroll position across turn boundaries
 - [Phase quick-26]: Readonly<ViewportState> return type on getViewportState() prevents test mutation of internal state; additive test assertions kept alongside existing mock-call assertions
+- [Phase quick-27]: Comments-only: documented guard asymmetry (menu:close narrow vs session:switched broad) and watchdog timer clearance chain in gesture-handler.ts
 
 ### Roadmap Evolution
 
@@ -107,9 +108,10 @@ None.
 | 24 | Fix switching sessions disables tap-to-record: session:switched FSM reset | 2026-03-03 | 8eed501 | [24-bug-2-switching-sessions-disables-tap-to](./quick/24-bug-2-switching-sessions-disables-tap-to/) |
 | 25 | Fix glasses UI scroll jump: conditional autoScroll reset in endStreaming | 2026-03-03 | 4bea031 | [25-bug-3-fix-glasses-ui-scroll-jump-anchor-](./quick/25-bug-3-fix-glasses-ui-scroll-jump-anchor-/) |
 | 26 | Scroll viewport hardening: getViewportState debug accessor, autoScroll audit, direct state assertions | 2026-03-03 | d5159c6 | [26-fix-scroll-viewport-expose-viewport-stat](./quick/26-fix-scroll-viewport-expose-viewport-stat/) |
+| 27 | Guard asymmetry and watchdog dependency inline comments in gesture-handler.ts | 2026-03-03 | 5e0dac3 | [27-dry-srp-fixes-guard-asymmetry-comments-w](./quick/27-dry-srp-fixes-guard-asymmetry-comments-w/) |
 
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed quick-26 (scroll viewport hardening: getViewportState debug accessor, autoScroll audit)
+Stopped at: Completed quick-27 (guard asymmetry and watchdog dependency comments in gesture-handler.ts)
 Resume file: None
