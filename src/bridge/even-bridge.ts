@@ -41,7 +41,9 @@ export function createEvenBridgeService(
   let unsubStatus: (() => void) | null = null;
 
   async function init(): Promise<void> {
+    bus.emit('log', { level: 'info', msg: 'Bridge: waiting for Even App bridge...' });
     bridge = await waitForEvenAppBridge();
+    bus.emit('log', { level: 'info', msg: 'Bridge: connected, creating startup page container' });
 
     // Must create page container before audio control works
     await bridge.createStartUpPageContainer(STARTUP_LAYOUT);
@@ -56,11 +58,20 @@ export function createEvenBridgeService(
       }
     });
 
+    let audioFrameCount = 0;
+    let lastAudioLogTime = 0;
+
     unsubEvent = bridge.onEvenHubEvent((event) => {
       const now = Date.now();
 
       // Forward audio PCM frames to the bus
       if (event.audioEvent) {
+        audioFrameCount++;
+        // Log frame count every 2s to avoid flooding
+        if (now - lastAudioLogTime > 2000) {
+          bus.emit('log', { level: 'info', msg: `Audio frames: ${audioFrameCount} (${event.audioEvent.audioPcm.length} bytes/frame)` });
+          lastAudioLogTime = now;
+        }
         bus.emit('bridge:audio-frame', {
           pcm: event.audioEvent.audioPcm,
           timestamp: now,

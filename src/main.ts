@@ -47,6 +47,7 @@ export async function main(deps: MainDeps = {
 }
 
 if (!(import.meta as any).vitest) {
+  import('./build-info').then(({ renderBuildInfo }) => renderBuildInfo());
   main().catch((err) => {
     console.error('[main] Fatal boot error:', err);
   });
