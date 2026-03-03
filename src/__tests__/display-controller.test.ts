@@ -26,6 +26,7 @@ interface MockRenderer {
   showMenuOverlay: Mock;
   restoreConversation: Mock;
   getIconAnimator: Mock;
+  getViewportState: Mock;
 }
 
 // ── Mock GlassesRenderer (all methods as vi.fn()) ──────────
@@ -50,6 +51,7 @@ function createMockRenderer(): MockRenderer {
     showMenuOverlay: vi.fn(),
     restoreConversation: vi.fn(),
     getIconAnimator: vi.fn().mockReturnValue(null),
+    getViewportState: vi.fn().mockReturnValue({ messages: [], scrollOffset: 0, autoScroll: true }),
   };
 }
 

@@ -403,6 +403,12 @@ describe('GlassesRenderer', () => {
       renderer.startStreaming();
       renderer.appendStreamChunk('Response text');
       renderer.endStreaming();
+
+      // Direct viewport state assertion (quick-26: less fragile than mock sniffing)
+      const stateAfterEnd = renderer.getViewportState();
+      expect(stateAfterEnd.autoScroll).toBe(false);
+      expect(stateAfterEnd.scrollOffset).toBe(2);
+
       bridge.textContainerUpgrade.mockClear();
 
       // Start another stream cycle
@@ -432,6 +438,12 @@ describe('GlassesRenderer', () => {
       renderer.startStreaming();
       renderer.appendStreamChunk('First response');
       renderer.endStreaming();
+
+      // Direct viewport state assertion (quick-26)
+      const stateAfterEnd = renderer.getViewportState();
+      expect(stateAfterEnd.autoScroll).toBe(true);
+      expect(stateAfterEnd.scrollOffset).toBe(0);
+
       bridge.textContainerUpgrade.mockClear();
 
       // New cycle: auto-scroll should be active
@@ -465,6 +477,11 @@ describe('GlassesRenderer', () => {
         renderer.endStreaming();
       }
 
+      // After 5 endStreaming cycles, scroll position must be preserved
+      const stateAfterCycles = renderer.getViewportState();
+      expect(stateAfterCycles.autoScroll).toBe(false);
+      expect(stateAfterCycles.scrollOffset).toBe(1);
+
       bridge.textContainerUpgrade.mockClear();
 
       // After all 5 cycles, trigger one more render to check final state
@@ -496,6 +513,12 @@ describe('GlassesRenderer', () => {
 
       // Now scroll down to offset=0 (autoScroll becomes true)
       renderer.scrollDown();
+
+      // Direct viewport state assertion (quick-26)
+      const stateAfterScrollDown = renderer.getViewportState();
+      expect(stateAfterScrollDown.autoScroll).toBe(true);
+      expect(stateAfterScrollDown.scrollOffset).toBe(0);
+
       bridge.textContainerUpgrade.mockClear();
 
       // Start new cycle -- auto-scroll should be active again
@@ -525,6 +548,11 @@ describe('GlassesRenderer', () => {
       // Show error -- should NOT jump to bottom
       renderer.showError('test error');
 
+      // Direct viewport state assertion (quick-26)
+      const stateAfterError = renderer.getViewportState();
+      expect(stateAfterError.autoScroll).toBe(false);
+      expect(stateAfterError.scrollOffset).toBe(2);
+
       const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
         (c: unknown[]) => c[0] === 2,
       );
@@ -533,6 +561,44 @@ describe('GlassesRenderer', () => {
       // Error is at the end of messages array but viewport window is scrolled up
       // so it should NOT be visible in the rendered output
       expect(lastText).not.toContain('[Error] test error');
+    });
+
+    it('getViewportState() reflects full scroll lifecycle', async () => {
+      await renderer.init();
+
+      // Initial state
+      const s0 = renderer.getViewportState();
+      expect(s0.messages).toHaveLength(0);
+      expect(s0.scrollOffset).toBe(0);
+      expect(s0.autoScroll).toBe(true);
+
+      // After adding messages
+      renderer.addUserMessage('A');
+      renderer.addUserMessage('B');
+      const s1 = renderer.getViewportState();
+      expect(s1.messages).toHaveLength(2);
+      expect(s1.autoScroll).toBe(true);
+
+      // After scrolling up
+      renderer.scrollUp();
+      const s2 = renderer.getViewportState();
+      expect(s2.scrollOffset).toBe(1);
+      expect(s2.autoScroll).toBe(false);
+
+      // After streaming cycle with scroll preserved
+      renderer.startStreaming();
+      renderer.appendStreamChunk('response');
+      renderer.endStreaming();
+      const s3 = renderer.getViewportState();
+      expect(s3.autoScroll).toBe(false);
+      expect(s3.scrollOffset).toBe(1);
+      expect(s3.messages).toHaveLength(3); // A, B, assistant response
+
+      // After scrolling back to bottom
+      renderer.scrollDown();
+      const s4 = renderer.getViewportState();
+      expect(s4.scrollOffset).toBe(0);
+      expect(s4.autoScroll).toBe(true);
     });
   });
 
