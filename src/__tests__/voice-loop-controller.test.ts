@@ -4,6 +4,18 @@ import { createEventBus } from '../events';
 import type { AppEventMap, AppSettings, VoiceTurnChunk, ConnectionStatus } from '../types';
 import { createVoiceLoopController } from '../voice-loop-controller';
 
+/** Create a blob large enough to pass the empty-audio guard (> MIN_AUDIO_BYTES + 44). */
+function makeAudioBlob(label = 'audio'): Blob {
+  // 2000 bytes exceeds MIN_AUDIO_BYTES (1600) + 44 WAV header threshold
+  const buf = new ArrayBuffer(2000);
+  // Write the label into the first bytes for debuggability
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < label.length && i < view.length; i++) {
+    view[i] = label.charCodeAt(i);
+  }
+  return new Blob([buf]);
+}
+
 function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     gatewayUrl: 'http://localhost:8000',
@@ -81,7 +93,7 @@ describe('VoiceLoopController', () => {
   it('sends voice turn on recording stop', () => {
     createVoiceLoopController({ bus, gateway, settings: () => settings });
 
-    const blob = new Blob(['audio-data']);
+    const blob = makeAudioBlob('audio-data');
     bus.emit('audio:recording-stop', { sessionId: 'gideon', blob });
 
     expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
@@ -99,7 +111,7 @@ describe('VoiceLoopController', () => {
       settings: () => currentSettings,
     });
 
-    const blob1 = new Blob(['audio1']);
+    const blob1 = makeAudioBlob('audio1');
     bus.emit('audio:recording-stop', { sessionId: 's1', blob: blob1 });
 
     expect(gateway.sendVoiceTurn.mock.calls[0][1].sttProvider).toBe('whisperx');
@@ -107,7 +119,7 @@ describe('VoiceLoopController', () => {
     // Change settings between recording-stop events
     currentSettings = makeSettings({ sttProvider: 'openai' });
 
-    const blob2 = new Blob(['audio2']);
+    const blob2 = makeAudioBlob('audio2');
     bus.emit('audio:recording-stop', { sessionId: 's2', blob: blob2 });
 
     // Second turn is queued (not sent yet) -- drain queue via response_end
@@ -153,12 +165,70 @@ describe('VoiceLoopController', () => {
     expect(handler.mock.calls[2][0].type).toBe('response_end');
   });
 
+  describe('empty-audio guard', () => {
+    it('skips empty audio blob (44 bytes = WAV header only)', () => {
+      createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      const logSpy = vi.fn();
+      bus.on('log', logSpy);
+
+      // 44-byte blob = WAV header only, zero audio data
+      const emptyBlob = new Blob([new ArrayBuffer(44)]);
+      bus.emit('audio:recording-stop', { sessionId: 'empty', blob: emptyBlob });
+
+      expect(gateway.sendVoiceTurn).not.toHaveBeenCalled();
+
+      const warnCalls = logSpy.mock.calls.filter(
+        (args) => args[0].level === 'warn' && args[0].msg.includes('Empty audio blob'),
+      );
+      expect(warnCalls.length).toBe(1);
+    });
+
+    it('warns on very short audio but still sends', () => {
+      createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      const logSpy = vi.fn();
+      bus.on('log', logSpy);
+
+      // 50 bytes = 44 header + 6 bytes PCM (under MIN_AUDIO_BYTES threshold)
+      const shortBlob = new Blob([new ArrayBuffer(50)]);
+      bus.emit('audio:recording-stop', { sessionId: 'short', blob: shortBlob });
+
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
+
+      const warnCalls = logSpy.mock.calls.filter(
+        (args) => args[0].level === 'warn' && args[0].msg.includes('Very short audio'),
+      );
+      expect(warnCalls.length).toBe(1);
+    });
+
+    it('normal audio blob proceeds without warning', () => {
+      createVoiceLoopController({ bus, gateway, settings: () => settings });
+
+      const logSpy = vi.fn();
+      bus.on('log', logSpy);
+
+      // 5000 bytes = well above MIN_AUDIO_BYTES + 44
+      const normalBlob = new Blob([new ArrayBuffer(5000)]);
+      bus.emit('audio:recording-stop', { sessionId: 'normal', blob: normalBlob });
+
+      expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
+
+      const audioWarnCalls = logSpy.mock.calls.filter(
+        (args) =>
+          args[0].level === 'warn' &&
+          (args[0].msg.includes('Empty audio blob') || args[0].msg.includes('Very short audio')),
+      );
+      expect(audioWarnCalls.length).toBe(0);
+    });
+  });
+
   describe('voice turn queue', () => {
     it('queues second voice turn while first is in-flight', () => {
       const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
 
-      const blob1 = new Blob(['audio1']);
-      const blob2 = new Blob(['audio2']);
+      const blob1 = makeAudioBlob('audio1');
+      const blob2 = makeAudioBlob('audio2');
       bus.emit('audio:recording-stop', { sessionId: 's1', blob: blob1 });
       bus.emit('audio:recording-stop', { sessionId: 's2', blob: blob2 });
 
@@ -171,8 +241,8 @@ describe('VoiceLoopController', () => {
     it('drains queued turn after response_end', () => {
       const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
 
-      const blob1 = new Blob(['audio1']);
-      const blob2 = new Blob(['audio2']);
+      const blob1 = makeAudioBlob('audio1');
+      const blob2 = makeAudioBlob('audio2');
       bus.emit('audio:recording-stop', { sessionId: 's1', blob: blob1 });
       bus.emit('audio:recording-stop', { sessionId: 's2', blob: blob2 });
 
@@ -189,8 +259,8 @@ describe('VoiceLoopController', () => {
     it('drains queued turn after error chunk', () => {
       const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
 
-      const blob1 = new Blob(['audio1']);
-      const blob2 = new Blob(['audio2']);
+      const blob1 = makeAudioBlob('audio1');
+      const blob2 = makeAudioBlob('audio2');
       bus.emit('audio:recording-stop', { sessionId: 's1', blob: blob1 });
       bus.emit('audio:recording-stop', { sessionId: 's2', blob: blob2 });
 
@@ -205,9 +275,9 @@ describe('VoiceLoopController', () => {
     it('processes three turns sequentially', () => {
       const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
 
-      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob(['a1']) });
-      bus.emit('audio:recording-stop', { sessionId: 's2', blob: new Blob(['a2']) });
-      bus.emit('audio:recording-stop', { sessionId: 's3', blob: new Blob(['a3']) });
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: makeAudioBlob('a1') });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: makeAudioBlob('a2') });
+      bus.emit('audio:recording-stop', { sessionId: 's3', blob: makeAudioBlob('a3') });
 
       // Only first fires immediately
       expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
@@ -226,8 +296,8 @@ describe('VoiceLoopController', () => {
     it('destroy clears pending queue and prevents drain', () => {
       const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
 
-      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob(['a1']) });
-      bus.emit('audio:recording-stop', { sessionId: 's2', blob: new Blob(['a2']) });
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: makeAudioBlob('a1') });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: makeAudioBlob('a2') });
 
       expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
 
@@ -245,12 +315,12 @@ describe('VoiceLoopController', () => {
       const controller = createVoiceLoopController({ bus, gateway, settings: () => settings });
 
       // First turn fires immediately (busy=true)
-      bus.emit('audio:recording-stop', { sessionId: 'first', blob: new Blob(['first']) });
+      bus.emit('audio:recording-stop', { sessionId: 'first', blob: makeAudioBlob('first') });
       expect(gateway.sendVoiceTurn).toHaveBeenCalledOnce();
 
       // Emit 6 more turns (exceeds MAX_QUEUE of 5)
       for (let i = 1; i <= 6; i++) {
-        bus.emit('audio:recording-stop', { sessionId: `q${i}`, blob: new Blob([`q${i}`]) });
+        bus.emit('audio:recording-stop', { sessionId: `q${i}`, blob: makeAudioBlob(`q${i}`) });
       }
 
       // Still only the first turn sent
@@ -278,15 +348,15 @@ describe('VoiceLoopController', () => {
       bus.on('log', logSpy);
 
       // First turn fires immediately
-      bus.emit('audio:recording-stop', { sessionId: 'first', blob: new Blob(['first']) });
+      bus.emit('audio:recording-stop', { sessionId: 'first', blob: makeAudioBlob('first') });
 
       // Fill queue to max (5 turns)
       for (let i = 1; i <= 5; i++) {
-        bus.emit('audio:recording-stop', { sessionId: `q${i}`, blob: new Blob([`q${i}`]) });
+        bus.emit('audio:recording-stop', { sessionId: `q${i}`, blob: makeAudioBlob(`q${i}`) });
       }
 
       // 6th queued turn should trigger warning
-      bus.emit('audio:recording-stop', { sessionId: 'overflow', blob: new Blob(['overflow']) });
+      bus.emit('audio:recording-stop', { sessionId: 'overflow', blob: makeAudioBlob('overflow') });
 
       const warnCalls = logSpy.mock.calls.filter(
         (args) => args[0].level === 'warn' && args[0].msg.includes('Voice queue full'),
@@ -297,8 +367,8 @@ describe('VoiceLoopController', () => {
     it('response_delta does NOT drain queue (only response_end and error)', () => {
       createVoiceLoopController({ bus, gateway, settings: () => settings });
 
-      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob(['a1']) });
-      bus.emit('audio:recording-stop', { sessionId: 's2', blob: new Blob(['a2']) });
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: makeAudioBlob('a1') });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: makeAudioBlob('a2') });
 
       // response_delta should NOT trigger drain
       gateway.simulateChunk({ type: 'response_delta', text: 'hello' });
@@ -312,15 +382,15 @@ describe('VoiceLoopController', () => {
       expect(controller.getQueueLength()).toBe(0);
 
       // First fires immediately (queue stays empty)
-      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob(['a1']) });
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: makeAudioBlob('a1') });
       expect(controller.getQueueLength()).toBe(0);
 
       // Second is queued
-      bus.emit('audio:recording-stop', { sessionId: 's2', blob: new Blob(['a2']) });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: makeAudioBlob('a2') });
       expect(controller.getQueueLength()).toBe(1);
 
       // Third is queued
-      bus.emit('audio:recording-stop', { sessionId: 's3', blob: new Blob(['a3']) });
+      bus.emit('audio:recording-stop', { sessionId: 's3', blob: makeAudioBlob('a3') });
       expect(controller.getQueueLength()).toBe(2);
 
       // Drain one
@@ -334,8 +404,8 @@ describe('VoiceLoopController', () => {
       const logSpy = vi.fn();
       bus.on('log', logSpy);
 
-      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob(['a1']) });
-      bus.emit('audio:recording-stop', { sessionId: 's2', blob: new Blob(['a2']) });
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: makeAudioBlob('a1') });
+      bus.emit('audio:recording-stop', { sessionId: 's2', blob: makeAudioBlob('a2') });
 
       // Drain queue
       gateway.simulateChunk({ type: 'response_end' });

@@ -8,6 +8,7 @@
 import type { EventBus } from './events';
 import type { AppEventMap, AppSettings } from './types';
 import type { GatewayClient } from './api/gateway-client';
+import { MIN_AUDIO_BYTES } from './audio/audio-capture';
 
 export interface VoiceLoopController {
   destroy(): void;
@@ -75,8 +76,19 @@ export function createVoiceLoopController(opts: {
     bus.emit('gateway:status', { status });
   }));
 
-  // When recording stops, enqueue voice turn (sequential, not immediate send)
+  // When recording stops, enqueue voice turn (sequential, not immediate send).
+  // Guard: skip empty audio (WAV header only) to avoid hallucinated transcriptions.
   unsubs.push(bus.on('audio:recording-stop', ({ sessionId, blob }) => {
+    if (blob.size <= 44) {
+      // WAV header only — no actual audio data captured
+      bus.emit('log', { level: 'warn', msg: `Empty audio blob (${blob.size} bytes, WAV header only) — skipping gateway send. Check bridge audio frame wiring.` });
+      return; // do not enqueue
+    }
+    if (blob.size < MIN_AUDIO_BYTES + 44) {
+      // Too short for meaningful speech — warn but still send (let STT decide)
+      bus.emit('log', { level: 'warn', msg: `Very short audio: ${blob.size} bytes (${blob.size - 44} PCM bytes). May produce hallucinated transcription.` });
+    }
+
     if (pendingTurns.length >= MAX_QUEUE) {
       bus.emit('log', { level: 'warn', msg: `Voice queue full (${MAX_QUEUE}), dropping oldest turn` });
       pendingTurns.shift();
