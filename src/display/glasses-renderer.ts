@@ -89,6 +89,8 @@ export interface GlassesRenderer {
   restoreConversation(): void;
   /** Expose icon animator for error presenter pause/resume (Phase 18). */
   getIconAnimator(): { stop(): void; start(): void } | null;
+  /** Debug accessor: expose viewport state for test assertions. Not for production control flow. */
+  getViewportState(): Readonly<ViewportState>;
 }
 
 // ── Factory ───────────────────────────────────────────────
@@ -101,6 +103,18 @@ export function createGlassesRenderer(opts: {
   let nextMsgId = 1;
 
   // ── Internal state ──────────────────────────────────────
+
+  // ── autoScroll invariant ──────────────────────────────────
+  // autoScroll tracks whether new content should auto-scroll the viewport.
+  // Mutation points (audited quick-26):
+  //   WRITE: destroy()          -> true  (full reset, correct)
+  //   WRITE: endStreaming()     -> true only if scrollOffset===0 (quick-25 fix)
+  //   WRITE: scrollUp()         -> false (via viewport.ts pure fn)
+  //   WRITE: scrollDown()       -> true when offset reaches 0 (via viewport.ts pure fn)
+  //   READ:  flushStreamBuffer() -> gates scrollOffset=0 reset
+  //   READ:  addUserMessage()    -> gates scrollOffset=0 + render
+  //   READ:  showError()         -> gates scrollOffset=0 reset
+  //   NOTE:  startStreaming()    -> does NOT touch autoScroll (safe, see guard below)
   let viewport: ViewportState = {
     messages: [],
     scrollOffset: 0,
@@ -206,6 +220,10 @@ export function createGlassesRenderer(opts: {
 
   function startStreaming(): void {
     trimTurnBuffer();
+    // NOTE(quick-26): trimTurnBuffer() only shifts messages off the array.
+    // It does NOT touch scrollOffset or autoScroll, so no guard needed.
+    // If future changes add scroll-affecting logic to trimTurnBuffer,
+    // autoScroll must be preserved here (do not blindly reset to true).
 
     const msg: ChatMessage = {
       id: `msg-${nextMsgId++}`,
@@ -316,6 +334,10 @@ export function createGlassesRenderer(opts: {
     return iconAnimator;
   }
 
+  function getViewportStateFn(): Readonly<ViewportState> {
+    return viewport;
+  }
+
   return {
     init,
     destroy,
@@ -335,5 +357,6 @@ export function createGlassesRenderer(opts: {
     showMenuOverlay,
     restoreConversation,
     getIconAnimator: getIconAnimatorFn,
+    getViewportState: getViewportStateFn,
   };
 }

@@ -89,6 +89,12 @@ export function renderViewport(state: ViewportState): string {
   return text;
 }
 
+// ASSUMPTION(quick-26): scrollUp()/scrollDown() are the ONLY scroll entry
+// points from the Even G2 bridge. The integer scrollOffset model assumes
+// discrete step scrolling. If the Even SDK ever adds inertial scrolling
+// or fractional offsets, the `scrollOffset === 0` check in glasses-renderer
+// endStreaming() could produce false positives. Review if bridge API changes.
+
 /**
  * Scroll up (toward older messages).
  * - Increments scrollOffset by 1
