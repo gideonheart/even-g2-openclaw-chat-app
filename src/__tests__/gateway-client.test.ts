@@ -355,7 +355,7 @@ describe('gateway-client', () => {
       expect(client.getHealth().reconnectAttempts).toBe(0);
     });
 
-    it('emits error on non-ok response', async () => {
+    it('emits error on non-ok response (no JSON body)', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 502,
@@ -371,6 +371,30 @@ describe('gateway-client', () => {
       const errorChunks = chunks.filter((c) => c.type === 'error');
       expect(errorChunks).toHaveLength(1);
       expect(errorChunks[0].error).toContain('502');
+    });
+
+    it('surfaces gateway JSON error message on non-ok response', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: '',
+        json: () => Promise.resolve({
+          error: 'Transcription returned empty text. The audio may be silent or too short.',
+          code: 'STT_TRANSCRIPTION_FAILED',
+        }),
+      });
+
+      const client = createGatewayClient({ reconnectBaseDelayMs: 1 });
+      const chunks: VoiceTurnChunk[] = [];
+      client.onChunk((c) => chunks.push(c));
+
+      await client.sendVoiceTurn(testSettings, testRequest);
+
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks).toHaveLength(1);
+      expect(errorChunks[0].error).toBe(
+        'Transcription returned empty text. The audio may be silent or too short.',
+      );
     });
 
     it('sends correct request format', async () => {
@@ -551,7 +575,7 @@ describe('gateway-client', () => {
       expect(abortSignals[0].aborted).toBe(true);
     });
 
-    it('emits error chunk on gateway failure', async () => {
+    it('emits error chunk on gateway failure (no JSON body)', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 502,
@@ -567,6 +591,28 @@ describe('gateway-client', () => {
       const errorChunks = chunks.filter((c) => c.type === 'error');
       expect(errorChunks).toHaveLength(1);
       expect(errorChunks[0].error).toContain('502');
+    });
+
+    it('surfaces gateway JSON error message on non-ok response', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: '',
+        json: () => Promise.resolve({
+          error: 'Text must not be empty',
+          code: 'INVALID_CONFIG',
+        }),
+      });
+
+      const client = createGatewayClient();
+      const chunks: VoiceTurnChunk[] = [];
+      client.onChunk((c) => chunks.push(c));
+
+      await client.sendTextTurn(testSettings, testTextRequest);
+
+      const errorChunks = chunks.filter((c) => c.type === 'error');
+      expect(errorChunks).toHaveLength(1);
+      expect(errorChunks[0].error).toBe('Text must not be empty');
     });
   });
 });

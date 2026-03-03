@@ -170,6 +170,23 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
 
   const TURN_TIMEOUT_MS = 30_000;
 
+  /**
+   * Read the JSON error body from a non-OK gateway response.
+   * Gateway returns `{ error: "...", code: "..." }` on 4xx/5xx.
+   * Falls back to HTTP status if body cannot be parsed.
+   */
+  async function readGatewayError(resp: Response): Promise<string> {
+    try {
+      const body = await resp.json() as { error?: string; code?: string };
+      if (body.error) {
+        return body.error;
+      }
+    } catch {
+      // Non-JSON body -- fall through to status-based message
+    }
+    return `Gateway returned ${resp.status}${resp.statusText ? `: ${resp.statusText}` : ''}`;
+  }
+
   function emitFromGatewayReply(reply: GatewayReply): void {
     if (reply.transcript) {
       emitChunk({ type: 'transcript', text: reply.transcript, turnId: reply.turnId });
@@ -194,7 +211,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     });
 
     if (!resp.ok) {
-      throw new Error(`Gateway returned ${resp.status}: ${resp.statusText}`);
+      throw new Error(await readGatewayError(resp));
     }
 
     return (await resp.json()) as GatewayReply;
@@ -245,7 +262,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     });
 
     if (!resp.ok) {
-      throw new Error(`Gateway returned ${resp.status}: ${resp.statusText}`);
+      throw new Error(await readGatewayError(resp));
     }
 
     return (await resp.json()) as GatewayReply;
