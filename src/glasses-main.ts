@@ -470,6 +470,22 @@ export async function boot(): Promise<void> {
     }
   });
 
+  // Forward bridge connection status to hub via sync bridge
+  bus.on('bridge:connected', ({ deviceName }) => {
+    syncBridge.postMessage({
+      type: 'bridge:connected',
+      origin: 'glasses',
+      deviceName,
+    });
+  });
+  bus.on('bridge:disconnected', ({ reason }) => {
+    syncBridge.postMessage({
+      type: 'bridge:disconnected',
+      origin: 'glasses',
+      reason,
+    });
+  });
+
   // Forward gateway errors and status changes to hub via sync bridge
   bus.on('gateway:chunk', (chunk) => {
     if (chunk.type === 'error') {

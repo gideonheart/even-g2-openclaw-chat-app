@@ -14,7 +14,9 @@ export type SyncMessage =
   | { type: 'streaming:end'; origin: SyncOrigin; seq?: number; conversationId: string }
   | { type: 'sync:heartbeat'; origin: SyncOrigin; seq?: number; messageCount: number; conversationId: string }
   | { type: 'gateway:error'; origin: SyncOrigin; seq?: number; error: string }
-  | { type: 'gateway:status-changed'; origin: SyncOrigin; seq?: number; status: string };
+  | { type: 'gateway:status-changed'; origin: SyncOrigin; seq?: number; status: string }
+  | { type: 'bridge:connected'; origin: SyncOrigin; seq?: number; deviceName: string; battery?: string }
+  | { type: 'bridge:disconnected'; origin: SyncOrigin; seq?: number; reason?: string };
 
 export interface SyncBridge {
   postMessage(msg: SyncMessage): void;

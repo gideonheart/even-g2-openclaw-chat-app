@@ -1379,6 +1379,16 @@ async function initPersistence(): Promise<{
           gatewayLiveStatus = msg.status;
           refreshHealthDisplay();
           break;
+        case 'bridge:connected':
+          // Glasses-side bridge connected — update hub glasses status display
+          setGlassesConnected(appState, addLog, msg.deviceName, msg.battery);
+          renderGlassesStatus();
+          break;
+        case 'bridge:disconnected':
+          // Glasses-side bridge disconnected — update hub glasses status display
+          setGlassesDisconnected(appState, addLog, msg.reason);
+          renderGlassesStatus();
+          break;
       }
     });
 
