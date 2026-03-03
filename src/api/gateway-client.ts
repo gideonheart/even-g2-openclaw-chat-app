@@ -121,32 +121,6 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
   }
 
   /**
-   * Text turns only need LLM generation time -- 30 seconds is generous.
-   */
-  const TEXT_TURN_TIMEOUT_MS = 30_000;
-
-  /**
-   * Voice turn timeout must cover upload + STT transcription + LLM generation.
-   * STT processing time is roughly proportional to audio duration (a 30-second
-   * recording can take 10-30 seconds to transcribe depending on the provider).
-   * Base: 60 seconds (covers upload + LLM overhead).
-   * Extra: +1 second per second of audio (estimated from blob size).
-   *
-   * 16 kHz, 16-bit, mono PCM = 32,000 bytes/second + 44-byte WAV header.
-   * A 30-second recording = ~960 KB -> timeout = 60 + 30 = 90 seconds.
-   * A 60-second recording = ~1.9 MB -> timeout = 60 + 60 = 120 seconds.
-   */
-  const VOICE_TURN_BASE_TIMEOUT_MS = 60_000;
-  const VOICE_TURN_MAX_TIMEOUT_MS = 180_000;
-  const PCM_BYTES_PER_SECOND = 32_000; // 16 kHz * 16-bit * mono
-
-  function voiceTurnTimeout(audioBlob: Blob): number {
-    const audioDurationSec = Math.max(0, audioBlob.size - 44) / PCM_BYTES_PER_SECOND;
-    const timeout = VOICE_TURN_BASE_TIMEOUT_MS + audioDurationSec * 1000;
-    return Math.min(timeout, VOICE_TURN_MAX_TIMEOUT_MS);
-  }
-
-  /**
    * Read the JSON error body from a non-OK gateway response.
    * Gateway returns `{ error: "...", code: "..." }` on 4xx/5xx.
    * Falls back to HTTP status if body cannot be parsed.
@@ -177,8 +151,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
    * Sentinel error subclass for application-level gateway errors (4xx/5xx).
    * The gateway WAS reachable (we got an HTTP response), but the request
    * was rejected by the server.  This is distinct from network errors
-   * (TypeError from fetch) and timeouts (DOMException) which mean the
-   * gateway is genuinely unreachable.
+   * (TypeError from fetch) which mean the gateway is genuinely unreachable.
    */
   class GatewayAppError extends Error {
     constructor(message: string) {
@@ -191,8 +164,8 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
    * Shared error handler for sendVoiceTurn and sendTextTurn catch blocks.
    * Classifies errors into three categories:
    *
-   * 1. DOMException (AbortError / TimeoutError) -- request was cancelled or
-   *    timed out.  Status → 'error' (gateway may be unreachable or slow).
+   * 1. DOMException (AbortError) -- request was cancelled by a newer request.
+   *    Silent. No error chunk, no status change.
    *
    * 2. GatewayAppError (4xx/5xx HTTP response) -- the gateway IS reachable,
    *    but the request was rejected by the server.  Status stays 'connected'
@@ -202,9 +175,9 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
    *    the gateway is genuinely unreachable.  Status → 'error'.
    */
   function handleTurnError(err: unknown): void {
-    if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
-      emitChunk({ type: 'error', error: 'Request timed out. Tap to retry.' });
-      setStatus('error');
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      // Manual abort -- user started a new request. Silent, no error shown.
+      return;
     } else if (err instanceof GatewayAppError) {
       emitChunk({ type: 'error', error: err.message });
       setStatus('connected');
@@ -243,21 +216,13 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
 
     abort();
     abortController = new AbortController();
-    const timeoutMs = voiceTurnTimeout(request.audio);
-    const timeoutId = setTimeout(() => {
-      abortController?.abort(new DOMException('signal timed out', 'TimeoutError'));
-    }, timeoutMs);
-
-    setStatus('connecting');
 
     try {
       const reply = await postVoiceTurn(settings, request.audio);
-      clearTimeout(timeoutId);
       setStatus('connected');
       health.reconnectAttempts = 0;
       emitFromGatewayReply(reply);
     } catch (err) {
-      clearTimeout(timeoutId);
       handleTurnError(err);
     }
   }
@@ -291,20 +256,13 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
 
     abort();
     abortController = new AbortController();
-    const timeoutId = setTimeout(() => {
-      abortController?.abort(new DOMException('signal timed out', 'TimeoutError'));
-    }, TEXT_TURN_TIMEOUT_MS);
-
-    setStatus('connecting');
 
     try {
       const reply = await postTextTurn(settings, request);
-      clearTimeout(timeoutId);
       setStatus('connected');
       health.reconnectAttempts = 0;
       emitFromGatewayReply(reply);
     } catch (err) {
-      clearTimeout(timeoutId);
       handleTurnError(err);
     }
   }
