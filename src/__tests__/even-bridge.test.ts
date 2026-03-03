@@ -182,6 +182,25 @@ describe('EvenBridge service', () => {
     expect(result).toBe(true);
   });
 
+  it('audio events do NOT emit gesture:tap (early return prevents phantom taps)', async () => {
+    const service = createEvenBridgeService(bus);
+    await service.init();
+
+    const tapHandler = vi.fn();
+    const audioHandler = vi.fn();
+    bus.on('gesture:tap', tapHandler);
+    bus.on('bridge:audio-frame', audioHandler);
+
+    // Send multiple audio frames — none should produce a gesture:tap
+    const pcm = new Uint8Array([1, 2, 3, 4]);
+    for (let i = 0; i < 10; i++) {
+      getOnEvenHubEventCb()!({ audioEvent: { audioPcm: pcm } });
+    }
+
+    expect(audioHandler).toHaveBeenCalledTimes(10);
+    expect(tapHandler).not.toHaveBeenCalled();
+  });
+
   it('emits gesture:tap when eventType is undefined (CLICK_EVENT SDK quirk)', async () => {
     const service = createEvenBridgeService(bus);
     await service.init();

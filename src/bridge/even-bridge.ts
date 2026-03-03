@@ -64,7 +64,13 @@ export function createEvenBridgeService(
     unsubEvent = bridge.onEvenHubEvent((event) => {
       const now = Date.now();
 
-      // Forward audio PCM frames to the bus
+      // Forward audio PCM frames to the bus.
+      // CRITICAL: return early so audio-only events do NOT fall through to
+      // gesture detection.  Without this guard, audio frames (which lack
+      // listEvent/textEvent/sysEvent) resolve eventType to `undefined`,
+      // matching the CLICK_EVENT branch and emitting phantom gesture:tap
+      // events at ~100 Hz — causing recordings to stop after the 275 ms
+      // debounce window.
       if (event.audioEvent) {
         audioFrameCount++;
         // Log frame count every 2s to avoid flooding
@@ -76,6 +82,7 @@ export function createEvenBridgeService(
           pcm: event.audioEvent.audioPcm,
           timestamp: now,
         });
+        return;
       }
 
       // Map SDK gesture events to typed bus events
