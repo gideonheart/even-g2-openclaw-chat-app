@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-02 - Completed plan 01-03: Codebase polish (hint text, stale comments, FSM/queue docs)
+Last activity: 2026-03-03 - Completed quick task 23: Bug fix: tap-to-record inactive after /new session from glasses menu
 
 ## Performance Metrics
 
