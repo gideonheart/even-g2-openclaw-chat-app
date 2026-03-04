@@ -12,13 +12,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-04 - Completed quick task 34: Test gateway connection from G2 frontend
+Last activity: 2026-03-04 - Completed quick task 35: G2 frontend transcript-first rendering with microtask yield
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
-- Total tests: 631 (all passing)
+- Total tests: 639 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -74,6 +74,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-31]: addUserMessage unconditionally resets scrollOffset=0 and autoScroll=true -- user-initiated actions always snap to bottom
 - [Phase quick-32]: AbortError handled silently (no error chunk, no status change) -- manual abort means user started new request; unified WATCHDOG_MS=120_000 for all transient states
 - [Phase quick-33]: Bridge/gateway sync-forwarding listeners registered before bridge.init() to capture events emitted during initialization
+- [Phase quick-35]: await Promise.resolve() microtask yield in emitFromGatewayReply separates transcript from response_start; zero-cost async boundary for glasses display ordering
 
 ### Roadmap Evolution
 
@@ -122,9 +123,10 @@ None.
 | 32 | Remove all timeout logic, use promise-based error propagation, unify watchdog 120s | 2026-03-03 | 17c2391 | [32-remove-all-timeout-logic-use-promise-bas](./quick/32-remove-all-timeout-logic-use-promise-bas/) |
 | 33 | Fix glasses connection card stuck on Disconnected: move bridge listeners before init | 2026-03-04 | aaa661c | [33-investigate-glasses-connection-card-stuc](./quick/33-investigate-glasses-connection-card-stuc/) |
 | 34 | Test gateway connection from G2 frontend: all 4 endpoints healthy (readyz, CORS, voice/turn, text/turn) | 2026-03-04 | (ops, no commit) | [34-test-gateway-connection-from-g2-frontend](./quick/34-test-gateway-connection-from-g2-frontend/) |
+| 35 | Transcript-first rendering: async microtask yield in emitFromGatewayReply + 3 regression tests | 2026-03-04 | 0daa5ae | [35-g2-frontend-transcript-must-render-befor](./quick/35-g2-frontend-transcript-must-render-befor/) |
 
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed quick-34 (Test gateway connection from G2 frontend)
+Stopped at: Completed quick-35 (G2 frontend transcript-first rendering with microtask yield)
 Resume file: None
