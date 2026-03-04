@@ -261,6 +261,43 @@ export async function boot(): Promise<void> {
       : undefined,
   }) : null;
 
+  // Forward bridge connection status to hub via sync bridge.
+  // MUST be registered before bridge.init() -- init() emits bridge:connected
+  // synchronously, so the listener must exist to forward it to the hub.
+  bus.on('bridge:connected', ({ deviceName }) => {
+    syncBridge.postMessage({
+      type: 'bridge:connected',
+      origin: 'glasses',
+      deviceName,
+    });
+  });
+  bus.on('bridge:disconnected', ({ reason }) => {
+    syncBridge.postMessage({
+      type: 'bridge:disconnected',
+      origin: 'glasses',
+      reason,
+    });
+  });
+
+  // Forward gateway errors and status changes to hub via sync bridge.
+  // Registered early so no gateway activity is missed during boot.
+  bus.on('gateway:chunk', (chunk) => {
+    if (chunk.type === 'error') {
+      syncBridge.postMessage({
+        type: 'gateway:error',
+        origin: 'glasses',
+        error: chunk.error ?? 'Unknown error',
+      });
+    }
+  });
+  bus.on('gateway:status', ({ status }) => {
+    syncBridge.postMessage({
+      type: 'gateway:status-changed',
+      origin: 'glasses',
+      status,
+    });
+  });
+
   // Layer 1: Hardware boundary
   const bridge = devMode ? createBridgeMock(bus) : createEvenBridgeService(bus);
   await bridge.init();
@@ -493,40 +530,6 @@ export async function boot(): Promise<void> {
       warningShown = true;
       renderer.showError(message);
     }
-  });
-
-  // Forward bridge connection status to hub via sync bridge
-  bus.on('bridge:connected', ({ deviceName }) => {
-    syncBridge.postMessage({
-      type: 'bridge:connected',
-      origin: 'glasses',
-      deviceName,
-    });
-  });
-  bus.on('bridge:disconnected', ({ reason }) => {
-    syncBridge.postMessage({
-      type: 'bridge:disconnected',
-      origin: 'glasses',
-      reason,
-    });
-  });
-
-  // Forward gateway errors and status changes to hub via sync bridge
-  bus.on('gateway:chunk', (chunk) => {
-    if (chunk.type === 'error') {
-      syncBridge.postMessage({
-        type: 'gateway:error',
-        origin: 'glasses',
-        error: chunk.error ?? 'Unknown error',
-      });
-    }
-  });
-  bus.on('gateway:status', ({ status }) => {
-    syncBridge.postMessage({
-      type: 'gateway:status-changed',
-      origin: 'glasses',
-      status,
-    });
   });
 
   // NOTE: 500ms settle period is handled in display-controller.ts,
