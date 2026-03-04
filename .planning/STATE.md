@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-04 - Completed quick task 37: Run npm run build and report results
+Last activity: 2026-03-04 - Completed quick task 38: Decouple loading indicator from recording indicator
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-33]: Bridge/gateway sync-forwarding listeners registered before bridge.init() to capture events emitted during initialization
 - [Phase quick-35]: await Promise.resolve() microtask yield in emitFromGatewayReply separates transcript from response_start; zero-cost async boundary for glasses display ordering
 - [Phase quick-36]: Plain ASCII dots (./../../...) for sent state animation; visually distinct from braille thinking spinner; 600ms full cycle at 200ms tick rate
+- [Phase quick-38]: Composite status renderer: setConditions(StatusConditions) replaces setState(IconState); independent recording/loading/thinking segments; edge-triggered frame resets; setIconState kept for glasses-main.ts sync bridge backward compat
 
 ### Roadmap Evolution
 
@@ -127,9 +128,10 @@ None.
 | 35 | Transcript-first rendering: async microtask yield in emitFromGatewayReply + 3 regression tests | 2026-03-04 | 0daa5ae | [35-g2-frontend-transcript-must-render-befor](./quick/35-g2-frontend-transcript-must-render-befor/) |
 | 36 | Replace sent checkmark with animated loading dots (. -> .. -> ...) + cycling test | 2026-03-04 | 4806da3 | [36-replace-stop-icon-with-animated-loading-](./quick/36-replace-stop-icon-with-animated-loading-/) |
 | 37 | Run npm run build: clean build (tsc + vite), 0 errors, 10 bundles, 56kB gzip | 2026-03-04 | (verify, no src commit) | [37-run-npm-run-build-now-in-this-project-an](./quick/37-run-npm-run-build-now-in-this-project-an/) |
+| 38 | Decouple loading indicator from recording indicator: composite status renderer with independent segments | 2026-03-04 | 53d98fd | [38-decouple-loading-indicator-from-recordin](./quick/38-decouple-loading-indicator-from-recordin/) |
 
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed quick-37 (run npm run build and report results)
+Stopped at: Completed quick-38 (decouple loading indicator from recording indicator)
 Resume file: None
