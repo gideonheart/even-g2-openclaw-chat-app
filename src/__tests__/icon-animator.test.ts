@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createIconAnimator } from '../display/icon-animator';
-import type { StatusConditions } from '../display/icon-animator';
 import { ICON_FRAMES } from '../display/icon-bitmaps';
 
 describe('IconAnimator', () => {
@@ -52,7 +51,8 @@ describe('IconAnimator', () => {
 
       animator.setConditions({ recording: true, pendingTurns: 1, streaming: false });
 
-      const output = updateFn.mock.calls[0][0] as string;
+      const firstCall = updateFn.mock.calls[0] as unknown[];
+      const output = firstCall[0] as string;
       // Should contain recording dot
       expect(output).toMatch(/[●○]/);
       // Should contain timer
@@ -116,7 +116,8 @@ describe('IconAnimator', () => {
       animator.setConditions({ recording: true, pendingTurns: 0, streaming: true });
 
       // Should show recording, not thinking
-      const output = updateFn.mock.calls[0][0] as string;
+      const firstCall = updateFn.mock.calls[0] as unknown[];
+      const output = firstCall[0] as string;
       expect(output).toMatch(/[●○] 0:00/);
       // Should not contain thinking spinner characters
       for (const frame of ICON_FRAMES.thinking) {
@@ -147,7 +148,8 @@ describe('IconAnimator', () => {
       updateFn.mockClear();
       animator.setConditions({ recording: true, pendingTurns: 1, streaming: false });
 
-      const output = updateFn.mock.calls[0][0] as string;
+      const resetCall = updateFn.mock.calls[0] as unknown[];
+      const output = resetCall[0] as string;
       // Frame 0 of recording is the filled circle
       expect(output).toContain(ICON_FRAMES.recording[0]);
 
@@ -210,10 +212,12 @@ describe('IconAnimator', () => {
       animator.start();
 
       // Collect several frames
-      const outputs: string[] = [updateFn.mock.calls[0][0] as string];
+      const initCall = updateFn.mock.calls[0] as unknown[];
+      const outputs: string[] = [initCall[0] as string];
       for (let i = 0; i < 5; i++) {
         await vi.advanceTimersByTimeAsync(200);
-        outputs.push(updateFn.mock.calls[updateFn.mock.calls.length - 1][0] as string);
+        const lastCall = updateFn.mock.calls[updateFn.mock.calls.length - 1] as unknown[];
+        outputs.push(lastCall[0] as string);
       }
 
       // Recording alternates between two frames (2-frame blink)

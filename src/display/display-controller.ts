@@ -1,15 +1,16 @@
-// ── Display controller — wires bus events to GlassesRenderer ──────────
+// ── Display controller -- wires bus events to GlassesRenderer ──────────
 //
 // This is the glue layer that makes the display reactive. Subscribes to
 // bus events (gateway chunks, gestures, audio state) and calls the
 // appropriate GlassesRenderer methods.
 //
-// Icon state is managed through a deterministic priority function rather
-// than last-write-wins, preventing race conditions between overlapping
-// turns and late gateway events.
+// Icon conditions are passed independently to the renderer (recording,
+// pendingTurns, streaming) instead of resolving a single priority state.
+// The icon animator composes them into a composite status string that can
+// show multiple indicators simultaneously.
 
 import type { EventBus } from '../events';
-import type { AppEventMap, IconState } from '../types';
+import type { AppEventMap } from '../types';
 import type { GlassesRenderer } from './glasses-renderer';
 
 // ── Public interface ──────────────────────────────────────
@@ -18,17 +19,6 @@ export interface DisplayController {
   init(): Promise<void>;
   destroy(): void;
 }
-
-// ── Icon priority (highest to lowest) ─────────────────────
-// recording > sent > thinking > idle
-//
-// Priority rule: the resolved icon state is the highest-priority
-// condition that is currently active. Individual event handlers
-// update condition flags/counters, then call resolveIcon() which
-// applies the priority and calls renderer.setIconState() only if
-// the resolved state differs from the last-applied state.
-
-const ICON_PRIORITY: ReadonlyArray<IconState> = ['recording', 'sent', 'thinking', 'idle'];
 
 // ── Factory ───────────────────────────────────────────────
 
@@ -43,43 +33,11 @@ export function createDisplayController(opts: {
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   let menuActive = false;
 
-  // ── Priority state tracking ──────────────────────────────
-  // These flags represent active conditions. resolveIcon() reads them
-  // to determine the highest-priority icon state.
-  let recordingActive = false;
+  // ── Condition tracking ─────────────────────────────────────
+  // pendingTurns is the only counter maintained here (decremented on
+  // response_end/error settle). Recording and streaming flags are passed
+  // directly to the renderer without local bookkeeping.
   let pendingTurns = 0;     // turns submitted but not yet response_end/error
-  let streamingActive = false; // true between response_start and response_end/error
-  let lastAppliedIcon: IconState = 'idle';
-
-  /**
-   * Compute the highest-priority icon state from current conditions
-   * and apply it to the renderer if it changed.
-   */
-  function resolveIcon(): void {
-    let resolved: IconState = 'idle';
-    for (const state of ICON_PRIORITY) {
-      switch (state) {
-        case 'recording':
-          if (recordingActive) { resolved = 'recording'; break; }
-          continue;
-        case 'sent':
-          if (pendingTurns > 0) { resolved = 'sent'; break; }
-          continue;
-        case 'thinking':
-          if (streamingActive) { resolved = 'thinking'; break; }
-          continue;
-        case 'idle':
-          resolved = 'idle';
-          break;
-      }
-      break; // matched — stop iterating
-    }
-
-    if (resolved !== lastAppliedIcon) {
-      lastAppliedIcon = resolved;
-      renderer.setIconState(resolved);
-    }
-  }
 
   function clearSettle(): void {
     if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
@@ -95,38 +53,36 @@ export function createDisplayController(opts: {
           case 'transcript':
             renderer.addUserMessage(chunk.text!);
             // pendingTurns already incremented on audio:stop-requested.
-            // Transcript arrival confirms the turn is in flight — no counter change needed.
-            resolveIcon();
+            // Transcript arrival confirms the turn is in flight -- no counter change needed.
             break;
           case 'response_start':
             renderer.startStreaming();
-            streamingActive = true;
-            resolveIcon();
+            renderer.setStreamingActive(true);
             break;
           case 'response_delta':
             renderer.appendStreamChunk(chunk.text!);
             break;
           case 'response_end':
             renderer.endStreaming();
-            streamingActive = false;
+            renderer.setStreamingActive(false);
             // 500ms settle: keep current icon visible to discourage premature tap.
-            // After settle, decrement pendingTurns and re-resolve.
+            // After settle, decrement pendingTurns and update renderer.
             clearSettle();
             settleTimer = setTimeout(() => {
               settleTimer = null;
               if (pendingTurns > 0) pendingTurns--;
-              resolveIcon();
+              renderer.setPendingTurns(pendingTurns);
             }, 500);
             break;
           case 'error':
             renderer.endStreaming();
             renderer.showError(chunk.error ?? 'Something went wrong');
-            streamingActive = false;
+            renderer.setStreamingActive(false);
             clearSettle();
             settleTimer = setTimeout(() => {
               settleTimer = null;
               if (pendingTurns > 0) pendingTurns--;
-              resolveIcon();
+              renderer.setPendingTurns(pendingTurns);
             }, 500);
             break;
         }
@@ -176,12 +132,11 @@ export function createDisplayController(opts: {
       }),
     );
 
-    // ── 4. Icon state wiring (priority-based) ───────────────
+    // ── 4. Condition wiring (independent flags) ─────────────
     unsubs.push(
       bus.on('audio:recording-start', () => {
         clearSettle();
-        recordingActive = true;
-        resolveIcon();
+        renderer.setRecordingActive(true);
       }),
     );
 
@@ -189,9 +144,9 @@ export function createDisplayController(opts: {
     // (before async bridge.stopAudio / audioCapture.stopRecording complete)
     unsubs.push(
       bus.on('audio:stop-requested', () => {
-        recordingActive = false;
+        renderer.setRecordingActive(false);
         pendingTurns++;
-        resolveIcon();
+        renderer.setPendingTurns(pendingTurns);
       }),
     );
 
@@ -211,10 +166,7 @@ export function createDisplayController(opts: {
       unsub();
     }
     unsubs.length = 0;
-    recordingActive = false;
     pendingTurns = 0;
-    streamingActive = false;
-    lastAppliedIcon = 'idle';
     renderer.destroy();
   }
 
