@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-04 - Completed quick task 33: Fix glasses connection card stuck on Disconnected
+Last activity: 2026-03-04 - Completed quick task 34: Test gateway connection from G2 frontend
 
 ## Performance Metrics
 
@@ -121,9 +121,10 @@ None.
 | 31 | Fix G2 glasses UI auto-scroll: addUserMessage always snaps to bottom + 3 tests | 2026-03-03 | d9e4309 | [31-fix-g2-glasses-ui-auto-scroll-to-start-a](./quick/31-fix-g2-glasses-ui-auto-scroll-to-start-a/) |
 | 32 | Remove all timeout logic, use promise-based error propagation, unify watchdog 120s | 2026-03-03 | 17c2391 | [32-remove-all-timeout-logic-use-promise-bas](./quick/32-remove-all-timeout-logic-use-promise-bas/) |
 | 33 | Fix glasses connection card stuck on Disconnected: move bridge listeners before init | 2026-03-04 | aaa661c | [33-investigate-glasses-connection-card-stuc](./quick/33-investigate-glasses-connection-card-stuc/) |
+| 34 | Test gateway connection from G2 frontend: all 4 endpoints healthy (readyz, CORS, voice/turn, text/turn) | 2026-03-04 | (ops, no commit) | [34-test-gateway-connection-from-g2-frontend](./quick/34-test-gateway-connection-from-g2-frontend/) |
 
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed quick-33 (Fix glasses connection card stuck on Disconnected)
+Stopped at: Completed quick-34 (Test gateway connection from G2 frontend)
 Resume file: None
