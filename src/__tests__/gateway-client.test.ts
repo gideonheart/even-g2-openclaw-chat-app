@@ -364,6 +364,71 @@ describe('gateway-client', () => {
       expect(init.headers['X-Session-Key']).toBe('key-123');
     });
 
+    describe('transcript-first rendering guarantee', () => {
+      it('transcript chunk is emitted before microtask yield, response chunks after', async () => {
+        const gatewayReply = {
+          turnId: 't1',
+          transcript: 'Hello there',
+          assistant: { fullText: 'hi' },
+        };
+
+        globalThis.fetch = vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: () => Promise.resolve(gatewayReply),
+        });
+
+        const client = createGatewayClient();
+        let transcriptMicrotaskFlushed = false;
+
+        client.onChunk((chunk) => {
+          if (chunk.type === 'transcript') {
+            // Schedule a microtask right when transcript arrives.
+            // If the yield in emitFromGatewayReply works, this microtask
+            // will execute before response_start is emitted.
+            queueMicrotask(() => { transcriptMicrotaskFlushed = true; });
+          }
+          if (chunk.type === 'response_start') {
+            // By the time response_start arrives, the microtask scheduled
+            // on transcript should have already executed (proving a yield happened).
+            expect(transcriptMicrotaskFlushed).toBe(true);
+          }
+        });
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        // Verify the assertion was actually reached (transcript was present)
+        expect(transcriptMicrotaskFlushed).toBe(true);
+      });
+
+      it('response chunks still emit normally when no transcript in reply', async () => {
+        const gatewayReply = {
+          turnId: 't1',
+          assistant: { fullText: 'hi' },
+        };
+
+        globalThis.fetch = vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: () => Promise.resolve(gatewayReply),
+        });
+
+        const client = createGatewayClient();
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        // No transcript -- response lifecycle emits immediately with no yield
+        expect(chunks).toHaveLength(3);
+        expect(chunks[0].type).toBe('response_start');
+        expect(chunks[1].type).toBe('response_delta');
+        expect(chunks[2].type).toBe('response_end');
+      });
+    });
+
   });
 
   describe('sendTextTurn', () => {
@@ -562,6 +627,40 @@ describe('gateway-client', () => {
       expect(errorChunks[0].error).toBe('Text must not be empty');
       // Gateway responded with a meaningful error -- it IS reachable, no 'connecting' before it
       expect(statuses).toEqual(['connected']);
+    });
+
+    describe('transcript-first rendering guarantee', () => {
+      it('transcript chunk is emitted before microtask yield, response chunks after', async () => {
+        const gatewayReply = {
+          turnId: 't1',
+          transcript: 'Hello, assistant!',
+          assistant: { fullText: 'Hi there' },
+        };
+
+        globalThis.fetch = vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: () => Promise.resolve(gatewayReply),
+        });
+
+        const client = createGatewayClient();
+        let transcriptMicrotaskFlushed = false;
+
+        client.onChunk((chunk) => {
+          if (chunk.type === 'transcript') {
+            queueMicrotask(() => { transcriptMicrotaskFlushed = true; });
+          }
+          if (chunk.type === 'response_start') {
+            // Microtask scheduled on transcript must have flushed before response_start
+            expect(transcriptMicrotaskFlushed).toBe(true);
+          }
+        });
+
+        await client.sendTextTurn(testSettings, testTextRequest);
+
+        expect(transcriptMicrotaskFlushed).toBe(true);
+      });
     });
   });
 });
