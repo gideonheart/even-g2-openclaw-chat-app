@@ -591,3 +591,102 @@ describe('sync bridge text turn rendering', () => {
     expect(mockRenderer.addUserMessage).not.toHaveBeenCalled();
   });
 });
+
+// ── Bridge event forwarding during boot tests ───────────────────
+describe('bridge event forwarding during boot', () => {
+  let docAddEventSpy: ReturnType<typeof vi.spyOn>;
+  let winAddEventSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    _resetLifecycleState();
+
+    // Dev mode (no flutter_inappwebview) -- avoids lifecycle listener complexity
+    delete (window as any).flutter_inappwebview;
+
+    // Reset all mock call counters
+    mockVoiceLoopDestroy.mockClear();
+    mockGatewayDestroy.mockClear();
+    mockDisplayControllerDestroy.mockClear();
+    mockGestureHandlerDestroy.mockClear();
+    mockStopRecording.mockClear();
+    mockStopRecording.mockResolvedValue(new Blob());
+    mockBridgeDestroy.mockClear();
+    mockBusClear.mockClear();
+    mockBus.on.mockClear();
+    mockGateway.checkHealth.mockResolvedValue(true);
+    mockErrorPresenterDestroy.mockClear();
+    mockBridge.init.mockClear();
+    syncMessageHandler = null;
+    mockSyncBridge.onMessage.mockClear();
+    mockSyncBridge.postMessage.mockClear();
+    mockSyncBridge.destroy.mockClear();
+
+    // Suppress lifecycle listener registration in dev mode
+    docAddEventSpy = vi.spyOn(document, 'addEventListener').mockImplementation(() => {});
+    winAddEventSpy = vi.spyOn(window, 'addEventListener').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    docAddEventSpy.mockRestore();
+    winAddEventSpy.mockRestore();
+    delete (window as any).flutter_inappwebview;
+  });
+
+  it('bridge:connected is forwarded to syncBridge via bus listener', async () => {
+    await boot();
+
+    // Find the bus.on('bridge:connected') registration
+    const connectedCall = mockBus.on.mock.calls.find(
+      (call) => call[0] === 'bridge:connected',
+    );
+    expect(connectedCall).toBeDefined();
+
+    // Extract the registered callback and invoke it
+    const callback = connectedCall![1] as (payload: { deviceName: string }) => void;
+    mockSyncBridge.postMessage.mockClear();
+    callback({ deviceName: 'Even G2' });
+
+    expect(mockSyncBridge.postMessage).toHaveBeenCalledWith({
+      type: 'bridge:connected',
+      origin: 'glasses',
+      deviceName: 'Even G2',
+    });
+  });
+
+  it('bridge:disconnected is forwarded to syncBridge via bus listener', async () => {
+    await boot();
+
+    // Find the bus.on('bridge:disconnected') registration
+    const disconnectedCall = mockBus.on.mock.calls.find(
+      (call) => call[0] === 'bridge:disconnected',
+    );
+    expect(disconnectedCall).toBeDefined();
+
+    // Extract the registered callback and invoke it
+    const callback = disconnectedCall![1] as (payload: { reason: string }) => void;
+    mockSyncBridge.postMessage.mockClear();
+    callback({ reason: 'lost' });
+
+    expect(mockSyncBridge.postMessage).toHaveBeenCalledWith({
+      type: 'bridge:disconnected',
+      origin: 'glasses',
+      reason: 'lost',
+    });
+  });
+
+  it('bridge:connected listener is registered before bridge:audio-frame listener (order check)', async () => {
+    await boot();
+
+    // Find indices of specific bus.on registrations
+    const calls = mockBus.on.mock.calls;
+    const connectedIndex = calls.findIndex((call) => call[0] === 'bridge:connected');
+    const audioFrameIndex = calls.findIndex((call) => call[0] === 'bridge:audio-frame');
+
+    expect(connectedIndex).toBeGreaterThanOrEqual(0);
+    expect(audioFrameIndex).toBeGreaterThanOrEqual(0);
+
+    // bridge:connected must be registered BEFORE bridge:audio-frame
+    // (bridge:audio-frame is registered after bridge.init())
+    expect(connectedIndex).toBeLessThan(audioFrameIndex);
+  });
+});
