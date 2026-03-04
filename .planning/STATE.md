@@ -12,13 +12,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-03 - Completed quick task 32: Remove all timeout logic, use promise-based error propagation
+Last activity: 2026-03-04 - Completed quick task 33: Fix glasses connection card stuck on Disconnected
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
-- Total tests: 628 (all passing)
+- Total tests: 631 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -73,6 +73,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-30]: Direct renderer calls (not bus.emit) for sync bridge text turn display to avoid auto-save double-write of hub-saved messages
 - [Phase quick-31]: addUserMessage unconditionally resets scrollOffset=0 and autoScroll=true -- user-initiated actions always snap to bottom
 - [Phase quick-32]: AbortError handled silently (no error chunk, no status change) -- manual abort means user started new request; unified WATCHDOG_MS=120_000 for all transient states
+- [Phase quick-33]: Bridge/gateway sync-forwarding listeners registered before bridge.init() to capture events emitted during initialization
 
 ### Roadmap Evolution
 
@@ -119,9 +120,10 @@ None.
 | 30 | Fix hub text turn messages not showing on glasses: sync bridge handlers + 6 tests | 2026-03-03 | d44b41f | [30-fix-sendtextturn-messages-not-showing-in](./quick/30-fix-sendtextturn-messages-not-showing-in/) |
 | 31 | Fix G2 glasses UI auto-scroll: addUserMessage always snaps to bottom + 3 tests | 2026-03-03 | d9e4309 | [31-fix-g2-glasses-ui-auto-scroll-to-start-a](./quick/31-fix-g2-glasses-ui-auto-scroll-to-start-a/) |
 | 32 | Remove all timeout logic, use promise-based error propagation, unify watchdog 120s | 2026-03-03 | 17c2391 | [32-remove-all-timeout-logic-use-promise-bas](./quick/32-remove-all-timeout-logic-use-promise-bas/) |
+| 33 | Fix glasses connection card stuck on Disconnected: move bridge listeners before init | 2026-03-04 | aaa661c | [33-investigate-glasses-connection-card-stuc](./quick/33-investigate-glasses-connection-card-stuc/) |
 
 ## Session Continuity
 
-Last session: 2026-03-03
-Stopped at: Completed quick-32 (Remove all timeout logic, use promise-based error propagation)
+Last session: 2026-03-04
+Stopped at: Completed quick-33 (Fix glasses connection card stuck on Disconnected)
 Resume file: None
