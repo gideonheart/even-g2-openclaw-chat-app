@@ -5,6 +5,9 @@ import {
   scrollUp,
   scrollDown,
   MAX_VIEWPORT_CHARS,
+  MAX_VISIBLE_CHARS,
+  FIT_TO_SCREEN,
+  EFFECTIVE_CHAR_LIMIT,
   type ChatMessage,
   type ViewportState,
 } from '../display/viewport';
@@ -96,13 +99,13 @@ describe('renderViewport', () => {
     expect(rendered).toContain('> third');
   });
 
-  it('truncates output to MAX_VIEWPORT_CHARS', () => {
+  it('truncates output to effective char limit', () => {
     // Create many long messages that exceed the char limit
     const longMessages = Array.from({ length: 50 }, (_, i) =>
       msg('assistant', `Message ${i}: ${'x'.repeat(200)}`),
     );
     const result = renderViewport(state(longMessages));
-    expect(result.length).toBeLessThanOrEqual(MAX_VIEWPORT_CHARS);
+    expect(result.length).toBeLessThanOrEqual(EFFECTIVE_CHAR_LIMIT);
   });
 
   it('with positive scrollOffset shows older messages', () => {
@@ -197,6 +200,38 @@ describe('scrollDown', () => {
     const result = scrollDown(s);
     expect(result).not.toBe(s);
     expect(s.scrollOffset).toBe(1);
+  });
+});
+
+// ── fit-to-screen (quick-41) ──────────────────────────────────
+
+describe('renderViewport fit-to-screen', () => {
+  it('FIT_TO_SCREEN flag is enabled', () => {
+    expect(FIT_TO_SCREEN).toBe(true);
+  });
+
+  it('MAX_VISIBLE_CHARS is smaller than MAX_VIEWPORT_CHARS', () => {
+    expect(MAX_VISIBLE_CHARS).toBeLessThan(MAX_VIEWPORT_CHARS);
+  });
+
+  it('limits output to EFFECTIVE_CHAR_LIMIT when FIT_TO_SCREEN is on', () => {
+    // Create messages whose combined text exceeds EFFECTIVE_CHAR_LIMIT
+    // but would fit within MAX_VIEWPORT_CHARS
+    const longMsg = msg('assistant', 'x'.repeat(EFFECTIVE_CHAR_LIMIT + 100));
+    const result = renderViewport(state([longMsg]));
+    expect(result.length).toBeLessThanOrEqual(EFFECTIVE_CHAR_LIMIT);
+  });
+
+  it('shows only the latest messages that fit in the visible area', () => {
+    // Each message is ~30 chars including prefix/separator
+    const msgs = Array.from({ length: 20 }, (_, i) =>
+      msg(i % 2 === 0 ? 'user' : 'assistant', `msg-${i}-padding`),
+    );
+    const result = renderViewport(state(msgs));
+    // The output must fit within the visible limit
+    expect(result.length).toBeLessThanOrEqual(EFFECTIVE_CHAR_LIMIT);
+    // The latest message should be present
+    expect(result).toContain('msg-19-padding');
   });
 });
 

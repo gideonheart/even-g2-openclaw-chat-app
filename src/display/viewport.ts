@@ -18,10 +18,28 @@ export interface ViewportState {
   autoScroll: boolean;  // true when at bottom, new messages auto-scroll
 }
 
+// ── Feature flags ────────────────────────────────────────────
+
+/** When true, limit rendered text to fit the visible container area
+ *  (no firmware scrolling). When false, use the full 1800-char budget
+ *  (firmware handles overflow scroll, starts at top). */
+export const FIT_TO_SCREEN = true;
+
 // ── Constants ──────────────────────────────────────────────
 
 /** Hard character limit to stay safely under the 2000-char SDK limit. */
 export const MAX_VIEWPORT_CHARS = 1800;
+
+/** Approximate character limit that fits in the 256px chat container
+ *  without triggering firmware overflow scroll.
+ *  576px width ≈ ~28-32 chars/line at default font; 256px height ≈ ~7 lines.
+ *  Conservative estimate: 7 lines × 28 chars = ~196 chars.
+ *  Tunable constant — adjust after on-device testing. */
+export const MAX_VISIBLE_CHARS = 200;
+
+/** Resolved char limit — the ONE value every renderer should use.
+ *  Eliminates repeated FIT_TO_SCREEN ternaries across modules. */
+export const EFFECTIVE_CHAR_LIMIT = FIT_TO_SCREEN ? MAX_VISIBLE_CHARS : MAX_VIEWPORT_CHARS;
 
 // ── Pure functions ─────────────────────────────────────────
 
@@ -71,7 +89,7 @@ export function renderViewport(state: ViewportState): string {
     // Account for the separator between messages
     const addedLength = visibleMessages.length > 0 ? line.length + 2 : line.length;
 
-    if (totalLength + addedLength > MAX_VIEWPORT_CHARS && visibleMessages.length > 0) {
+    if (totalLength + addedLength > EFFECTIVE_CHAR_LIMIT && visibleMessages.length > 0) {
       break;
     }
 
@@ -82,8 +100,8 @@ export function renderViewport(state: ViewportState): string {
   const text = serializeMessages(visibleMessages);
 
   // Hard truncation safety net
-  if (text.length > MAX_VIEWPORT_CHARS) {
-    return text.slice(text.length - MAX_VIEWPORT_CHARS);
+  if (text.length > EFFECTIVE_CHAR_LIMIT) {
+    return text.slice(text.length - EFFECTIVE_CHAR_LIMIT);
   }
 
   return text;

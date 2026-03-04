@@ -12,7 +12,7 @@ import {
   renderViewport,
   scrollUp as vpScrollUp,
   scrollDown as vpScrollDown,
-  MAX_VIEWPORT_CHARS,
+  EFFECTIVE_CHAR_LIMIT,
 } from './viewport';
 import type { ViewportState, ChatMessage } from './viewport';
 
@@ -137,8 +137,10 @@ export function createGlassesRenderer(opts: {
 
   function renderAndPush(): void {
     const text = renderViewport(viewport);
-    // CHAT-07: enforce 2000-char limit (MAX_VIEWPORT_CHARS is 1800, so this is a safety net)
-    const safeText = text.length > MAX_VIEWPORT_CHARS ? text.slice(text.length - MAX_VIEWPORT_CHARS) : text;
+    // CHAT-07: enforce char limit (safety net)
+    const safeText = text.length > EFFECTIVE_CHAR_LIMIT
+      ? text.slice(text.length - EFFECTIVE_CHAR_LIMIT)
+      : text;
     bridge.textContainerUpgrade(2, safeText);
   }
 
