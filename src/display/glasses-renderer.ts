@@ -72,7 +72,14 @@ const MAX_TURNS = 8;
 export interface GlassesRenderer {
   init(): Promise<void>;
   destroy(): void;
+  /** @deprecated Use setRecordingActive/setPendingTurns/setStreamingActive instead. Kept for glasses-main.ts sync bridge. */
   setIconState(state: IconState): void;
+  /** Set recording condition flag. Icon animator renders recording dot + timer when active. */
+  setRecordingActive(active: boolean): void;
+  /** Set pending turns count. Icon animator renders loading dots when > 0. */
+  setPendingTurns(count: number): void;
+  /** Set streaming condition flag. Icon animator renders thinking spinner when active (and not recording/pending). */
+  setStreamingActive(active: boolean): void;
   addUserMessage(text: string): void;
   startStreaming(): void;
   appendStreamChunk(text: string): void;
@@ -195,8 +202,27 @@ export function createGlassesRenderer(opts: {
     welcomeShown = false;
   }
 
+  // Local conditions mirror for the three new methods
+  let localConditions = { recording: false, pendingTurns: 0, streaming: false };
+
   function setIconState(state: IconState): void {
+    // Backward-compat pass-through for glasses-main.ts sync bridge
     iconAnimator?.setState(state);
+  }
+
+  function setRecordingActive(active: boolean): void {
+    localConditions.recording = active;
+    iconAnimator?.setConditions({ ...localConditions });
+  }
+
+  function setPendingTurns(count: number): void {
+    localConditions.pendingTurns = count;
+    iconAnimator?.setConditions({ ...localConditions });
+  }
+
+  function setStreamingActive(active: boolean): void {
+    localConditions.streaming = active;
+    iconAnimator?.setConditions({ ...localConditions });
   }
 
   function addUserMessage(text: string): void {
@@ -345,6 +371,9 @@ export function createGlassesRenderer(opts: {
     init,
     destroy,
     setIconState,
+    setRecordingActive,
+    setPendingTurns,
+    setStreamingActive,
     addUserMessage,
     startStreaming,
     appendStreamChunk,
