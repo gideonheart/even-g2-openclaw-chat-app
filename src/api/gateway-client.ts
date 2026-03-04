@@ -137,9 +137,14 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     return `Gateway returned ${resp.status}${resp.statusText ? `: ${resp.statusText}` : ''}`;
   }
 
-  function emitFromGatewayReply(reply: GatewayReply): void {
+  async function emitFromGatewayReply(reply: GatewayReply): Promise<void> {
     if (reply.transcript) {
       emitChunk({ type: 'transcript', text: reply.transcript, turnId: reply.turnId });
+      // Yield: let transcript propagate to glasses display before response lifecycle.
+      // The display controller commits the user message synchronously on this chunk,
+      // and the bridge.textContainerUpgrade call needs a microtask boundary to flush
+      // to the Even SDK before response_start overwrites the display state.
+      await Promise.resolve();
     }
     emitChunk({ type: 'response_start', turnId: reply.turnId });
     const text = reply.assistant?.fullText?.trim();
@@ -221,7 +226,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       const reply = await postVoiceTurn(settings, request.audio);
       setStatus('connected');
       health.reconnectAttempts = 0;
-      emitFromGatewayReply(reply);
+      await emitFromGatewayReply(reply);
     } catch (err) {
       handleTurnError(err);
     }
@@ -261,7 +266,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
       const reply = await postTextTurn(settings, request);
       setStatus('connected');
       health.reconnectAttempts = 0;
-      emitFromGatewayReply(reply);
+      await emitFromGatewayReply(reply);
     } catch (err) {
       handleTurnError(err);
     }
