@@ -12,13 +12,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-04 - Completed quick task 35: G2 frontend transcript-first rendering with microtask yield
+Last activity: 2026-03-04 - Completed quick task 36: Replace sent checkmark with animated loading dots
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
-- Total tests: 639 (all passing)
+- Total tests: 640 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -75,6 +75,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-32]: AbortError handled silently (no error chunk, no status change) -- manual abort means user started new request; unified WATCHDOG_MS=120_000 for all transient states
 - [Phase quick-33]: Bridge/gateway sync-forwarding listeners registered before bridge.init() to capture events emitted during initialization
 - [Phase quick-35]: await Promise.resolve() microtask yield in emitFromGatewayReply separates transcript from response_start; zero-cost async boundary for glasses display ordering
+- [Phase quick-36]: Plain ASCII dots (./../../...) for sent state animation; visually distinct from braille thinking spinner; 600ms full cycle at 200ms tick rate
 
 ### Roadmap Evolution
 
@@ -124,9 +125,10 @@ None.
 | 33 | Fix glasses connection card stuck on Disconnected: move bridge listeners before init | 2026-03-04 | aaa661c | [33-investigate-glasses-connection-card-stuc](./quick/33-investigate-glasses-connection-card-stuc/) |
 | 34 | Test gateway connection from G2 frontend: all 4 endpoints healthy (readyz, CORS, voice/turn, text/turn) | 2026-03-04 | (ops, no commit) | [34-test-gateway-connection-from-g2-frontend](./quick/34-test-gateway-connection-from-g2-frontend/) |
 | 35 | Transcript-first rendering: async microtask yield in emitFromGatewayReply + 3 regression tests | 2026-03-04 | 0daa5ae | [35-g2-frontend-transcript-must-render-befor](./quick/35-g2-frontend-transcript-must-render-befor/) |
+| 36 | Replace sent checkmark with animated loading dots (. -> .. -> ...) + cycling test | 2026-03-04 | 4806da3 | [36-replace-stop-icon-with-animated-loading-](./quick/36-replace-stop-icon-with-animated-loading-/) |
 
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed quick-35 (G2 frontend transcript-first rendering with microtask yield)
+Stopped at: Completed quick-36 (replace sent checkmark with animated loading dots)
 Resume file: None
