@@ -20,13 +20,13 @@ describe('IconAnimator', () => {
     expect(updateFn).toHaveBeenCalledWith(ICON_FRAMES.idle[0]);
   });
 
-  it('setState("recording") calls updateFn with recording frame immediately', async () => {
+  it('setState("recording") calls updateFn with recording frame + timer immediately', async () => {
     const updateFn = vi.fn(() => Promise.resolve());
     const animator = createIconAnimator(updateFn);
 
     animator.setState('recording');
 
-    expect(updateFn).toHaveBeenCalledWith(ICON_FRAMES.recording[0]);
+    expect(updateFn).toHaveBeenCalledWith(`${ICON_FRAMES.recording[0]} 0:00`);
   });
 
   it('getState() returns current state', () => {
@@ -117,7 +117,7 @@ describe('IconAnimator', () => {
 
     // Now switch state -- frameIdx resets
     animator.setState('recording');
-    expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.recording[0]);
+    expect(updateFn).toHaveBeenLastCalledWith(`${ICON_FRAMES.recording[0]} 0:00`);
 
     animator.stop();
   });
@@ -148,6 +148,28 @@ describe('IconAnimator', () => {
     animator.stop();
   });
 
+  it('sent state cycles through loading dot frames', async () => {
+    const updateFn = vi.fn(() => Promise.resolve());
+    const animator = createIconAnimator(updateFn);
+
+    animator.setState('sent');
+    expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.sent[0]); // '.'
+
+    animator.start();
+
+    await vi.advanceTimersByTimeAsync(200);
+    expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.sent[1]); // '..'
+
+    await vi.advanceTimersByTimeAsync(200);
+    expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.sent[2]); // '...'
+
+    // Wraps back to frame 0
+    await vi.advanceTimersByTimeAsync(200);
+    expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.sent[0]); // '.'
+
+    animator.stop();
+  });
+
   it('start() is idempotent (calling twice does not create duplicate intervals)', async () => {
     const updateFn = vi.fn(() => Promise.resolve());
     const animator = createIconAnimator(updateFn);
@@ -167,5 +189,82 @@ describe('IconAnimator', () => {
 
     // Should not throw
     expect(() => animator.stop()).not.toThrow();
+  });
+
+  describe('recording timer', () => {
+    it('includes elapsed time in recording frame (immediate tick shows 0:00)', () => {
+      const updateFn = vi.fn(() => Promise.resolve());
+      const animator = createIconAnimator(updateFn);
+
+      animator.setState('recording');
+
+      expect(updateFn).toHaveBeenCalledWith(`${ICON_FRAMES.recording[0]} 0:00`);
+    });
+
+    it('elapsed time increments as real time passes', async () => {
+      const updateFn = vi.fn(() => Promise.resolve());
+      const animator = createIconAnimator(updateFn);
+
+      animator.setState('recording');
+      animator.start();
+
+      // Advance 3 seconds (15 ticks at 200ms)
+      await vi.advanceTimersByTimeAsync(3000);
+
+      const lastCall = updateFn.mock.calls[updateFn.mock.calls.length - 1] as unknown[];
+      expect(lastCall[0]).toMatch(/^[●○] 0:03$/);
+
+      animator.stop();
+    });
+
+    it('formats minutes correctly after 60s', async () => {
+      const updateFn = vi.fn(() => Promise.resolve());
+      const animator = createIconAnimator(updateFn);
+
+      animator.setState('recording');
+      animator.start();
+
+      await vi.advanceTimersByTimeAsync(65_000);
+
+      const lastCall = updateFn.mock.calls[updateFn.mock.calls.length - 1] as unknown[];
+      expect(lastCall[0]).toMatch(/^[●○] 1:05$/);
+
+      animator.stop();
+    });
+
+    it('timer resets when switching away from recording', async () => {
+      const updateFn = vi.fn(() => Promise.resolve());
+      const animator = createIconAnimator(updateFn);
+
+      animator.setState('recording');
+      animator.start();
+      await vi.advanceTimersByTimeAsync(5000);
+
+      // Switch to sent -- no timer suffix
+      animator.setState('sent');
+      expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.sent[0]);
+
+      animator.stop();
+    });
+
+    it('timer restarts from 0:00 on re-entering recording state', async () => {
+      const updateFn = vi.fn(() => Promise.resolve());
+      const animator = createIconAnimator(updateFn);
+
+      animator.setState('recording');
+      animator.start();
+      await vi.advanceTimersByTimeAsync(5000);
+
+      // Leave recording
+      animator.setState('sent');
+      // Flush microtask so inFlight clears from the sent tick
+      await vi.advanceTimersByTimeAsync(0);
+      // Re-enter recording
+      animator.setState('recording');
+
+      expect(updateFn).toHaveBeenLastCalledWith(`${ICON_FRAMES.recording[0]} 0:00`);
+
+      animator.stop();
+    });
   });
 });
