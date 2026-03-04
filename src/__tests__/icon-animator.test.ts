@@ -63,13 +63,13 @@ describe('IconAnimator', () => {
       expect(output).toMatch(/0:00\s{2}\./);
     });
 
-    it('loading only: outputs loading dots', () => {
+    it('loading only: outputs idle icon + loading dots', () => {
       const updateFn = vi.fn(() => Promise.resolve());
       const animator = createIconAnimator(updateFn);
 
       animator.setConditions({ recording: false, pendingTurns: 2, streaming: false });
 
-      expect(updateFn).toHaveBeenCalledWith(ICON_FRAMES.sent[0]);
+      expect(updateFn).toHaveBeenCalledWith(`${ICON_FRAMES.idle[0]} ${ICON_FRAMES.sent[0]}`);
     });
 
     it('recording only: outputs recording dot+timer', () => {
@@ -99,14 +99,14 @@ describe('IconAnimator', () => {
       expect(updateFn).toHaveBeenCalledWith(ICON_FRAMES.idle[0]);
     });
 
-    it('pending + streaming: loading dots take priority over thinking spinner', () => {
+    it('pending + streaming: idle icon + loading dots take priority over thinking spinner', () => {
       const updateFn = vi.fn(() => Promise.resolve());
       const animator = createIconAnimator(updateFn);
 
       animator.setConditions({ recording: false, pendingTurns: 1, streaming: true });
 
-      // Should show loading dots, not thinking spinner
-      expect(updateFn).toHaveBeenCalledWith(ICON_FRAMES.sent[0]);
+      // Should show idle icon + loading dots, not thinking spinner
+      expect(updateFn).toHaveBeenCalledWith(`${ICON_FRAMES.idle[0]} ${ICON_FRAMES.sent[0]}`);
     });
 
     it('recording + streaming: recording dot+timer (no thinking spinner)', () => {
@@ -176,7 +176,7 @@ describe('IconAnimator', () => {
       updateFn.mockClear();
       animator.setConditions({ recording: false, pendingTurns: 1, streaming: false });
 
-      expect(updateFn).toHaveBeenCalledWith(ICON_FRAMES.sent[0]);
+      expect(updateFn).toHaveBeenCalledWith(`${ICON_FRAMES.idle[0]} ${ICON_FRAMES.sent[0]}`);
 
       animator.stop();
     });
@@ -386,24 +386,25 @@ describe('IconAnimator', () => {
       animator.stop();
     });
 
-    it('loading dots cycle through frames', async () => {
+    it('loading dots cycle through frames with idle prefix', async () => {
       const updateFn = vi.fn(() => Promise.resolve());
       const animator = createIconAnimator(updateFn);
+      const idle = ICON_FRAMES.idle[0];
 
       animator.setConditions({ recording: false, pendingTurns: 1, streaming: false });
-      expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.sent[0]); // '.'
+      expect(updateFn).toHaveBeenLastCalledWith(`${idle} ${ICON_FRAMES.sent[0]}`); // '◌ .'
 
       animator.start();
 
       await vi.advanceTimersByTimeAsync(200);
-      expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.sent[1]); // '..'
+      expect(updateFn).toHaveBeenLastCalledWith(`${idle} ${ICON_FRAMES.sent[1]}`); // '◌ ..'
 
       await vi.advanceTimersByTimeAsync(200);
-      expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.sent[2]); // '...'
+      expect(updateFn).toHaveBeenLastCalledWith(`${idle} ${ICON_FRAMES.sent[2]}`); // '◌ ...'
 
       // Wraps back to frame 0
       await vi.advanceTimersByTimeAsync(200);
-      expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.sent[0]); // '.'
+      expect(updateFn).toHaveBeenLastCalledWith(`${idle} ${ICON_FRAMES.sent[0]}`); // '◌ .'
 
       animator.stop();
     });
@@ -481,9 +482,9 @@ describe('IconAnimator', () => {
       animator.start();
       await vi.advanceTimersByTimeAsync(5000);
 
-      // Switch to loading -- no recording segment
+      // Switch to loading -- no recording segment, idle prefix shown
       animator.setConditions({ recording: false, pendingTurns: 1, streaming: false });
-      expect(updateFn).toHaveBeenLastCalledWith(ICON_FRAMES.sent[0]);
+      expect(updateFn).toHaveBeenLastCalledWith(`${ICON_FRAMES.idle[0]} ${ICON_FRAMES.sent[0]}`);
 
       animator.stop();
     });

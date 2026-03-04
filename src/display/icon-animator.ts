@@ -93,8 +93,8 @@ export function createIconAnimator(
         // Both active: two spaces between segments for visual separation
         output = `${output}  ${frame}`;
       } else {
-        // Loading only
-        output = frame;
+        // Not recording but pending: prefix idle icon so user knows they can tap
+        output = `${ICON_FRAMES.idle[0]} ${frame}`;
       }
     }
 
