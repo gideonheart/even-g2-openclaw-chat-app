@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-04 - Completed quick task 36: Replace sent checkmark with animated loading dots
+Last activity: 2026-03-04 - Completed quick task 37: Run npm run build and report results
 
 ## Performance Metrics
 
@@ -126,9 +126,10 @@ None.
 | 34 | Test gateway connection from G2 frontend: all 4 endpoints healthy (readyz, CORS, voice/turn, text/turn) | 2026-03-04 | (ops, no commit) | [34-test-gateway-connection-from-g2-frontend](./quick/34-test-gateway-connection-from-g2-frontend/) |
 | 35 | Transcript-first rendering: async microtask yield in emitFromGatewayReply + 3 regression tests | 2026-03-04 | 0daa5ae | [35-g2-frontend-transcript-must-render-befor](./quick/35-g2-frontend-transcript-must-render-befor/) |
 | 36 | Replace sent checkmark with animated loading dots (. -> .. -> ...) + cycling test | 2026-03-04 | 4806da3 | [36-replace-stop-icon-with-animated-loading-](./quick/36-replace-stop-icon-with-animated-loading-/) |
+| 37 | Run npm run build: clean build (tsc + vite), 0 errors, 10 bundles, 56kB gzip | 2026-03-04 | (verify, no src commit) | [37-run-npm-run-build-now-in-this-project-an](./quick/37-run-npm-run-build-now-in-this-project-an/) |
 
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed quick-36 (replace sent checkmark with animated loading dots)
+Stopped at: Completed quick-37 (run npm run build and report results)
 Resume file: None
