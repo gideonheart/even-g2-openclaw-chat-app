@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-04 - Completed quick task 40: Verify parallel loading+recording UI on G2 glasses device
+Last activity: 2026-03-04 - Completed quick task 41: Fit-to-screen scroll feature flag (DRY)
 
 ## Performance Metrics
 
@@ -131,6 +131,7 @@ None.
 | 38 | Decouple loading indicator from recording indicator: composite status renderer with independent segments | 2026-03-04 | 53d98fd | [38-decouple-loading-indicator-from-recordin](./quick/38-decouple-loading-indicator-from-recordin/) |
 | 39 | Update analysis doc 02 with code terminology and completion status | 2026-03-04 | 73b4065 | [39-update-analysis-doc-02-with-code-termino](./quick/39-update-analysis-doc-02-with-code-termino/) |
 | 40 | Verify parallel loading+recording UI on G2 glasses device | 2026-03-04 | (manual, no src commit) | [40-verify-parallel-loading-recording-ui-on-](./quick/40-verify-parallel-loading-recording-ui-on-/) |
+| 41 | Fit-to-screen scroll feature flag (DRY) | 2026-03-04 | a7e163e | [41-fit-to-screen-scroll-feature-flag](./quick/41-fit-to-screen-scroll-feature-flag/) |
 
 ## Session Continuity
 
