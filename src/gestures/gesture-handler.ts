@@ -137,6 +137,7 @@ export function createGestureHandler(opts: {
       }
       case 'STOP_RECORDING': {
         bus.emit('log', { level: 'info', msg: 'Recording stop requested' });
+        bus.emit('audio:stop-requested', {});
         try {
           const stopOk = await bridge.stopAudio();
           bus.emit('log', { level: 'info', msg: `audioControl(false) => ${stopOk}` });

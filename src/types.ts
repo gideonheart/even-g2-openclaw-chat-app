@@ -100,6 +100,7 @@ export interface AppEventMap {
   'gesture:scroll-up': { timestamp: number };
   'gesture:scroll-down': { timestamp: number };
   'audio:recording-start': { sessionId: string };
+  'audio:stop-requested': {};
   'audio:recording-stop': { sessionId: string; blob: Blob };
   'gesture:menu-toggle': { active: boolean };
   'gateway:status': { status: ConnectionStatus };

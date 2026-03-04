@@ -221,6 +221,33 @@ describe('createGestureHandler', () => {
       });
     });
 
+    it('tap in recording emits audio:stop-requested synchronously before async chain', () => {
+      createHandler();
+      const stopRequestedSpy = vi.fn();
+      bus.on('audio:stop-requested', stopRequestedSpy);
+      bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
+
+      // Tap to stop — audio:stop-requested must fire synchronously
+      bus.emit('gesture:tap', { timestamp: 1300 }); // recording -> sent
+      expect(stopRequestedSpy).toHaveBeenCalledTimes(1);
+      expect(stopRequestedSpy).toHaveBeenCalledWith({});
+    });
+
+    it('audio:stop-requested fires before audio:recording-stop', async () => {
+      createHandler();
+      const order: string[] = [];
+      bus.on('audio:stop-requested', () => order.push('stop-requested'));
+      bus.on('audio:recording-stop', () => order.push('recording-stop'));
+      bus.emit('gesture:tap', { timestamp: 1000 }); // idle -> recording
+      bus.emit('gesture:tap', { timestamp: 1300 }); // recording -> sent
+
+      // Flush async chain (bridge.stopAudio + audioCapture.stopRecording)
+      await vi.waitFor(() => {
+        expect(order).toContain('recording-stop');
+      });
+      expect(order).toEqual(['stop-requested', 'recording-stop']);
+    });
+
     it('tap in recording emits audio:recording-stop with blob', async () => {
       createHandler();
       const spy = vi.fn();

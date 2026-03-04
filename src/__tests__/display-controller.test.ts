@@ -107,14 +107,32 @@ describe('DisplayController', () => {
   // ── Streaming flow (CHAT-03) ─────────────────────────────
 
   describe('streaming flow (CHAT-03)', () => {
-    it('gateway:chunk type=transcript -> addUserMessage + setIconState(sent)', () => {
+    it('gateway:chunk type=transcript -> addUserMessage (icon resolved via priority)', () => {
+      // Simulate a turn in-flight: stop-requested increments pendingTurns
+      bus.emit('audio:stop-requested', {});
+      renderer.setIconState.mockClear();
+
       bus.emit('gateway:chunk', { type: 'transcript', text: 'Hello world' });
 
       expect(renderer.addUserMessage).toHaveBeenCalledWith('Hello world');
-      expect(renderer.setIconState).toHaveBeenCalledWith('sent');
+      // Icon stays 'sent' because pendingTurns > 0 — already applied, no change call
+      // (resolveIcon is idempotent when state hasn't changed)
     });
 
-    it('gateway:chunk type=response_start -> startStreaming + setIconState(thinking)', () => {
+    it('gateway:chunk type=response_start -> startStreaming + icon resolved', () => {
+      // Setup: have a pending turn so we get 'sent' state first
+      bus.emit('audio:stop-requested', {});
+      renderer.setIconState.mockClear();
+
+      bus.emit('gateway:chunk', { type: 'response_start' });
+
+      expect(renderer.startStreaming).toHaveBeenCalledOnce();
+      // With pendingTurns > 0, priority is 'sent' (higher than 'thinking')
+      // So no icon change expected here — sent beats thinking
+    });
+
+    it('gateway:chunk type=response_start sets thinking when no pending turns', () => {
+      renderer.setIconState.mockClear();
       bus.emit('gateway:chunk', { type: 'response_start' });
 
       expect(renderer.startStreaming).toHaveBeenCalledOnce();
@@ -128,6 +146,10 @@ describe('DisplayController', () => {
     });
 
     it('gateway:chunk type=response_end -> endStreaming + setIconState(idle) after 500ms', () => {
+      // Setup: simulate a pending turn so we start from non-idle state
+      bus.emit('audio:stop-requested', {});
+      renderer.setIconState.mockClear();
+
       bus.emit('gateway:chunk', { type: 'response_end' });
 
       expect(renderer.endStreaming).toHaveBeenCalledOnce();
@@ -139,6 +161,10 @@ describe('DisplayController', () => {
     });
 
     it('gateway:chunk type=error -> endStreaming + showError + setIconState(idle) after 500ms', () => {
+      // Setup: simulate a pending turn so we start from non-idle state
+      bus.emit('audio:stop-requested', {});
+      renderer.setIconState.mockClear();
+
       bus.emit('gateway:chunk', { type: 'error', error: 'something broke' });
 
       expect(renderer.endStreaming).toHaveBeenCalledOnce();
@@ -235,11 +261,25 @@ describe('DisplayController', () => {
       expect(renderer.setIconState).toHaveBeenCalledWith('recording');
     });
 
-    it('audio:recording-stop -> setIconState(sent)', () => {
+    it('audio:stop-requested -> immediate setIconState(sent)', () => {
+      // First start recording so we are in recording state
+      bus.emit('audio:recording-start', { sessionId: 'session-1' });
       renderer.setIconState.mockClear();
-      bus.emit('audio:recording-stop', { sessionId: 'session-1', blob: new Blob() });
+
+      bus.emit('audio:stop-requested', {});
 
       expect(renderer.setIconState).toHaveBeenCalledWith('sent');
+    });
+
+    it('audio:recording-stop does NOT change icon state (handled by stop-requested)', () => {
+      bus.emit('audio:recording-start', { sessionId: 'session-1' });
+      bus.emit('audio:stop-requested', {});
+      renderer.setIconState.mockClear();
+
+      bus.emit('audio:recording-stop', { sessionId: 'session-1', blob: new Blob() });
+
+      // No setIconState call — icon was already set to 'sent' by stop-requested
+      expect(renderer.setIconState).not.toHaveBeenCalled();
     });
 
     it('audio:recording-start cancels pending settle timer from error', () => {
@@ -256,6 +296,168 @@ describe('DisplayController', () => {
       // Advance past the 500ms settle -- it should have been cancelled
       vi.advanceTimersByTime(500);
       expect(renderer.setIconState).not.toHaveBeenCalledWith('idle');
+    });
+  });
+
+  // ── Priority-based icon resolution ────────────────────────
+
+  describe('priority-based icon resolution', () => {
+    it('stop-tap shows loading dots immediately (no wait for async audio stop)', () => {
+      // Simulate: user taps to start recording
+      bus.emit('audio:recording-start', { sessionId: 's1' });
+      expect(renderer.setIconState).toHaveBeenCalledWith('recording');
+      renderer.setIconState.mockClear();
+
+      // User taps to stop — stop-requested fires synchronously, before any async
+      bus.emit('audio:stop-requested', {});
+      expect(renderer.setIconState).toHaveBeenCalledWith('sent');
+
+      // Later, async blob arrives — no icon change
+      renderer.setIconState.mockClear();
+      bus.emit('audio:recording-stop', { sessionId: 's1', blob: new Blob() });
+      expect(renderer.setIconState).not.toHaveBeenCalled();
+    });
+
+    it('response_end from previous turn does NOT override active recording icon', () => {
+      // Turn A: record, stop, pending turn
+      bus.emit('audio:recording-start', { sessionId: 's1' });
+      bus.emit('audio:stop-requested', {});
+      renderer.setIconState.mockClear();
+
+      // Turn B: start new recording while turn A is processing
+      bus.emit('audio:recording-start', { sessionId: 's2' });
+      expect(renderer.setIconState).toHaveBeenCalledWith('recording');
+      renderer.setIconState.mockClear();
+
+      // Turn A's response_end arrives while user is still recording turn B
+      bus.emit('gateway:chunk', { type: 'response_end' });
+      vi.advanceTimersByTime(500);
+
+      // Icon must still be 'recording' (recording > idle)
+      // The settle timer decremented pendingTurns, but recording is higher priority
+      expect(renderer.setIconState).not.toHaveBeenCalledWith('idle');
+      expect(renderer.setIconState).not.toHaveBeenCalledWith('sent');
+    });
+
+    it('overlapping turns maintain deterministic status priority', () => {
+      // Turn A: record and stop
+      bus.emit('audio:recording-start', { sessionId: 's1' });
+      bus.emit('audio:stop-requested', {});
+      expect(renderer.setIconState).toHaveBeenCalledWith('sent');
+
+      // Turn A response flows
+      bus.emit('gateway:chunk', { type: 'transcript', text: 'hello' });
+      bus.emit('gateway:chunk', { type: 'response_start' });
+
+      renderer.setIconState.mockClear();
+
+      // Turn B: start recording while Turn A response is streaming
+      bus.emit('audio:recording-start', { sessionId: 's2' });
+      expect(renderer.setIconState).toHaveBeenCalledWith('recording');
+      renderer.setIconState.mockClear();
+
+      // Turn A response_end arrives mid-recording for Turn B
+      bus.emit('gateway:chunk', { type: 'response_end' });
+      vi.advanceTimersByTime(500);
+
+      // Must NOT go to idle — still recording
+      expect(renderer.setIconState).not.toHaveBeenCalledWith('idle');
+
+      // Stop turn B
+      renderer.setIconState.mockClear();
+      bus.emit('audio:stop-requested', {});
+      expect(renderer.setIconState).toHaveBeenCalledWith('sent');
+    });
+
+    it('after all pending processing clears and not recording -> idle', () => {
+      // Single turn: record -> stop -> gateway processes -> response_end
+      bus.emit('audio:recording-start', { sessionId: 's1' });
+      bus.emit('audio:stop-requested', {});
+      expect(renderer.setIconState).toHaveBeenCalledWith('sent');
+
+      bus.emit('gateway:chunk', { type: 'transcript', text: 'hello' });
+      bus.emit('gateway:chunk', { type: 'response_start' });
+      bus.emit('gateway:chunk', { type: 'response_delta', text: 'world' });
+      bus.emit('gateway:chunk', { type: 'response_end' });
+      renderer.setIconState.mockClear();
+
+      // After 500ms settle, pendingTurns decrements to 0 -> resolves to idle
+      vi.advanceTimersByTime(500);
+      expect(renderer.setIconState).toHaveBeenCalledWith('idle');
+    });
+
+    it('response_start shows thinking only when no pendingTurns (stale chunk)', () => {
+      // No pending turns — a stale response_start arrives
+      renderer.setIconState.mockClear();
+      bus.emit('gateway:chunk', { type: 'response_start' });
+      expect(renderer.setIconState).toHaveBeenCalledWith('thinking');
+    });
+
+    it('sent priority beats thinking when pendingTurns > 0', () => {
+      // Have a pending turn
+      bus.emit('audio:stop-requested', {});
+      expect(renderer.setIconState).toHaveBeenCalledWith('sent');
+      renderer.setIconState.mockClear();
+
+      // Response starts — sent (pendingTurns > 0) has higher priority than thinking
+      bus.emit('gateway:chunk', { type: 'response_start' });
+      // Should NOT switch to thinking — sent beats thinking
+      expect(renderer.setIconState).not.toHaveBeenCalledWith('thinking');
+    });
+
+    it('recording priority beats everything', () => {
+      // Have a pending turn AND a response streaming
+      bus.emit('audio:stop-requested', {});
+      bus.emit('gateway:chunk', { type: 'response_start' });
+      renderer.setIconState.mockClear();
+
+      // Start recording — recording beats all
+      bus.emit('audio:recording-start', { sessionId: 's2' });
+      expect(renderer.setIconState).toHaveBeenCalledWith('recording');
+    });
+
+    it('error settle does not override recording', () => {
+      // Turn A errors
+      bus.emit('audio:stop-requested', {});
+      bus.emit('gateway:chunk', { type: 'error', error: 'oops' });
+      renderer.setIconState.mockClear();
+
+      // Start recording before settle fires
+      bus.emit('audio:recording-start', { sessionId: 's2' });
+      expect(renderer.setIconState).toHaveBeenCalledWith('recording');
+
+      renderer.setIconState.mockClear();
+      // Settle timer fires — but recording is active, so idle should NOT apply
+      // Note: settle timer was cleared by recording-start, so nothing happens
+      vi.advanceTimersByTime(500);
+      expect(renderer.setIconState).not.toHaveBeenCalledWith('idle');
+    });
+
+    it('multiple overlapping turns: sent persists until all settle', () => {
+      // Turn A: submit
+      bus.emit('audio:recording-start', { sessionId: 's1' });
+      bus.emit('audio:stop-requested', {});
+      expect(renderer.setIconState).toHaveBeenCalledWith('sent');
+
+      // Turn B: submit while A is still processing
+      bus.emit('audio:recording-start', { sessionId: 's2' });
+      bus.emit('audio:stop-requested', {});
+
+      // Turn A completes
+      bus.emit('gateway:chunk', { type: 'response_end' });
+      renderer.setIconState.mockClear();
+      vi.advanceTimersByTime(500); // settle A
+
+      // pendingTurns went from 2 to 1 — still > 0, so stay 'sent'
+      expect(renderer.setIconState).not.toHaveBeenCalledWith('idle');
+
+      // Turn B completes
+      bus.emit('gateway:chunk', { type: 'response_end' });
+      renderer.setIconState.mockClear();
+      vi.advanceTimersByTime(500); // settle B
+
+      // pendingTurns now 0 — idle
+      expect(renderer.setIconState).toHaveBeenCalledWith('idle');
     });
   });
 });
