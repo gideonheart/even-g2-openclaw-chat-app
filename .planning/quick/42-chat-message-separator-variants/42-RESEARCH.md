@@ -211,25 +211,45 @@ const addedLength = visibleMessages.length > 0
 
 `glasses-renderer.ts` — **no changes** (SRP: viewport owns all text formatting).
 
-## On-Device Test Plan
+## On-Device Test Plan — Cycle via Command Menu
 
-Hard-code test string in `showWelcome()` to compare variants visually:
+Instead of hard-coding a single variant and re-deploying to compare, add a
+**`/style` menu item** that cycles through all variants on each tap.
 
-```typescript
-bridge.textContainerUpgrade(2,
-  '> User msg\n……………\nAssistant\n……………\n' +
-  '> User msg\n───\nAssistant\n───\n' +
-  '> User msg\n.........\nAssistant\n.........'
-);
-```
+**User flow:** double-tap → menu opens → scroll to `/style` → tap →
+separator cycles to next variant → menu closes → chat re-renders with new
+separator immediately. Tap again to cycle to the next one.
 
-Compare:
+### Variants to cycle (in order)
+
+| # | ID | Label | Separator string | Notes |
+|---|-----|------|-----------------|-------|
+| 0 | `off` | Off | *(empty — uses `\n\n`)* | Current behaviour, baseline |
+| 1 | `dots` | Dots ......... | `.........` | ASCII dots, proven safe on G2 |
+| 2 | `ellipsis` | Ellipsis …………… | `……………` | U+2026, 3 dots/char, untested |
+| 3 | `short` | Line ─── | `───` | U+2500 box-drawing, untested |
+| 4 | `long` | Line ───────── | `─────────` | Wider box-drawing, untested |
+
+### What to check on device
+
 - [ ] Which separator is most readable?
 - [ ] Does `…` (U+2026) render on G2?
 - [ ] Does `─` (U+2500) render on G2?
 - [ ] Which feels closest to the text above (least dead space)?
 - [ ] Is short (`───`) enough visual break, or need wider?
 
+### Implementation summary
+
+| File | Change |
+|------|--------|
+| `src/display/viewport.ts` | `SEPARATOR_VARIANTS[]`, `cycleSeparatorStyle()`, `getSeparatorOverhead()`, `resetSeparatorStyle()`. `serializeMessages` joins with current variant. `renderViewport` uses `getSeparatorOverhead()` for budget. |
+| `src/menu/command-menu.ts` | Add `'separator'` to `MenuCommand` union. Add `/style` item to `MENU_ITEMS`. |
+| `src/menu/menu-controller.ts` | Import `cycleSeparatorStyle`. `case 'separator'`: cycle → show overlay "Style: {label}" → delayed close 800ms → chat re-renders. |
+| `src/__tests__/viewport.test.ts` | Separator cycle tests, `resetSeparatorStyle()` in `beforeEach`. |
+| `src/__tests__/command-menu.test.ts` | Item count 5→6, `/style` item assertion. |
+
 ## Rollback
 
-`CHAT_SEPARATORS = false` — one-line change, reverts to current blank-line format.
+Set separator index to 0 (Off) via `resetSeparatorStyle()` — reverts to
+current blank-line format. No feature flag needed since Off is the first
+variant in the cycle.
