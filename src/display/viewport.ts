@@ -25,41 +25,14 @@ export interface ViewportState {
  *  (firmware handles overflow scroll, starts at top). */
 export const FIT_TO_SCREEN = true;
 
-// ── Separator variants (quick-43) ────────────────────────────
+// ── Message separator (quick-44) ─────────────────────────────
 
-interface SeparatorVariant {
-  id: string;
-  label: string;
-  separator: string;
-}
+/** Visible separator between chat messages. Short box-drawing line
+ *  chosen after on-device testing (quick-42/43). */
+export const MSG_SEPARATOR = '───';
 
-export const SEPARATOR_VARIANTS: readonly SeparatorVariant[] = [
-  { id: 'off',      label: 'Off',              separator: '' },
-  { id: 'dots',     label: 'Dots .........',   separator: '.........' },
-  { id: 'ellipsis', label: 'Ellipsis ……………',  separator: '……………' },
-  { id: 'short',    label: 'Line ───',         separator: '───' },
-  { id: 'long',     label: 'Line ─────────',   separator: '─────────' },
-] as const;
-
-let currentVariantIndex = 0;
-
-/** Cycle to the next separator variant, wrapping around. Returns the new variant's label. */
-export function cycleSeparatorStyle(): string {
-  currentVariantIndex = (currentVariantIndex + 1) % SEPARATOR_VARIANTS.length;
-  return SEPARATOR_VARIANTS[currentVariantIndex].label;
-}
-
-/** Character cost of the current separator between messages.
- *  Off = 2 (for '\n\n'), otherwise separator.length + 2 (for '\n' + sep + '\n'). */
-export function getSeparatorOverhead(): number {
-  const sep = SEPARATOR_VARIANTS[currentVariantIndex].separator;
-  return sep.length === 0 ? 2 : sep.length + 2;
-}
-
-/** Reset separator to Off (index 0). Used in tests for isolation. */
-export function resetSeparatorStyle(): void {
-  currentVariantIndex = 0;
-}
+/** Character cost of the separator: \n + separator + \n */
+export const SEPARATOR_OVERHEAD = MSG_SEPARATOR.length + 2;
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -83,7 +56,7 @@ export const EFFECTIVE_CHAR_LIMIT = FIT_TO_SCREEN ? MAX_VISIBLE_CHARS : MAX_VIEW
  * Serialize an array of chat messages to plain text for the glasses display.
  * - User messages are prefixed with '> ' to simulate right-alignment
  * - Assistant messages have no prefix
- * - Messages are separated by a blank line ('\n\n')
+ * - Messages are separated by a short box-drawing line (───)
  * - Incomplete messages get ' ...' suffix (streaming indicator)
  */
 export function serializeMessages(messages: ChatMessage[]): string {
@@ -95,10 +68,7 @@ export function serializeMessages(messages: ChatMessage[]): string {
       const suffix = m.complete ? '' : ' ...';
       return `${prefix}${m.text}${suffix}`;
     })
-    .join((() => {
-      const sep = SEPARATOR_VARIANTS[currentVariantIndex].separator;
-      return sep ? `\n${sep}\n` : '\n\n';
-    })());
+    .join(`\n${MSG_SEPARATOR}\n`);
 }
 
 /**
@@ -126,7 +96,7 @@ export function renderViewport(state: ViewportState): string {
     const suffix = m.complete ? '' : ' ...';
     const line = `${prefix}${m.text}${suffix}`;
     // Account for the separator between messages
-    const addedLength = visibleMessages.length > 0 ? line.length + getSeparatorOverhead() : line.length;
+    const addedLength = visibleMessages.length > 0 ? line.length + SEPARATOR_OVERHEAD : line.length;
 
     if (totalLength + addedLength > EFFECTIVE_CHAR_LIMIT && visibleMessages.length > 0) {
       break;

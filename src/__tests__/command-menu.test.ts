@@ -14,9 +14,9 @@ describe('CommandMenu', () => {
   // ── 1. createMenuState ─────────────────────────────────────
 
   describe('createMenuState', () => {
-    it('returns state with 6 items, selectedIndex=0, confirmingIndex=null', () => {
+    it('returns state with 5 items, selectedIndex=0, confirmingIndex=null', () => {
       const state = createMenuState();
-      expect(state.items).toHaveLength(6);
+      expect(state.items).toHaveLength(5);
       expect(state.selectedIndex).toBe(0);
       expect(state.confirmingIndex).toBeNull();
     });
@@ -24,12 +24,11 @@ describe('CommandMenu', () => {
     it('items match MENU_ITEMS in order', () => {
       const state = createMenuState();
       expect(state.items).toBe(MENU_ITEMS);
-      expect(state.items[0].id).toBe('style');
-      expect(state.items[1].id).toBe('new');
-      expect(state.items[2].id).toBe('switch');
-      expect(state.items[3].id).toBe('rename');
-      expect(state.items[4].id).toBe('reset');
-      expect(state.items[5].id).toBe('delete');
+      expect(state.items[0].id).toBe('new');
+      expect(state.items[1].id).toBe('switch');
+      expect(state.items[2].id).toBe('rename');
+      expect(state.items[3].id).toBe('reset');
+      expect(state.items[4].id).toBe('delete');
     });
   });
 
@@ -67,11 +66,11 @@ describe('CommandMenu', () => {
       expect(result.selectedIndex).toBe(3);
     });
 
-    it('clamps at 5 (last item) when already at bottom', () => {
+    it('clamps at 4 (last item) when already at bottom', () => {
       const state = createMenuState();
-      const s = { ...state, selectedIndex: 5 };
+      const s = { ...state, selectedIndex: 4 };
       const result = menuScrollDown(s);
-      expect(result.selectedIndex).toBe(5);
+      expect(result.selectedIndex).toBe(4);
     });
 
     it('does not mutate original state', () => {
@@ -109,26 +108,20 @@ describe('CommandMenu', () => {
   // ── 5. menuSelect on non-destructive item ─────────────────
 
   describe('menuSelect on non-destructive item', () => {
-    it('returns execute action with command for /style (index 0)', () => {
-      const state = createMenuState(); // selectedIndex=0 -> "style"
-      const { result } = menuSelect(state);
-      expect(result).toEqual({ action: 'execute', command: 'separator' });
-    });
-
-    it('returns execute action with command for /new (index 1)', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 1, confirmingIndex: null };
+    it('returns execute action with command for /new (index 0)', () => {
+      const state = createMenuState(); // selectedIndex=0 -> "new"
       const { result } = menuSelect(state);
       expect(result).toEqual({ action: 'execute', command: 'new' });
     });
 
-    it('returns execute action with command for /switch (index 2)', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 2, confirmingIndex: null };
+    it('returns execute action with command for /switch (index 1)', () => {
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 1, confirmingIndex: null };
       const { result } = menuSelect(state);
       expect(result).toEqual({ action: 'execute', command: 'switch' });
     });
 
-    it('returns execute action with command for /rename (index 3)', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 3, confirmingIndex: null };
+    it('returns execute action with command for /rename (index 2)', () => {
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 2, confirmingIndex: null };
       const { result } = menuSelect(state);
       expect(result).toEqual({ action: 'execute', command: 'rename' });
     });
@@ -137,18 +130,18 @@ describe('CommandMenu', () => {
   // ── 6. menuSelect on destructive item -> confirm ──────────
 
   describe('menuSelect on destructive item', () => {
-    it('returns confirm action for /reset (index 4)', () => {
+    it('returns confirm action for /reset (index 3)', () => {
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 3, confirmingIndex: null };
+      const { newState, result } = menuSelect(state);
+      expect(result).toEqual({ action: 'confirm' });
+      expect(newState.confirmingIndex).toBe(3);
+    });
+
+    it('returns confirm action for /delete (index 4)', () => {
       const state: MenuState = { items: MENU_ITEMS, selectedIndex: 4, confirmingIndex: null };
       const { newState, result } = menuSelect(state);
       expect(result).toEqual({ action: 'confirm' });
       expect(newState.confirmingIndex).toBe(4);
-    });
-
-    it('returns confirm action for /delete (index 5)', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 5, confirmingIndex: null };
-      const { newState, result } = menuSelect(state);
-      expect(result).toEqual({ action: 'confirm' });
-      expect(newState.confirmingIndex).toBe(5);
     });
   });
 
@@ -156,14 +149,14 @@ describe('CommandMenu', () => {
 
   describe('menuSelect while confirming', () => {
     it('executes the confirmed destructive command for /reset', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 4, confirmingIndex: 4 };
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 3, confirmingIndex: 3 };
       const { newState, result } = menuSelect(state);
       expect(result).toEqual({ action: 'execute', command: 'reset' });
       expect(newState.confirmingIndex).toBeNull();
     });
 
     it('executes the confirmed destructive command for /delete', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 5, confirmingIndex: 5 };
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 4, confirmingIndex: 4 };
       const { newState, result } = menuSelect(state);
       expect(result).toEqual({ action: 'execute', command: 'delete' });
       expect(newState.confirmingIndex).toBeNull();
@@ -174,29 +167,28 @@ describe('CommandMenu', () => {
 
   describe('menuCancelConfirm', () => {
     it('resets confirmingIndex to null', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 4, confirmingIndex: 4 };
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 3, confirmingIndex: 3 };
       const result = menuCancelConfirm(state);
       expect(result.confirmingIndex).toBeNull();
-      expect(result.selectedIndex).toBe(4); // preserved
+      expect(result.selectedIndex).toBe(3); // preserved
     });
 
     it('does not mutate original state', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 4, confirmingIndex: 4 };
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 3, confirmingIndex: 3 };
       menuCancelConfirm(state);
-      expect(state.confirmingIndex).toBe(4);
+      expect(state.confirmingIndex).toBe(3);
     });
   });
 
   // ── 9. renderMenuText normal state ────────────────────────
 
   describe('renderMenuText normal state', () => {
-    it('renders header + 6 items with cursor on selected + footer', () => {
+    it('renders header + 5 items with cursor on selected + footer', () => {
       const state = createMenuState(); // selectedIndex=0
       const text = renderMenuText(state);
 
       expect(text).toContain('--- Command Menu ---');
-      expect(text).toContain('> /style   Separator style');
-      expect(text).toContain('  /new     New session');
+      expect(text).toContain('> /new     New session');
       expect(text).toContain('  /switch  Switch session');
       expect(text).toContain('  /rename  Rename session');
       expect(text).toContain('  /reset   Clear messages');
@@ -205,10 +197,9 @@ describe('CommandMenu', () => {
     });
 
     it('moves cursor indicator to selected item', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 3, confirmingIndex: null };
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 2, confirmingIndex: null };
       const text = renderMenuText(state);
 
-      expect(text).toContain('  /style   Separator style');
       expect(text).toContain('  /new     New session');
       expect(text).toContain('  /switch  Switch session');
       expect(text).toContain('> /rename  Rename session');
@@ -221,7 +212,7 @@ describe('CommandMenu', () => {
 
   describe('renderMenuText confirm state', () => {
     it('shows item label + confirmation prompt for /reset', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 4, confirmingIndex: 4 };
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 3, confirmingIndex: 3 };
       const text = renderMenuText(state);
 
       expect(text).toContain('--- Command Menu ---');
@@ -231,7 +222,7 @@ describe('CommandMenu', () => {
     });
 
     it('shows item label + confirmation prompt for /delete', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 5, confirmingIndex: 5 };
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 4, confirmingIndex: 4 };
       const text = renderMenuText(state);
 
       expect(text).toContain('/delete  Delete session');
@@ -239,7 +230,7 @@ describe('CommandMenu', () => {
     });
 
     it('does not show cursor indicators in confirm state', () => {
-      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 4, confirmingIndex: 4 };
+      const state: MenuState = { items: MENU_ITEMS, selectedIndex: 3, confirmingIndex: 3 };
       const text = renderMenuText(state);
 
       // Should not contain lines with '> /' for other items

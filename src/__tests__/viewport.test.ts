@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   serializeMessages,
   renderViewport,
@@ -8,10 +8,8 @@ import {
   MAX_VISIBLE_CHARS,
   FIT_TO_SCREEN,
   EFFECTIVE_CHAR_LIMIT,
-  SEPARATOR_VARIANTS,
-  cycleSeparatorStyle,
-  getSeparatorOverhead,
-  resetSeparatorStyle,
+  MSG_SEPARATOR,
+  SEPARATOR_OVERHEAD,
   type ChatMessage,
   type ViewportState,
 } from '../display/viewport';
@@ -43,8 +41,6 @@ function state(
 // ── serializeMessages ──────────────────────────────────────
 
 describe('serializeMessages', () => {
-  beforeEach(() => { resetSeparatorStyle(); });
-
   it('returns empty string for empty array', () => {
     expect(serializeMessages([])).toBe('');
   });
@@ -57,12 +53,12 @@ describe('serializeMessages', () => {
     expect(serializeMessages([msg('assistant', 'hi')])).toBe('hi');
   });
 
-  it('separates messages with blank line', () => {
+  it('separates messages with ─── separator', () => {
     const result = serializeMessages([
       msg('user', 'hello'),
       msg('assistant', 'hi'),
     ]);
-    expect(result).toBe('> hello\n\nhi');
+    expect(result).toBe('> hello\n───\nhi');
   });
 
   it('appends " ..." suffix for incomplete messages', () => {
@@ -84,15 +80,13 @@ describe('serializeMessages', () => {
       msg('user', 'question'),
       msg('assistant', 'partial answer', { complete: false }),
     ]);
-    expect(result).toBe('> question\n\npartial answer ...');
+    expect(result).toBe('> question\n───\npartial answer ...');
   });
 });
 
 // ── renderViewport ─────────────────────────────────────────
 
 describe('renderViewport', () => {
-  beforeEach(() => { resetSeparatorStyle(); });
-
   it('returns empty string for empty messages', () => {
     expect(renderViewport(state([]))).toBe('');
   });
@@ -276,63 +270,30 @@ describe('renderViewport scroll anchoring', () => {
   });
 });
 
-// ── separator cycling (quick-43) ──────────────────────────────
+// ── message separator (quick-44) ──────────────────────────────
 
-describe('separator cycling (quick-43)', () => {
-  beforeEach(() => { resetSeparatorStyle(); });
-
-  it('starts at variant 0 (Off) with overhead 2', () => {
-    expect(getSeparatorOverhead()).toBe(2);
+describe('message separator (quick-44)', () => {
+  it('MSG_SEPARATOR is short box-drawing line', () => {
+    expect(MSG_SEPARATOR).toBe('───');
   });
 
-  it('cycleSeparatorStyle advances to variant 1 (dots) and returns label', () => {
-    const label = cycleSeparatorStyle();
-    expect(label).toBe(SEPARATOR_VARIANTS[1].label);
-    // dots = '.........' (9 chars) + 2 newlines = 11
-    expect(getSeparatorOverhead()).toBe(11);
+  it('SEPARATOR_OVERHEAD is separator length + 2 newlines', () => {
+    expect(SEPARATOR_OVERHEAD).toBe(MSG_SEPARATOR.length + 2);
   });
 
-  it('cycling wraps around after last variant', () => {
-    for (let i = 0; i < SEPARATOR_VARIANTS.length; i++) {
-      cycleSeparatorStyle();
-    }
-    // Back to Off (index 0)
-    expect(getSeparatorOverhead()).toBe(2);
-  });
-
-  it('serializeMessages uses dots separator after one cycle', () => {
-    cycleSeparatorStyle(); // advance to dots
+  it('serializeMessages joins with ───', () => {
     const result = serializeMessages([
       msg('user', 'hello'),
       msg('assistant', 'hi'),
     ]);
-    expect(result).toContain('\n.........\n');
+    expect(result).toBe('> hello\n───\nhi');
   });
 
-  it('serializeMessages uses blank line when Off', () => {
-    // No cycle -- stays at Off
-    const result = serializeMessages([
-      msg('user', 'hello'),
-      msg('assistant', 'hi'),
-    ]);
-    expect(result).toBe('> hello\n\nhi');
-  });
-
-  it('renderViewport accounts for separator overhead in budget', () => {
-    cycleSeparatorStyle(); // advance to dots (overhead 11)
-    // Create several messages to fill the viewport
+  it('renderViewport respects separator overhead in budget', () => {
     const msgs = Array.from({ length: 20 }, (_, i) =>
       msg(i % 2 === 0 ? 'user' : 'assistant', `msg-${i}-pad`),
     );
     const result = renderViewport(state(msgs));
     expect(result.length).toBeLessThanOrEqual(EFFECTIVE_CHAR_LIMIT);
-  });
-
-  it('resetSeparatorStyle returns to Off', () => {
-    cycleSeparatorStyle();
-    cycleSeparatorStyle();
-    expect(getSeparatorOverhead()).not.toBe(2); // should be ellipsis overhead
-    resetSeparatorStyle();
-    expect(getSeparatorOverhead()).toBe(2);
   });
 });
