@@ -343,15 +343,7 @@ export async function boot(): Promise<void> {
 
   // ── Restore messages into display after display init ──
   if (restoreResult.restored && restoreResult.messages.length > 0) {
-    for (const msg of restoreResult.messages) {
-      if (msg.role === 'user') {
-        renderer.addUserMessage(msg.text);
-      } else {
-        renderer.startStreaming();
-        renderer.appendStreamChunk(msg.text);
-        renderer.endStreaming();
-      }
-    }
+    renderer.loadMessages(restoreResult.messages.map(m => ({ role: m.role, text: m.text })));
     // Emit restore event for any interested listeners
     bus.emit('persistence:restored', {
       conversationId: activeConversationId,
@@ -391,15 +383,7 @@ export async function boot(): Promise<void> {
 
     if (store) {
       const messages = await store.getMessages(sessionId);
-      for (const msg of messages) {
-        if (msg.role === 'user') {
-          renderer.addUserMessage(msg.text);
-        } else {
-          renderer.startStreaming();
-          renderer.appendStreamChunk(msg.text);
-          renderer.endStreaming();
-        }
-      }
+      renderer.loadMessages(messages.map(m => ({ role: m.role, text: m.text })));
     }
 
     // Emit local bus event for interested modules (auto-save uses getConversationId getter)
@@ -412,15 +396,7 @@ export async function boot(): Promise<void> {
       renderer.destroy();
       await renderer.init();
       const messages = await store.getMessages(conversationId);
-      for (const msg of messages) {
-        if (msg.role === 'user') {
-          renderer.addUserMessage(msg.text);
-        } else {
-          renderer.startStreaming();
-          renderer.appendStreamChunk(msg.text);
-          renderer.endStreaming();
-        }
-      }
+      renderer.loadMessages(messages.map(m => ({ role: m.role, text: m.text })));
     }
   });
 
