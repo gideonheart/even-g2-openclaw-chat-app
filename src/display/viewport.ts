@@ -25,6 +25,42 @@ export interface ViewportState {
  *  (firmware handles overflow scroll, starts at top). */
 export const FIT_TO_SCREEN = true;
 
+// ── Separator variants (quick-43) ────────────────────────────
+
+interface SeparatorVariant {
+  id: string;
+  label: string;
+  separator: string;
+}
+
+export const SEPARATOR_VARIANTS: readonly SeparatorVariant[] = [
+  { id: 'off',      label: 'Off',              separator: '' },
+  { id: 'dots',     label: 'Dots .........',   separator: '.........' },
+  { id: 'ellipsis', label: 'Ellipsis ……………',  separator: '……………' },
+  { id: 'short',    label: 'Line ───',         separator: '───' },
+  { id: 'long',     label: 'Line ─────────',   separator: '─────────' },
+] as const;
+
+let currentVariantIndex = 0;
+
+/** Cycle to the next separator variant, wrapping around. Returns the new variant's label. */
+export function cycleSeparatorStyle(): string {
+  currentVariantIndex = (currentVariantIndex + 1) % SEPARATOR_VARIANTS.length;
+  return SEPARATOR_VARIANTS[currentVariantIndex].label;
+}
+
+/** Character cost of the current separator between messages.
+ *  Off = 2 (for '\n\n'), otherwise separator.length + 2 (for '\n' + sep + '\n'). */
+export function getSeparatorOverhead(): number {
+  const sep = SEPARATOR_VARIANTS[currentVariantIndex].separator;
+  return sep.length === 0 ? 2 : sep.length + 2;
+}
+
+/** Reset separator to Off (index 0). Used in tests for isolation. */
+export function resetSeparatorStyle(): void {
+  currentVariantIndex = 0;
+}
+
 // ── Constants ──────────────────────────────────────────────
 
 /** Hard character limit to stay safely under the 2000-char SDK limit. */
@@ -59,7 +95,10 @@ export function serializeMessages(messages: ChatMessage[]): string {
       const suffix = m.complete ? '' : ' ...';
       return `${prefix}${m.text}${suffix}`;
     })
-    .join('\n\n');
+    .join((() => {
+      const sep = SEPARATOR_VARIANTS[currentVariantIndex].separator;
+      return sep ? `\n${sep}\n` : '\n\n';
+    })());
 }
 
 /**
@@ -87,7 +126,7 @@ export function renderViewport(state: ViewportState): string {
     const suffix = m.complete ? '' : ' ...';
     const line = `${prefix}${m.text}${suffix}`;
     // Account for the separator between messages
-    const addedLength = visibleMessages.length > 0 ? line.length + 2 : line.length;
+    const addedLength = visibleMessages.length > 0 ? line.length + getSeparatorOverhead() : line.length;
 
     if (totalLength + addedLength > EFFECTIVE_CHAR_LIMIT && visibleMessages.length > 0) {
       break;
