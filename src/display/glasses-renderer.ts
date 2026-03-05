@@ -96,6 +96,8 @@ export interface GlassesRenderer {
   restoreConversation(): void;
   /** Expose icon animator for error presenter pause/resume (Phase 18). */
   getIconAnimator(): { stop(): void; start(): void } | null;
+  /** Batch-load messages into viewport with a single render push (no per-message flashes). */
+  loadMessages(messages: Array<{ role: 'user' | 'assistant'; text: string }>): void;
   /** Debug accessor: expose viewport state for test assertions. Not for production control flow. */
   getViewportState(): Readonly<ViewportState>;
 }
@@ -365,6 +367,34 @@ export function createGlassesRenderer(opts: {
     return iconAnimator;
   }
 
+  function loadMessages(messages: Array<{ role: 'user' | 'assistant'; text: string }>): void {
+    // Clear viewport state (messages, scroll) WITHOUT stopping icon animator or resetting hidden/welcomeShown flags.
+    viewport.messages = [];
+    viewport.scrollOffset = 0;
+    viewport.autoScroll = true;
+
+    // Build ChatMessage objects directly into viewport -- NO intermediate renderAndPush() calls.
+    for (const m of messages) {
+      const msg: ChatMessage = {
+        id: `msg-${nextMsgId++}`,
+        role: m.role,
+        text: m.text,
+        complete: true,
+        timestamp: Date.now(),
+      };
+      viewport.messages.push(msg);
+    }
+
+    // Trim once after all messages loaded (not per-message)
+    trimTurnBuffer();
+
+    // Messages exist, no welcome needed
+    welcomeShown = true;
+
+    // Single render push -- the glasses SDK only receives one textContainerUpgrade call
+    renderAndPush();
+  }
+
   function getViewportStateFn(): Readonly<ViewportState> {
     return viewport;
   }
@@ -390,6 +420,7 @@ export function createGlassesRenderer(opts: {
     showError,
     showMenuOverlay,
     restoreConversation,
+    loadMessages,
     getIconAnimator: getIconAnimatorFn,
     getViewportState: getViewportStateFn,
   };
