@@ -15,6 +15,7 @@ import {
   type MenuCommand,
 } from './command-menu';
 import { generateConversationName } from '../persistence/conversation-store';
+import { cycleSeparatorStyle } from '../display/viewport';
 import type { EventBus } from '../events';
 import type { AppEventMap } from '../types';
 import type { GlassesRenderer } from '../display/glasses-renderer';
@@ -116,9 +117,13 @@ export function createMenuController(deps: MenuControllerDeps): MenuController {
       menuState = newState;
       renderer.showMenuOverlay(renderMenuText(menuState));
     } else if (result.action === 'execute' && result.command) {
-      // Execute command and close menu
-      executeCommand(result.command);
-      closeMenu();
+      if (result.command === 'separator') {
+        // Separator has delayed close -- handled inside executeCommand
+        executeCommand(result.command);
+      } else {
+        executeCommand(result.command);
+        closeMenu();
+      }
     }
   }
 
@@ -194,6 +199,14 @@ export function createMenuController(deps: MenuControllerDeps): MenuController {
             renderer.showError('Failed to reset session');
           }
         })();
+        break;
+      }
+
+      case 'separator': {
+        const label = cycleSeparatorStyle();
+        renderer.showMenuOverlay(`Style: ${label}`);
+        clearAutoClose();
+        setTimeout(() => closeMenu(), 800);
         break;
       }
 

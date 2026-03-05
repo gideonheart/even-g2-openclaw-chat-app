@@ -9,7 +9,7 @@ export interface MenuItem {
   destructive: boolean;
 }
 
-export type MenuCommand = 'new' | 'reset' | 'switch' | 'rename' | 'delete';
+export type MenuCommand = 'new' | 'reset' | 'switch' | 'rename' | 'delete' | 'separator';
 
 export interface MenuState {
   items: MenuItem[];
@@ -23,6 +23,7 @@ export interface MenuSelectResult {
 }
 
 export const MENU_ITEMS: MenuItem[] = [
+  { id: 'style',  label: '/style   Separator style', command: 'separator', destructive: false },
   { id: 'new',    label: '/new     New session',    command: 'new',    destructive: false },
   { id: 'switch', label: '/switch  Switch session',  command: 'switch', destructive: false },
   { id: 'rename', label: '/rename  Rename session',  command: 'rename', destructive: false },
