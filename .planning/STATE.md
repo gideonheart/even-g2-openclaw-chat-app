@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-05 - Completed quick task 43: Separator style cycling via /style menu item
+Last activity: 2026-03-05 - Completed quick task 44: Hardcode short box-drawing separator (───)
 
 ## Performance Metrics
 
@@ -78,6 +78,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-36]: Plain ASCII dots (./../../...) for sent state animation; visually distinct from braille thinking spinner; 600ms full cycle at 200ms tick rate
 - [Phase quick-38]: Composite status renderer: setConditions(StatusConditions) replaces setState(IconState); independent recording/loading/thinking segments; edge-triggered frame resets; setIconState kept for glasses-main.ts sync bridge backward compat
 - [Phase quick-43]: /style as first menu item for immediate separator cycling; Off (index 0) default matches existing blank-line behavior; 800ms delayed close for overlay feedback
+- [Phase quick-44]: Short box-drawing separator (───) hardcoded as default; cycling machinery removed; MSG_SEPARATOR constant + SEPARATOR_OVERHEAD = 5
 
 ### Roadmap Evolution
 
@@ -135,6 +136,7 @@ None.
 | 41 | Fit-to-screen scroll feature flag (DRY) | 2026-03-04 | a7e163e | [41-fit-to-screen-scroll-feature-flag](./quick/41-fit-to-screen-scroll-feature-flag/) |
 | 42 | Chat message separator variants research | 2026-03-04 | fe26510 | [42-chat-message-separator-variants](./quick/42-chat-message-separator-variants/) |
 | 43 | Separator style cycling via /style menu item | 2026-03-05 | 7a22ccb | [43-separator-style-cycling-via-style-menu-i](./quick/43-separator-style-cycling-via-style-menu-i/) |
+| 44 | Hardcode short box-drawing separator (───) as default | 2026-03-05 | 0fb18a4 | [44-set-short-box-drawing-separator-as-defau](./quick/44-set-short-box-drawing-separator-as-defau/) |
 
 ## Session Continuity
 
