@@ -686,6 +686,89 @@ describe('GlassesRenderer', () => {
     });
   });
 
+  // ── loadMessages batch loading ──────────────────────────────
+
+  describe('loadMessages batch loading', () => {
+    it('loads messages with single render push', async () => {
+      await renderer.init();
+      bridge.textContainerUpgrade.mockClear();
+
+      const messages = [
+        { role: 'user' as const, text: 'Hello' },
+        { role: 'assistant' as const, text: 'Hi there' },
+        { role: 'user' as const, text: 'How are you?' },
+        { role: 'assistant' as const, text: 'I am fine' },
+        { role: 'user' as const, text: 'Great' },
+      ];
+
+      renderer.loadMessages(messages);
+
+      // Should push to container 2 exactly ONCE (not 5 times)
+      const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+        (c: unknown[]) => c[0] === 2,
+      );
+      expect(chatCalls).toHaveLength(1);
+      // Final render should contain messages
+      expect(chatCalls[0][1]).toContain('Great');
+    });
+
+    it('replaces existing messages on loadMessages', async () => {
+      await renderer.init();
+
+      // Add a message via normal path
+      renderer.addUserMessage('Original message');
+      expect(renderer.getViewportState().messages).toHaveLength(1);
+
+      // Load different messages via batch
+      renderer.loadMessages([
+        { role: 'user', text: 'Replaced 1' },
+        { role: 'assistant', text: 'Replaced 2' },
+        { role: 'user', text: 'Replaced 3' },
+      ]);
+
+      const state = renderer.getViewportState();
+      expect(state.messages).toHaveLength(3);
+      expect(state.messages[0].text).toBe('Replaced 1');
+      expect(state.messages[1].text).toBe('Replaced 2');
+      expect(state.messages[2].text).toBe('Replaced 3');
+    });
+
+    it('handles empty message array', async () => {
+      await renderer.init();
+      bridge.textContainerUpgrade.mockClear();
+
+      renderer.loadMessages([]);
+
+      const state = renderer.getViewportState();
+      expect(state.messages).toHaveLength(0);
+      // Empty viewport renders empty string -- still a valid single push
+      const chatCalls = bridge.textContainerUpgrade.mock.calls.filter(
+        (c: unknown[]) => c[0] === 2,
+      );
+      expect(chatCalls.length).toBeLessThanOrEqual(1);
+    });
+
+    it('trims to MAX_TURNS after batch load', async () => {
+      await renderer.init();
+
+      // Load 20 messages (10 turn pairs) -- should trim to MAX_TURNS * 2 = 16
+      const messages: Array<{ role: 'user' | 'assistant'; text: string }> = [];
+      for (let i = 0; i < 20; i++) {
+        messages.push({
+          role: i % 2 === 0 ? 'user' : 'assistant',
+          text: `Message ${i}`,
+        });
+      }
+
+      renderer.loadMessages(messages);
+
+      const state = renderer.getViewportState();
+      // MAX_TURNS = 8, trimTurnBuffer removes while >= MAX_TURNS * 2 (16)
+      // 20 messages -> trims until < 16, so expect 15
+      expect(state.messages.length).toBeLessThan(16);
+    });
+  });
+
   // ── CHAT-07: 2000-char limit ──────────────────────────────
 
   it('no textContainerUpgrade call exceeds 2000 characters', async () => {
