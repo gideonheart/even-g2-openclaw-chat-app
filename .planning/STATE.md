@@ -12,13 +12,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-04 - Completed quick task 41: Fit-to-screen scroll feature flag (DRY)
+Last activity: 2026-03-05 - Completed quick task 43: Separator style cycling via /style menu item
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
-- Total tests: 640 (all passing)
+- Total tests: 681 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -77,6 +77,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-35]: await Promise.resolve() microtask yield in emitFromGatewayReply separates transcript from response_start; zero-cost async boundary for glasses display ordering
 - [Phase quick-36]: Plain ASCII dots (./../../...) for sent state animation; visually distinct from braille thinking spinner; 600ms full cycle at 200ms tick rate
 - [Phase quick-38]: Composite status renderer: setConditions(StatusConditions) replaces setState(IconState); independent recording/loading/thinking segments; edge-triggered frame resets; setIconState kept for glasses-main.ts sync bridge backward compat
+- [Phase quick-43]: /style as first menu item for immediate separator cycling; Off (index 0) default matches existing blank-line behavior; 800ms delayed close for overlay feedback
 
 ### Roadmap Evolution
 
@@ -132,9 +133,11 @@ None.
 | 39 | Update analysis doc 02 with code terminology and completion status | 2026-03-04 | 73b4065 | [39-update-analysis-doc-02-with-code-termino](./quick/39-update-analysis-doc-02-with-code-termino/) |
 | 40 | Verify parallel loading+recording UI on G2 glasses device | 2026-03-04 | (manual, no src commit) | [40-verify-parallel-loading-recording-ui-on-](./quick/40-verify-parallel-loading-recording-ui-on-/) |
 | 41 | Fit-to-screen scroll feature flag (DRY) | 2026-03-04 | a7e163e | [41-fit-to-screen-scroll-feature-flag](./quick/41-fit-to-screen-scroll-feature-flag/) |
+| 42 | Chat message separator variants research | 2026-03-04 | fe26510 | [42-chat-message-separator-variants](./quick/42-chat-message-separator-variants/) |
+| 43 | Separator style cycling via /style menu item | 2026-03-05 | 7a22ccb | [43-separator-style-cycling-via-style-menu-i](./quick/43-separator-style-cycling-via-style-menu-i/) |
 
 ## Session Continuity
 
-Last session: 2026-03-04
-Stopped at: Completed quick-40 (device verification checklist created, awaiting manual test)
+Last session: 2026-03-05
+Stopped at: Completed quick-43 (separator style cycling via /style menu item)
 Resume file: None
