@@ -377,13 +377,18 @@ export async function boot(): Promise<void> {
     activeConversationId = sessionId;
     writeActiveConversationId(sessionId);
 
-    // Clear display and reload with new session's messages
+    // Preload messages BEFORE destroy/init to eliminate blank flash.
+    // The async IDB read happens while old content is still visible.
+    const preloaded = store
+      ? (await store.getMessages(sessionId)).map(m => ({ role: m.role, text: m.text }))
+      : [];
+
+    // Now destroy+init (clears display) and immediately load preloaded messages
     renderer.destroy();
     await renderer.init();
 
-    if (store) {
-      const messages = await store.getMessages(sessionId);
-      renderer.loadMessages(messages.map(m => ({ role: m.role, text: m.text })));
+    if (preloaded.length > 0) {
+      renderer.loadMessages(preloaded);
     }
 
     // Emit local bus event for interested modules (auto-save uses getConversationId getter)
@@ -393,10 +398,11 @@ export async function boot(): Promise<void> {
   // Sync drift reconciliation: re-read from IDB and re-render when drift detected
   bus.on('sync:reconciled', async ({ conversationId }) => {
     if (conversationId === activeConversationId && store) {
+      // Preload before destroy/init (same pattern as switchToSession)
+      const preloaded = (await store.getMessages(conversationId)).map(m => ({ role: m.role, text: m.text }));
       renderer.destroy();
       await renderer.init();
-      const messages = await store.getMessages(conversationId);
-      renderer.loadMessages(messages.map(m => ({ role: m.role, text: m.text })));
+      renderer.loadMessages(preloaded);
     }
   });
 
