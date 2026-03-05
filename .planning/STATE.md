@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-05 - Completed quick task 45: Research how to dim/gradient user messages in chat for better differentiation
+Last activity: 2026-03-05 - Completed quick task 46: Fix session switching scroll-through flash with batch loadMessages
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-38]: Composite status renderer: setConditions(StatusConditions) replaces setState(IconState); independent recording/loading/thinking segments; edge-triggered frame resets; setIconState kept for glasses-main.ts sync bridge backward compat
 - [Phase quick-43]: /style as first menu item for immediate separator cycling; Off (index 0) default matches existing blank-line behavior; 800ms delayed close for overlay feedback
 - [Phase quick-44]: Short box-drawing separator (───) hardcoded as default; cycling machinery removed; MSG_SEPARATOR constant + SEPARATOR_OVERHEAD = 5
+- [Phase quick-46]: Batch loadMessages replaces per-message loops in boot restore, switchToSession, and sync:reconciled; single renderAndPush per session load
 
 ### Roadmap Evolution
 
@@ -138,9 +139,10 @@ None.
 | 43 | Separator style cycling via /style menu item | 2026-03-05 | 7a22ccb | [43-separator-style-cycling-via-style-menu-i](./quick/43-separator-style-cycling-via-style-menu-i/) |
 | 44 | Hardcode short box-drawing separator (───) as default | 2026-03-05 | 0fb18a4 | [44-set-short-box-drawing-separator-as-defau](./quick/44-set-short-box-drawing-separator-as-defau/) |
 | 45 | Research user message visual differentiation on G2 glasses | 2026-03-05 | 1723b55 | [45-research-how-to-dim-gradient-user-messag](./quick/45-research-how-to-dim-gradient-user-messag/) |
+| 46 | Fix session switching scroll-through flash: batch loadMessages | 2026-03-05 | db8de10 | [46-research-chat-session-switching-scroll-b](./quick/46-research-chat-session-switching-scroll-b/) |
 
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Completed quick-45 (research user message visual differentiation)
+Stopped at: Completed quick-46 (fix session switching scroll-through flash)
 Resume file: None
