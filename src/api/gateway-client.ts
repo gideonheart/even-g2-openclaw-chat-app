@@ -192,25 +192,116 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     }
   }
 
-  async function postVoiceTurn(settings: AppSettings, audio: Blob): Promise<GatewayReply> {
-    const headers: Record<string, string> = {
-      'Content-Type': audio.type || 'audio/wav',
-      ...(settings.sessionKey ? { 'X-Session-Key': settings.sessionKey } : {}),
-    };
+  /**
+   * Parse an SSE (Server-Sent Events) response body and emit VoiceTurnChunks
+   * as each event arrives from the server.
+   *
+   * SSE format:
+   *   event: <type>\n
+   *   data: <json>\n
+   *   \n
+   *
+   * Event types mapped to VoiceTurnChunk:
+   *   transcript      -> { type: 'transcript', text, turnId }
+   *   assistant_delta -> { type: 'response_start' } (first delta only), then { type: 'response_delta', text, turnId }
+   *   done            -> { type: 'response_end', turnId }
+   *   error           -> { type: 'error', error }
+   */
+  async function parseServerSentEventsFromResponse(
+    response: Response,
+    emitChunkCallback: (chunk: VoiceTurnChunk) => void,
+  ): Promise<void> {
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEventType = '';
+    let hasEmittedResponseStart = false;
 
-    const resp = await fetch(`${settings.gatewayUrl}/api/voice/turn`, {
-      method: 'POST',
-      body: audio,
-      headers,
-      signal: abortController!.signal,
-    });
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-    if (!resp.ok) {
-      // Server responded with an error -- gateway IS reachable, request was rejected.
-      throw new GatewayAppError(await readGatewayError(resp));
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete lines from the buffer
+        const lines = buffer.split('\n');
+        // Keep the last incomplete line in the buffer
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEventType = line.slice('event: '.length).trim();
+          } else if (line.startsWith('data: ')) {
+            const jsonPayload = line.slice('data: '.length);
+            if (!currentEventType) continue;
+
+            try {
+              const parsedData = JSON.parse(jsonPayload);
+              handleServerSentEvent(
+                currentEventType,
+                parsedData,
+                emitChunkCallback,
+                hasEmittedResponseStart,
+              );
+              if (currentEventType === 'assistant_delta') {
+                hasEmittedResponseStart = true;
+              }
+            } catch {
+              // Malformed JSON -- skip this event
+            }
+            currentEventType = '';
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
     }
+  }
 
-    return (await resp.json()) as GatewayReply;
+  /**
+   * Map a single SSE event to one or more VoiceTurnChunk emissions.
+   */
+  function handleServerSentEvent(
+    eventType: string,
+    parsedData: Record<string, unknown>,
+    emitChunkCallback: (chunk: VoiceTurnChunk) => void,
+    responseStartAlreadyEmitted: boolean,
+  ): void {
+    switch (eventType) {
+      case 'transcript':
+        emitChunkCallback({
+          type: 'transcript',
+          text: parsedData.transcript as string,
+          turnId: parsedData.turnId as string,
+        });
+        break;
+
+      case 'assistant_delta':
+        if (!responseStartAlreadyEmitted) {
+          emitChunkCallback({ type: 'response_start', turnId: parsedData.turnId as string | undefined });
+        }
+        emitChunkCallback({
+          type: 'response_delta',
+          text: parsedData.text as string,
+          turnId: parsedData.turnId as string | undefined,
+        });
+        break;
+
+      case 'done':
+        emitChunkCallback({
+          type: 'response_end',
+          turnId: (parsedData.turnId as string) ?? undefined,
+        });
+        break;
+
+      case 'error':
+        emitChunkCallback({
+          type: 'error',
+          error: parsedData.error as string,
+        });
+        break;
+    }
   }
 
   async function sendVoiceTurn(settings: AppSettings, request: VoiceTurnRequest): Promise<void> {
@@ -223,10 +314,37 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     abortController = new AbortController();
 
     try {
-      const reply = await postVoiceTurn(settings, request.audio);
+      const requestHeaders: Record<string, string> = {
+        'Content-Type': request.audio.type || 'audio/wav',
+        ...(settings.sessionKey ? { 'X-Session-Key': settings.sessionKey } : {}),
+      };
+
+      const response = await fetch(`${settings.gatewayUrl}/api/voice/turn`, {
+        method: 'POST',
+        body: request.audio,
+        headers: requestHeaders,
+        signal: abortController!.signal,
+      });
+
+      if (!response.ok) {
+        throw new GatewayAppError(await readGatewayError(response));
+      }
+
       setStatus('connected');
       health.reconnectAttempts = 0;
-      await emitFromGatewayReply(reply);
+
+      // Check content type to determine response format.
+      // SSE (text/event-stream) = new streaming format.
+      // JSON (application/json) = legacy single-response format (backward compat).
+      const contentType = response.headers.get('content-type') ?? '';
+
+      if (contentType.startsWith('text/event-stream')) {
+        await parseServerSentEventsFromResponse(response, emitChunk);
+      } else {
+        // JSON fallback for backward compatibility during rollout
+        const reply = (await response.json()) as GatewayReply;
+        await emitFromGatewayReply(reply);
+      }
     } catch (err) {
       handleTurnError(err);
     }

@@ -175,6 +175,7 @@ describe('gateway-client', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
+        headers: new Headers({ 'content-type': 'application/json' }),
         json: () => Promise.resolve(gatewayReply),
       });
 
@@ -205,6 +206,7 @@ describe('gateway-client', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
+        headers: new Headers({ 'content-type': 'application/json' }),
         json: () => Promise.resolve(gatewayReply),
       });
 
@@ -347,6 +349,7 @@ describe('gateway-client', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
+        headers: new Headers({ 'content-type': 'application/json' }),
         json: () => Promise.resolve(gatewayReply),
       });
 
@@ -376,6 +379,7 @@ describe('gateway-client', () => {
           ok: true,
           status: 200,
           statusText: 'OK',
+          headers: new Headers({ 'content-type': 'application/json' }),
           json: () => Promise.resolve(gatewayReply),
         });
 
@@ -412,6 +416,7 @@ describe('gateway-client', () => {
           ok: true,
           status: 200,
           statusText: 'OK',
+          headers: new Headers({ 'content-type': 'application/json' }),
           json: () => Promise.resolve(gatewayReply),
         });
 
