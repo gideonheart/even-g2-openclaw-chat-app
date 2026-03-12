@@ -80,6 +80,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-43]: /style as first menu item for immediate separator cycling; Off (index 0) default matches existing blank-line behavior; 800ms delayed close for overlay feedback
 - [Phase quick-44]: Short box-drawing separator (───) hardcoded as default; cycling machinery removed; MSG_SEPARATOR constant + SEPARATOR_OVERHEAD = 5
 - [Phase quick-46]: Batch loadMessages replaces per-message loops in boot restore, switchToSession, and sync:reconciled; single renderAndPush per session load
+- [Phase quick-48]: vi.hoisted() for all mock variables referenced inside vi.mock factories; response.body null guard emits error chunk via emitChunkCallback
 
 ### Roadmap Evolution
 
@@ -140,9 +141,11 @@ None.
 | 44 | Hardcode short box-drawing separator (───) as default | 2026-03-05 | 0fb18a4 | [44-set-short-box-drawing-separator-as-defau](./quick/44-set-short-box-drawing-separator-as-defau/) |
 | 45 | Research user message visual differentiation on G2 glasses | 2026-03-05 | 1723b55 | [45-research-how-to-dim-gradient-user-messag](./quick/45-research-how-to-dim-gradient-user-messag/) |
 | 46 | Fix session switching scroll-through flash: batch loadMessages | 2026-03-05 | db8de10 | [46-research-chat-session-switching-scroll-b](./quick/46-research-chat-session-switching-scroll-b/) |
+| 47 | Preload messages before destroy/init to eliminate blank flash | 2026-03-12 | 12e39f4 | [47-implement-option-1-preload-swap-to-elimi](./quick/47-implement-option-1-preload-swap-to-elimi/) |
+| 48 | Fix broken tests + SSE parser coverage + null-body guard | 2026-03-12 | f47fb70 | [48-review-last-commits-for-edge-cases-tech-](./quick/48-review-last-commits-for-edge-cases-tech-/) |
 
 ## Session Continuity
 
-Last session: 2026-03-05
-Stopped at: Completed quick-46 (fix session switching scroll-through flash)
+Last session: 2026-03-12
+Stopped at: Completed quick-48 (fix broken tests + SSE coverage + null-body guard)
 Resume file: None
