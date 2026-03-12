@@ -485,6 +485,46 @@ describe('gateway-client', () => {
         expect(chunks[4]).toEqual({ type: 'response_end', turnId: 't1' });
       });
 
+      it('SSE: done event with seq passes seq through to response_end chunk', async () => {
+        const sseBody = [
+          'event: done',
+          'data: {"turnId":"t1","seq":7}',
+          '',
+        ].join('\n') + '\n';
+
+        globalThis.fetch = vi.fn().mockResolvedValue(createSSEResponse(sseBody));
+
+        const client = createGatewayClient();
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        const endChunks = chunks.filter((c) => c.type === 'response_end');
+        expect(endChunks).toHaveLength(1);
+        expect(endChunks[0].seq).toBe(7);
+      });
+
+      it('SSE: done event without seq does not set seq on response_end chunk', async () => {
+        const sseBody = [
+          'event: done',
+          'data: {"turnId":"t1"}',
+          '',
+        ].join('\n') + '\n';
+
+        globalThis.fetch = vi.fn().mockResolvedValue(createSSEResponse(sseBody));
+
+        const client = createGatewayClient();
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        const endChunks = chunks.filter((c) => c.type === 'response_end');
+        expect(endChunks).toHaveLength(1);
+        expect(endChunks[0].seq).toBeUndefined();
+      });
+
       it('SSE: response_start emitted only once (before first assistant_delta)', async () => {
         const sseBody = [
           'event: assistant_delta',

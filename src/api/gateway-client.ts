@@ -314,6 +314,7 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
         emitChunkCallback({
           type: 'response_end',
           turnId: (parsedData.turnId as string) ?? undefined,
+          seq: typeof parsedData.seq === 'number' ? parsedData.seq : undefined,
         });
         break;
 

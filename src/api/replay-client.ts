@@ -21,7 +21,10 @@ export async function fetchSessionReplay(
       signal: AbortSignal.timeout(10_000),
     });
     if (!resp.ok) return [];
-    return (await resp.json()) as ReplayEvent[];
+    const body = await resp.json();
+    // Gateway wraps events in { sessionKey, events: [...] }
+    const events = Array.isArray(body) ? body : body?.events;
+    return Array.isArray(events) ? (events as ReplayEvent[]) : [];
   } catch {
     return [];
   }
@@ -43,7 +46,10 @@ export async function fetchTurnReplay(
       signal: AbortSignal.timeout(10_000),
     });
     if (!resp.ok) return [];
-    return (await resp.json()) as ReplayEvent[];
+    const body = await resp.json();
+    // Gateway wraps events in { turnId, events: [...], turn: {...} }
+    const events = Array.isArray(body) ? body : body?.events;
+    return Array.isArray(events) ? (events as ReplayEvent[]) : [];
   } catch {
     return [];
   }

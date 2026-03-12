@@ -909,13 +909,13 @@ describe('resume sync wiring', () => {
     expect(mockFetchSessionReplay).toHaveBeenCalledWith('http://test', 'test-session-key', 42);
   });
 
-  it('does not call fetchSessionReplay when lastSeq is null', async () => {
+  it('calls fetchSessionReplay with afterSeq=0 when lastSeq is null (first boot)', async () => {
     mockGateway.getLastSeq.mockReturnValue(null);
 
     await boot();
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(mockFetchSessionReplay).not.toHaveBeenCalled();
+    expect(mockFetchSessionReplay).toHaveBeenCalledWith('http://test', 'test-session-key', 0);
   });
 
   it('does not call fetchSessionReplay when sessionKey is empty', async () => {

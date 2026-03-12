@@ -83,6 +83,8 @@ export interface VoiceTurnChunk {
   text?: string;
   error?: string;
   turnId?: string;
+  /** Sequence watermark from TurnStore (present on response_end from SSE streams). */
+  seq?: number;
 }
 
 // ── Replay types ──────────────────────────────────────────

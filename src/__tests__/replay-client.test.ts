@@ -99,6 +99,29 @@ describe('fetchSessionReplay', () => {
     expect(result).toEqual([]);
   });
 
+  it('unwraps { sessionKey, events } envelope from gateway response', async () => {
+    const events: ReplayEvent[] = [makeEvent({ seq: 1 }), makeEvent({ seq: 2 })];
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ sessionKey: 'sess-1', events }),
+    });
+
+    const result = await fetchSessionReplay('https://gw.test', 'sess-1');
+
+    expect(result).toEqual(events);
+  });
+
+  it('returns empty array when response body has no events array', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ sessionKey: 'sess-1' }),
+    });
+
+    const result = await fetchSessionReplay('https://gw.test', 'sess-1');
+
+    expect(result).toEqual([]);
+  });
+
   it('uses AbortSignal.timeout for request timeout', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -164,6 +187,29 @@ describe('fetchTurnReplay', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 404,
+    });
+
+    const result = await fetchTurnReplay('https://gw.test', 'turn-abc');
+
+    expect(result).toEqual([]);
+  });
+
+  it('unwraps { turnId, events, turn } envelope from gateway response', async () => {
+    const events: ReplayEvent[] = [makeEvent({ seq: 5 })];
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ turnId: 'turn-abc', events, turn: { status: 'completed' } }),
+    });
+
+    const result = await fetchTurnReplay('https://gw.test', 'turn-abc');
+
+    expect(result).toEqual(events);
+  });
+
+  it('returns empty array when response body has no events array', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ turnId: 'turn-abc' }),
     });
 
     const result = await fetchTurnReplay('https://gw.test', 'turn-abc');
