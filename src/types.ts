@@ -85,6 +85,17 @@ export interface VoiceTurnChunk {
   turnId?: string;
 }
 
+// ── Replay types ──────────────────────────────────────────
+
+export interface ReplayEvent {
+  turnId: string;
+  sessionKey: string;
+  seq: number;
+  type: string;       // 'transcript' | 'assistant_delta' | 'done' | 'error'
+  payload: unknown;
+  timestamp: number;
+}
+
 // ── Display types ─────────────────────────────────────────
 
 export type IconState = 'idle' | 'recording' | 'sent' | 'thinking';
