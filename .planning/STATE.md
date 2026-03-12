@@ -12,13 +12,13 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 01-v1-4-voice-loop-polish-decoupled-input-voice-queue
 Current Plan: 3 of 3
 Status: Complete
-Last activity: 2026-03-05 - Completed quick task 46: Fix session switching scroll-through flash with batch loadMessages
+Last activity: 2026-03-12 - Completed quick task 50: Frontend resume sync with replay-client, lastEventSeq tracking, boot wiring
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 49 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
-- Total tests: 681 (all passing)
+- Total plans completed: 50 (Phases 1-19 incl. 16.5, 18.5 + Phase 13 gap closure + Phase 01 plans 01-03)
+- Total tests: 715 (all passing)
 - Total LOC: ~14,400 TypeScript (78 files)
 - Total execution time: ~13.2 hours across 4 milestones
 
@@ -81,6 +81,7 @@ All decisions logged in PROJECT.md Key Decisions table (37 entries with outcomes
 - [Phase quick-44]: Short box-drawing separator (───) hardcoded as default; cycling machinery removed; MSG_SEPARATOR constant + SEPARATOR_OVERHEAD = 5
 - [Phase quick-46]: Batch loadMessages replaces per-message loops in boot restore, switchToSession, and sync:reconciled; single renderAndPush per session load
 - [Phase quick-48]: vi.hoisted() for all mock variables referenced inside vi.mock factories; response.body null guard emits error chunk via emitChunkCallback
+- [Phase quick-50]: Replay events emitted to bus('gateway:chunk') not gateway.emitChunk(); fire-and-forget resume sync; lastEventSeq only via setLastSeq after replay (SSE lacks seq); per-turnId response_start tracking in replayEventsAsChunks
 
 ### Roadmap Evolution
 
@@ -143,9 +144,10 @@ None.
 | 46 | Fix session switching scroll-through flash: batch loadMessages | 2026-03-05 | db8de10 | [46-research-chat-session-switching-scroll-b](./quick/46-research-chat-session-switching-scroll-b/) |
 | 47 | Preload messages before destroy/init to eliminate blank flash | 2026-03-12 | 12e39f4 | [47-implement-option-1-preload-swap-to-elimi](./quick/47-implement-option-1-preload-swap-to-elimi/) |
 | 48 | Fix broken tests + SSE parser coverage + null-body guard | 2026-03-12 | f47fb70 | [48-review-last-commits-for-edge-cases-tech-](./quick/48-review-last-commits-for-edge-cases-tech-/) |
+| 50 | Frontend resume sync: replay-client, lastEventSeq, boot wiring | 2026-03-12 | 54e3d1b | [50-frontend-resume-sync-track-lasteventseq-](./quick/50-frontend-resume-sync-track-lasteventseq-/) |
 
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Completed quick-48 (fix broken tests + SSE coverage + null-body guard)
+Stopped at: Completed quick-50 (frontend resume sync: replay-client, lastEventSeq, boot wiring)
 Resume file: None
