@@ -89,6 +89,7 @@ const mockRenderer = {
   showError: vi.fn(),
   showMenuOverlay: vi.fn(),
   restoreConversation: vi.fn(),
+  loadMessages: vi.fn(),
   getIconAnimator: vi.fn().mockReturnValue(mockIconAnimator),
 };
 
@@ -153,14 +154,122 @@ vi.mock('../sync/sync-bridge', () => ({
 // ── Boot-restore mock: predictable conversation ID ──────────
 const TEST_CONV_ID = 'test-conv-id';
 
-vi.mock('../persistence/boot-restore', () => ({
-  restoreOrCreateConversation: vi.fn().mockResolvedValue({
+const { mockRestoreOrCreateConversation } = vi.hoisted(() => ({
+  mockRestoreOrCreateConversation: vi.fn().mockResolvedValue({
     conversationId: 'test-conv-id',
     restored: false,
     messages: [],
     storageAvailable: false,
   }),
+}));
+
+vi.mock('../persistence/boot-restore', () => ({
+  restoreOrCreateConversation: mockRestoreOrCreateConversation,
   writeActiveConversationId: vi.fn(),
+}));
+
+// ── Persistence/IDB mocks for preload+swap tests ──────────────
+const { mockIsIndexedDBAvailable, mockOpenDB, mockSetOnUnexpectedClose, mockReopenDB } = vi.hoisted(() => ({
+  mockIsIndexedDBAvailable: vi.fn().mockReturnValue(false),
+  mockOpenDB: vi.fn(),
+  mockSetOnUnexpectedClose: vi.fn(),
+  mockReopenDB: vi.fn(),
+}));
+
+vi.mock('../persistence/db', () => ({
+  isIndexedDBAvailable: mockIsIndexedDBAvailable,
+  openDB: mockOpenDB,
+  setOnUnexpectedClose: mockSetOnUnexpectedClose,
+  reopenDB: mockReopenDB,
+}));
+
+const { mockStore } = vi.hoisted(() => ({
+  mockStore: {
+    getMessages: vi.fn().mockResolvedValue([]),
+    addMessage: vi.fn(),
+    getConversation: vi.fn(),
+    createConversation: vi.fn(),
+    updateConversation: vi.fn(),
+    countMessages: vi.fn().mockResolvedValue(0),
+  },
+}));
+
+vi.mock('../persistence/conversation-store', () => ({
+  createConversationStore: vi.fn(() => mockStore),
+}));
+
+const { mockSessionStore } = vi.hoisted(() => ({
+  mockSessionStore: {
+    listSessions: vi.fn().mockResolvedValue([]),
+    saveSession: vi.fn(),
+    deleteSession: vi.fn(),
+    getSession: vi.fn(),
+  },
+}));
+
+vi.mock('../persistence/session-store', () => ({
+  createSessionStore: vi.fn(() => mockSessionStore),
+}));
+
+vi.mock('../persistence/integrity-checker', () => ({
+  createIntegrityChecker: vi.fn(() => ({
+    check: vi.fn().mockResolvedValue({
+      sentinelPresent: true,
+      conversationCount: 0,
+      orphanedMessageIds: [],
+      danglingPointer: false,
+    }),
+    writeSentinel: vi.fn().mockResolvedValue(undefined),
+    cleanupOrphans: vi.fn().mockResolvedValue(0),
+  })),
+}));
+
+vi.mock('../persistence/storage-health', () => ({
+  createStorageHealth: vi.fn(() => ({
+    getQuota: vi.fn().mockResolvedValue({
+      isAvailable: false,
+      usageBytes: 0,
+      quotaBytes: 0,
+      usagePercent: 0,
+      isPersisted: false,
+    }),
+    requestPersistence: vi.fn().mockResolvedValue(false),
+  })),
+}));
+
+vi.mock('../persistence/auto-save', () => ({
+  createAutoSave: vi.fn(() => ({
+    destroy: vi.fn(),
+  })),
+}));
+
+vi.mock('../sync/sync-monitor', () => ({
+  createSyncMonitor: vi.fn(() => ({
+    startHeartbeat: vi.fn(),
+    destroy: vi.fn(),
+  })),
+}));
+
+vi.mock('../sync/drift-reconciler', () => ({
+  createDriftReconciler: vi.fn(() => ({
+    handleHeartbeat: vi.fn().mockResolvedValue(undefined),
+    destroy: vi.fn(),
+  })),
+}));
+
+vi.mock('../sessions', () => ({
+  createSessionManager: vi.fn(() => ({
+    createSession: vi.fn(),
+    deleteSession: vi.fn(),
+    listSessions: vi.fn().mockResolvedValue([]),
+    switchSession: vi.fn(),
+  })),
+}));
+
+vi.mock('../menu/menu-controller', () => ({
+  createMenuController: vi.fn(() => ({
+    destroy: vi.fn(),
+  })),
 }));
 
 // ── Import boot AFTER all mocks are in place ──────────────────

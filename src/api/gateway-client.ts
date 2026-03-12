@@ -211,7 +211,11 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     response: Response,
     emitChunkCallback: (chunk: VoiceTurnChunk) => void,
   ): Promise<void> {
-    const reader = response.body!.getReader();
+    if (!response.body) {
+      emitChunkCallback({ type: 'error', error: 'SSE response has no body' });
+      return;
+    }
+    const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let currentEventType = '';
