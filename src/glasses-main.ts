@@ -34,6 +34,7 @@ import { createDriftReconciler } from './sync/drift-reconciler';
 import { createSessionManager } from './sessions';
 import { createMenuController } from './menu/menu-controller';
 import { createGlassesErrorPresenter } from './display/error-presenter';
+import { fetchSessionReplay, replayEventsAsChunks } from './api/replay-client';
 
 // ── Module-level lifecycle state ────────────────────────────
 // Tracks cleanup callback and prevents duplicate listener registration
@@ -535,6 +536,34 @@ export async function boot(): Promise<void> {
   } else {
     // Gateway URL not configured -- show blocking config message
     renderer.showConfigRequired();
+  }
+
+  // ── Resume sync: replay missed events from gateway ──────────
+  // On reboot (visibility hidden -> visible), fetch events after the last
+  // known seq and feed them through the chunk pipeline. Auto-save and the
+  // renderer will update naturally from the replayed chunks.
+  if (settings.gatewayUrl && settings.sessionKey) {
+    const lastSeq = gateway.getLastSeq();
+    if (lastSeq != null) {
+      fetchSessionReplay(settings.gatewayUrl, settings.sessionKey, lastSeq)
+        .then((events) => {
+          if (events.length > 0) {
+            const highestSeq = replayEventsAsChunks(events, (chunk) => {
+              bus.emit('gateway:chunk', chunk);
+            });
+            if (highestSeq > 0) {
+              gateway.setLastSeq(highestSeq);
+            }
+            bus.emit('log', {
+              level: 'info',
+              msg: `Resume sync: replayed ${events.length} events (seq ${lastSeq} -> ${highestSeq})`,
+            });
+          }
+        })
+        .catch(() => {
+          bus.emit('log', { level: 'warn', msg: 'Resume sync: replay fetch failed (non-critical)' });
+        });
+    }
   }
 
   // ── Lifecycle cleanup ───────────────────────────────────────

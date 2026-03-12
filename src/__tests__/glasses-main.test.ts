@@ -16,13 +16,17 @@ vi.mock('../events', () => ({
   createEventBus: vi.fn(() => mockBus),
 }));
 
-vi.mock('../settings', () => ({
-  loadSettings: vi.fn(() => ({
+const { mockLoadSettings } = vi.hoisted(() => ({
+  mockLoadSettings: vi.fn(() => ({
     gatewayUrl: 'http://test',
     sessionKey: '',
     sttProvider: 'whisperx',
     apiKey: '',
   })),
+}));
+
+vi.mock('../settings', () => ({
+  loadSettings: mockLoadSettings,
   isLocalhostUrl: vi.fn(() => false),
 }));
 
@@ -123,6 +127,8 @@ const mockGateway = {
   abort: vi.fn(),
   destroy: mockGatewayDestroy,
   getHealth: vi.fn().mockReturnValue({ status: 'disconnected', lastHeartbeat: null, reconnectAttempts: 0, latencyMs: null }),
+  getLastSeq: vi.fn().mockReturnValue(null),
+  setLastSeq: vi.fn(),
 };
 
 vi.mock('../api/gateway-client', () => ({
@@ -272,6 +278,17 @@ vi.mock('../menu/menu-controller', () => ({
   })),
 }));
 
+// ── Replay client mock ──────────────────────────────────────
+const { mockFetchSessionReplay, mockReplayEventsAsChunks } = vi.hoisted(() => ({
+  mockFetchSessionReplay: vi.fn().mockResolvedValue([]),
+  mockReplayEventsAsChunks: vi.fn().mockReturnValue(-1),
+}));
+
+vi.mock('../api/replay-client', () => ({
+  fetchSessionReplay: mockFetchSessionReplay,
+  replayEventsAsChunks: mockReplayEventsAsChunks,
+}));
+
 // ── Import boot AFTER all mocks are in place ──────────────────
 import { boot, _resetLifecycleState } from '../glasses-main';
 
@@ -298,12 +315,18 @@ describe('glasses-main lifecycle cleanup', () => {
     mockBridgeDestroy.mockClear();
     mockBusClear.mockClear();
     mockGateway.checkHealth.mockResolvedValue(true);
+    mockGateway.getLastSeq.mockReturnValue(null);
+    mockGateway.setLastSeq.mockClear();
     mockErrorPresenterDestroy.mockClear();
     mockBridge.init.mockClear();
     syncMessageHandler = null;
     mockSyncBridge.onMessage.mockClear();
     mockSyncBridge.postMessage.mockClear();
     mockSyncBridge.destroy.mockClear();
+    mockFetchSessionReplay.mockClear();
+    mockFetchSessionReplay.mockResolvedValue([]);
+    mockReplayEventsAsChunks.mockClear();
+    mockReplayEventsAsChunks.mockReturnValue(-1);
 
     visibilityChangeCallback = null;
     pagehideCallback = null;
@@ -588,12 +611,18 @@ describe('sync bridge text turn rendering', () => {
     mockBridgeDestroy.mockClear();
     mockBusClear.mockClear();
     mockGateway.checkHealth.mockResolvedValue(true);
+    mockGateway.getLastSeq.mockReturnValue(null);
+    mockGateway.setLastSeq.mockClear();
     mockErrorPresenterDestroy.mockClear();
     mockBridge.init.mockClear();
     syncMessageHandler = null;
     mockSyncBridge.onMessage.mockClear();
     mockSyncBridge.postMessage.mockClear();
     mockSyncBridge.destroy.mockClear();
+    mockFetchSessionReplay.mockClear();
+    mockFetchSessionReplay.mockResolvedValue([]);
+    mockReplayEventsAsChunks.mockClear();
+    mockReplayEventsAsChunks.mockReturnValue(-1);
 
     // Clear renderer mocks to isolate from boot-time calls (welcome message etc)
     mockRenderer.addUserMessage.mockClear();
@@ -726,12 +755,18 @@ describe('bridge event forwarding during boot', () => {
     mockBusClear.mockClear();
     mockBus.on.mockClear();
     mockGateway.checkHealth.mockResolvedValue(true);
+    mockGateway.getLastSeq.mockReturnValue(null);
+    mockGateway.setLastSeq.mockClear();
     mockErrorPresenterDestroy.mockClear();
     mockBridge.init.mockClear();
     syncMessageHandler = null;
     mockSyncBridge.onMessage.mockClear();
     mockSyncBridge.postMessage.mockClear();
     mockSyncBridge.destroy.mockClear();
+    mockFetchSessionReplay.mockClear();
+    mockFetchSessionReplay.mockResolvedValue([]);
+    mockReplayEventsAsChunks.mockClear();
+    mockReplayEventsAsChunks.mockReturnValue(-1);
 
     // Suppress lifecycle listener registration in dev mode
     docAddEventSpy = vi.spyOn(document, 'addEventListener').mockImplementation(() => {});
@@ -800,5 +835,164 @@ describe('bridge event forwarding during boot', () => {
     // bridge:connected must be registered BEFORE bridge:audio-frame
     // (bridge:audio-frame is registered after bridge.init())
     expect(connectedIndex).toBeLessThan(audioFrameIndex);
+  });
+});
+
+// ── Resume sync wiring tests ────────────────────────────────────
+describe('resume sync wiring', () => {
+  let docAddEventSpy: ReturnType<typeof vi.spyOn>;
+  let winAddEventSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    _resetLifecycleState();
+
+    // Dev mode -- simpler lifecycle
+    delete (window as any).flutter_inappwebview;
+
+    // Reset all mock call counters
+    mockVoiceLoopDestroy.mockClear();
+    mockGatewayDestroy.mockClear();
+    mockDisplayControllerDestroy.mockClear();
+    mockGestureHandlerDestroy.mockClear();
+    mockStopRecording.mockClear();
+    mockStopRecording.mockResolvedValue(new Blob());
+    mockBridgeDestroy.mockClear();
+    mockBusClear.mockClear();
+    mockGateway.checkHealth.mockResolvedValue(true);
+    mockGateway.getLastSeq.mockReturnValue(null);
+    mockGateway.setLastSeq.mockClear();
+    mockErrorPresenterDestroy.mockClear();
+    mockBridge.init.mockClear();
+    syncMessageHandler = null;
+    mockSyncBridge.onMessage.mockClear();
+    mockSyncBridge.postMessage.mockClear();
+    mockSyncBridge.destroy.mockClear();
+    mockFetchSessionReplay.mockClear();
+    mockFetchSessionReplay.mockResolvedValue([]);
+    mockReplayEventsAsChunks.mockClear();
+    mockReplayEventsAsChunks.mockReturnValue(-1);
+    mockBus.emit.mockClear();
+
+    // Configure settings with a sessionKey for resume sync
+    mockLoadSettings.mockReturnValue({
+      gatewayUrl: 'http://test',
+      sessionKey: 'test-session-key',
+      sttProvider: 'whisperx',
+      apiKey: '',
+    });
+
+    // Suppress lifecycle listener registration
+    docAddEventSpy = vi.spyOn(document, 'addEventListener').mockImplementation(() => {});
+    winAddEventSpy = vi.spyOn(window, 'addEventListener').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    docAddEventSpy.mockRestore();
+    winAddEventSpy.mockRestore();
+    delete (window as any).flutter_inappwebview;
+    // Reset settings to default (no sessionKey) for other test suites
+    mockLoadSettings.mockReturnValue({
+      gatewayUrl: 'http://test',
+      sessionKey: '',
+      sttProvider: 'whisperx',
+      apiKey: '',
+    });
+  });
+
+  it('calls fetchSessionReplay when lastSeq is available and sessionKey is set', async () => {
+    mockGateway.getLastSeq.mockReturnValue(42);
+
+    await boot();
+    // Allow fire-and-forget promise to settle
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockFetchSessionReplay).toHaveBeenCalledWith('http://test', 'test-session-key', 42);
+  });
+
+  it('does not call fetchSessionReplay when lastSeq is null', async () => {
+    mockGateway.getLastSeq.mockReturnValue(null);
+
+    await boot();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockFetchSessionReplay).not.toHaveBeenCalled();
+  });
+
+  it('does not call fetchSessionReplay when sessionKey is empty', async () => {
+    mockLoadSettings.mockReturnValue({
+      gatewayUrl: 'http://test',
+      sessionKey: '',
+      sttProvider: 'whisperx',
+      apiKey: '',
+    });
+    mockGateway.getLastSeq.mockReturnValue(42);
+
+    await boot();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockFetchSessionReplay).not.toHaveBeenCalled();
+  });
+
+  it('calls replayEventsAsChunks and setLastSeq when events are returned', async () => {
+    const fakeEvents = [
+      { turnId: 't1', sessionKey: 'sk', seq: 43, type: 'transcript', payload: { transcript: 'hi' }, timestamp: 1 },
+      { turnId: 't1', sessionKey: 'sk', seq: 44, type: 'done', payload: {}, timestamp: 2 },
+    ];
+    mockGateway.getLastSeq.mockReturnValue(42);
+    mockFetchSessionReplay.mockResolvedValue(fakeEvents);
+    mockReplayEventsAsChunks.mockReturnValue(44);
+
+    await boot();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockReplayEventsAsChunks).toHaveBeenCalledWith(fakeEvents, expect.any(Function));
+    expect(mockGateway.setLastSeq).toHaveBeenCalledWith(44);
+  });
+
+  it('does not call setLastSeq when highestSeq is <= 0', async () => {
+    const fakeEvents = [{ turnId: 't1', sessionKey: 'sk', seq: 0, type: 'done', payload: {}, timestamp: 1 }];
+    mockGateway.getLastSeq.mockReturnValue(42);
+    mockFetchSessionReplay.mockResolvedValue(fakeEvents);
+    mockReplayEventsAsChunks.mockReturnValue(-1);
+
+    await boot();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // replayEventsAsChunks returned -1, so setLastSeq should not be called
+    expect(mockGateway.setLastSeq).not.toHaveBeenCalled();
+  });
+
+  it('emits replayed chunks to bus as gateway:chunk', async () => {
+    const fakeEvents = [
+      { turnId: 't1', sessionKey: 'sk', seq: 43, type: 'transcript', payload: { transcript: 'hi' }, timestamp: 1 },
+    ];
+    mockGateway.getLastSeq.mockReturnValue(42);
+    mockFetchSessionReplay.mockResolvedValue(fakeEvents);
+    // Capture the emitChunkCallback and invoke it to verify bus.emit
+    mockReplayEventsAsChunks.mockImplementation((_events: unknown, emitCb: (chunk: unknown) => void) => {
+      emitCb({ type: 'transcript', text: 'hi', turnId: 't1' });
+      return 43;
+    });
+
+    await boot();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Verify bus.emit was called with 'gateway:chunk' and the chunk
+    const chunkEmits = mockBus.emit.mock.calls.filter(
+      (call) => call[0] === 'gateway:chunk' && call[1]?.type === 'transcript',
+    );
+    expect(chunkEmits.length).toBeGreaterThanOrEqual(1);
+    expect(chunkEmits[0][1]).toEqual({ type: 'transcript', text: 'hi', turnId: 't1' });
+  });
+
+  it('silently handles fetchSessionReplay failure (non-blocking)', async () => {
+    mockGateway.getLastSeq.mockReturnValue(42);
+    mockFetchSessionReplay.mockRejectedValue(new Error('network down'));
+
+    await boot();
+    // Should not throw -- fire-and-forget with .catch
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockReplayEventsAsChunks).not.toHaveBeenCalled();
   });
 });

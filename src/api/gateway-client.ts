@@ -44,6 +44,24 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     latencyMs: null,
   };
 
+  // ── Last event sequence tracking (for resume sync / replay) ──
+  // Only updated via setLastSeq() after processing replay events.
+  // Normal SSE streams do not carry seq numbers.
+  let lastEventSeq: number | null = null;
+  try {
+    const stored = localStorage.getItem('openclaw-last-event-seq');
+    if (stored != null) lastEventSeq = Number(stored) || null;
+  } catch { /* localStorage unavailable */ }
+
+  function getLastSeq(): number | null {
+    return lastEventSeq;
+  }
+
+  function setLastSeq(seq: number): void {
+    lastEventSeq = seq;
+    try { localStorage.setItem('openclaw-last-event-seq', String(seq)); } catch { /* */ }
+  }
+
   const eventHandlers: Set<GatewayEventHandler> = new Set();
   const statusHandlers: Set<StatusChangeHandler> = new Set();
 
@@ -424,6 +442,8 @@ export function createGatewayClient(options: GatewayClientOptions = {}) {
     abort,
     destroy,
     getHealth,
+    getLastSeq,
+    setLastSeq,
   };
 }
 

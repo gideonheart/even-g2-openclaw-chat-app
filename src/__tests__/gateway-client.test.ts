@@ -861,4 +861,61 @@ describe('gateway-client', () => {
       });
     });
   });
+
+  describe('lastEventSeq tracking', () => {
+    beforeEach(() => {
+      // Clear any stored seq value between tests
+      try { localStorage.removeItem('openclaw-last-event-seq'); } catch { /* */ }
+    });
+
+    afterEach(() => {
+      try { localStorage.removeItem('openclaw-last-event-seq'); } catch { /* */ }
+    });
+
+    it('getLastSeq returns null initially (no localStorage value)', () => {
+      const client = createGatewayClient();
+      expect(client.getLastSeq()).toBeNull();
+    });
+
+    it('setLastSeq updates the value and persists to localStorage', () => {
+      const client = createGatewayClient();
+      client.setLastSeq(42);
+
+      expect(client.getLastSeq()).toBe(42);
+      expect(localStorage.getItem('openclaw-last-event-seq')).toBe('42');
+    });
+
+    it('getLastSeq reads from localStorage on construction', () => {
+      localStorage.setItem('openclaw-last-event-seq', '99');
+      const client = createGatewayClient();
+
+      expect(client.getLastSeq()).toBe(99);
+    });
+
+    it('destroy does not clear lastEventSeq from localStorage', () => {
+      const client = createGatewayClient();
+      client.setLastSeq(77);
+      client.destroy();
+
+      // localStorage value should persist across boot cycles
+      expect(localStorage.getItem('openclaw-last-event-seq')).toBe('77');
+    });
+
+    it('setLastSeq overwrites previous value', () => {
+      const client = createGatewayClient();
+      client.setLastSeq(10);
+      client.setLastSeq(20);
+
+      expect(client.getLastSeq()).toBe(20);
+      expect(localStorage.getItem('openclaw-last-event-seq')).toBe('20');
+    });
+
+    it('handles non-numeric localStorage value gracefully (returns null)', () => {
+      localStorage.setItem('openclaw-last-event-seq', 'not-a-number');
+      const client = createGatewayClient();
+
+      // NaN is falsy, so || null returns null
+      expect(client.getLastSeq()).toBeNull();
+    });
+  });
 });

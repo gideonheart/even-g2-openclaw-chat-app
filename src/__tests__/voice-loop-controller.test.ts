@@ -51,6 +51,8 @@ function createMockGateway() {
     abort: vi.fn(),
     destroy: vi.fn(),
     getHealth: vi.fn(),
+    getLastSeq: vi.fn().mockReturnValue(null),
+    setLastSeq: vi.fn(),
   };
 }
 
