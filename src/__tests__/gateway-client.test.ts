@@ -434,6 +434,199 @@ describe('gateway-client', () => {
       });
     });
 
+    describe('sendVoiceTurn SSE streaming', () => {
+      // Helper: build a mock Response with a ReadableStream body for SSE testing
+      function createSSEResponse(events: string): Partial<Response> {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
+          start(controller) {
+            controller.enqueue(encoder.encode(events) as Uint8Array<ArrayBuffer>);
+            controller.close();
+          },
+        });
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: new Headers({ 'content-type': 'text/event-stream' }),
+          body: stream,
+        };
+      }
+
+      it('SSE: full voice turn emits transcript + response_start + delta + done', async () => {
+        const sseBody = [
+          'event: transcript',
+          'data: {"transcript":"Hello","turnId":"t1"}',
+          '',
+          'event: assistant_delta',
+          'data: {"text":"Hi ","turnId":"t1"}',
+          '',
+          'event: assistant_delta',
+          'data: {"text":"there","turnId":"t1"}',
+          '',
+          'event: done',
+          'data: {"turnId":"t1"}',
+          '',
+        ].join('\n') + '\n';
+
+        globalThis.fetch = vi.fn().mockResolvedValue(createSSEResponse(sseBody));
+
+        const client = createGatewayClient();
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        expect(chunks).toHaveLength(5);
+        expect(chunks[0]).toEqual({ type: 'transcript', text: 'Hello', turnId: 't1' });
+        expect(chunks[1]).toEqual({ type: 'response_start', turnId: 't1' });
+        expect(chunks[2]).toEqual({ type: 'response_delta', text: 'Hi ', turnId: 't1' });
+        expect(chunks[3]).toEqual({ type: 'response_delta', text: 'there', turnId: 't1' });
+        expect(chunks[4]).toEqual({ type: 'response_end', turnId: 't1' });
+      });
+
+      it('SSE: response_start emitted only once (before first assistant_delta)', async () => {
+        const sseBody = [
+          'event: assistant_delta',
+          'data: {"text":"A","turnId":"t1"}',
+          '',
+          'event: assistant_delta',
+          'data: {"text":"B","turnId":"t1"}',
+          '',
+          'event: assistant_delta',
+          'data: {"text":"C","turnId":"t1"}',
+          '',
+          'event: done',
+          'data: {"turnId":"t1"}',
+          '',
+        ].join('\n') + '\n';
+
+        globalThis.fetch = vi.fn().mockResolvedValue(createSSEResponse(sseBody));
+
+        const client = createGatewayClient();
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        const responseStartChunks = chunks.filter((c) => c.type === 'response_start');
+        const responseDeltaChunks = chunks.filter((c) => c.type === 'response_delta');
+        expect(responseStartChunks).toHaveLength(1);
+        expect(responseDeltaChunks).toHaveLength(3);
+      });
+
+      it('SSE: malformed JSON in data line is silently skipped', async () => {
+        const sseBody = [
+          'event: transcript',
+          'data: {"transcript":"Hello","turnId":"t1"}',
+          '',
+          'event: assistant_delta',
+          'data: {invalid json}',
+          '',
+          'event: done',
+          'data: {"turnId":"t1"}',
+          '',
+        ].join('\n') + '\n';
+
+        globalThis.fetch = vi.fn().mockResolvedValue(createSSEResponse(sseBody));
+
+        const client = createGatewayClient();
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        // Only transcript and done should emit; malformed delta is skipped
+        expect(chunks).toHaveLength(2);
+        expect(chunks[0]).toEqual({ type: 'transcript', text: 'Hello', turnId: 't1' });
+        expect(chunks[1]).toEqual({ type: 'response_end', turnId: 't1' });
+        // No error chunk emitted for malformed JSON
+        expect(chunks.filter((c) => c.type === 'error')).toHaveLength(0);
+      });
+
+      it('SSE: event split across multiple stream chunks is reassembled', async () => {
+        const encoder = new TextEncoder();
+        // Split the SSE event mid-line: first chunk ends with "event: trans",
+        // second chunk starts with "cript\n..."
+        const fullSSE = 'event: transcript\ndata: {"transcript":"Split","turnId":"t1"}\n\nevent: done\ndata: {"turnId":"t1"}\n\n';
+        const splitAt = 'event: trans'.length;
+        const part1 = fullSSE.slice(0, splitAt);
+        const part2 = fullSSE.slice(splitAt);
+
+        const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
+          start(controller) {
+            controller.enqueue(encoder.encode(part1) as Uint8Array<ArrayBuffer>);
+            // Enqueue second part in next microtask to simulate chunked delivery
+            queueMicrotask(() => {
+              controller.enqueue(encoder.encode(part2) as Uint8Array<ArrayBuffer>);
+              controller.close();
+            });
+          },
+        });
+
+        const sseResponse: Partial<Response> = {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: new Headers({ 'content-type': 'text/event-stream' }),
+          body: stream,
+        };
+
+        globalThis.fetch = vi.fn().mockResolvedValue(sseResponse);
+
+        const client = createGatewayClient();
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        expect(chunks).toHaveLength(2);
+        expect(chunks[0]).toEqual({ type: 'transcript', text: 'Split', turnId: 't1' });
+        expect(chunks[1]).toEqual({ type: 'response_end', turnId: 't1' });
+      });
+
+      it('SSE: null response body emits error chunk', async () => {
+        const nullBodyResponse: Partial<Response> = {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: new Headers({ 'content-type': 'text/event-stream' }),
+          body: null,
+        };
+
+        globalThis.fetch = vi.fn().mockResolvedValue(nullBodyResponse);
+
+        const client = createGatewayClient();
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        expect(chunks).toHaveLength(1);
+        expect(chunks[0].type).toBe('error');
+        expect(chunks[0].error).toContain('no body');
+      });
+
+      it('SSE: error event emits error chunk', async () => {
+        const sseBody = [
+          'event: error',
+          'data: {"error":"STT failed"}',
+          '',
+        ].join('\n') + '\n';
+
+        globalThis.fetch = vi.fn().mockResolvedValue(createSSEResponse(sseBody));
+
+        const client = createGatewayClient();
+        const chunks: VoiceTurnChunk[] = [];
+        client.onChunk((c) => chunks.push(c));
+
+        await client.sendVoiceTurn(testSettings, testRequest);
+
+        expect(chunks).toHaveLength(1);
+        expect(chunks[0]).toEqual({ type: 'error', error: 'STT failed' });
+      });
+    });
+
   });
 
   describe('sendTextTurn', () => {
